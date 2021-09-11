@@ -1,0 +1,62 @@
+[project]
+name = "cotton2k.core"
+version = "0.1a1"
+description = "Reimplementation for Cotton2k simulation model"
+authors = [{ name = "Tang Ziya", email = "tcztzy@gmail.com" }]
+readme = "README.rst"
+requires-python = ">=3.9"
+keywords = ["cotton", "simulation", "model"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Intended Audience :: Science/Research",
+    "Operating System :: Microsoft :: Windows :: Windows 10",
+    "Operating System :: POSIX :: Linux",
+    "Topic :: Scientific/Engineering :: Atmospheric Science",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Scientific/Engineering :: Hydrology",
+]
+dependencies = [
+    "numpy==1.21.2",      # greater than 1.21 for mypy plugin
+    "pint==0.17",         # typed but not yet release
+    "scipy==1.7.1",       # not typed
+]
+
+[project.urls]
+homepage = "https://github.com/tcztzy/cotton2k"
+repository = "https://github.com/tcztzy/cotton2k"
+
+[build-system]
+requires = ["pyproject-toml == 0.0.10", "Cython >= 3.0a9", "numpy >= 1.21"]
+build-backend = "pyproject_toml.build_system.build_backend"
+
+[tool.isort]
+profile = "black"
+
+[tool.pylint.'MESSAGES CONTROL']
+disable = [
+    "invalid-name",
+    "missing-function-docstring",
+    "missing-module-docstring",
+    "missing-class-docstring",
+    "unsubscriptable-object",
+]
+
+[tool.pylint.FORMAT]
+max-line-length = 88
+
+[tool.coverage.run]
+branch = true
+plugins = ["Cython.Coverage"]
+
+[tool.coverage.report]
+fail_under = 90
+
+[tool.mypy]
+plugins = ["sqlalchemy.ext.mypy.plugin", "numpy.typing.mypy_plugin"]
+overrides = [{ module = ["pint.*", "scipy.*"], ignore_missing_imports = true }]
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "--doctest-modules --cov=cotton2k --cov=_cotton2k"
+doctest_optionflags = "NUMBER"

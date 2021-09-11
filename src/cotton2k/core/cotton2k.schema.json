@@ -1,0 +1,284 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema",
+    "$id": "https://raw.githubusercontent.com/tcztzy/cotton2k/master/src/cotton2k/cotton2k.schema.json",
+    "description": "Cotton2K model input JSON schema",
+    "type": "object",
+    "required": [
+        "start_date",
+        "stop_date"
+    ],
+    "properties": {
+        "description": {
+            "description": "Simulation description",
+            "type": "string"
+        },
+        "start_date": {
+            "description": "Simulation start date, in iso format 'YYYY-mm-dd'",
+            "type": "string",
+            "format": "date"
+        },
+        "stop_date": {
+            "description": "Simulation stop date, in iso format 'YYYY-mm-dd'",
+            "type": "string",
+            "format": "date"
+        },
+        "emerge_date": {
+            "description": "Cotton emerge date",
+            "type": "string",
+            "format": "date"
+        },
+        "plant_date": {
+            "description": "Cotton plant date",
+            "type": "string",
+            "format": "date"
+        },
+        "topping_date": {
+            "description": "Date of topping",
+            "type": "string",
+            "format": "date"
+        },
+        "latitude": {
+            "description": "The site's latitude",
+            "type": "number",
+            "maximum": 90,
+            "minimum": -90
+        },
+        "longitude": {
+            "description": "The site's longitude",
+            "type": "number",
+            "maximum": 180,
+            "minimum": -180
+        },
+        "elevation": {
+            "description": "The site's elevation in meter",
+            "type": "number"
+        },
+        "site_parameters": {
+            "description": "",
+            "type": "array",
+            "items": {
+                "type": "number",
+                "maxLength": 16,
+                "minLength": 16
+            }
+        },
+        "row_space": {
+            "type": "number",
+            "minimum": 0
+        },
+        "skip_row_width": {
+            "type": "number",
+            "minimum": 0
+        },
+        "plants_per_meter": {
+            "type": "number",
+            "minimum": 0
+        },
+        "cultivar_parameters": {
+            "type": "array",
+            "items": {
+                "type": "number"
+            }
+        },
+        "soil": {
+            "description": "Soil measurements",
+            "type": "object",
+            "properties": {
+                "layer_depth": {
+                    "description": "The layer depth in cm of initial state",
+                    "type": "number",
+                    "minimum": 0
+                },
+                "initial": {
+                    "description": "Soil initial status",
+                    "type": "array",
+                    "items": {
+                        "description": "Each layer soil status",
+                        "type": "object",
+                        "properties": {
+                            "ammonium_nitrogen": {
+                                "type": "number"
+                            },
+                            "nitrate_nitrogen": {
+                                "type": "number"
+                            },
+                            "organic_matter": {
+                                "type": "number"
+                            },
+                            "water": {
+                                "type": "number"
+                            }
+                        },
+                        "required": [
+                            "ammonium_nitrogen",
+                            "nitrate_nitrogen",
+                            "organic_matter",
+                            "water"
+                        ]
+                    },
+                    "maxItems": 14
+                },
+                "hydrology": {
+                    "description": "Soil Hydrology data",
+                    "type": "object",
+                    "properties": {
+                        "ratio_implicit": {
+                            "description": "the ratio for the implicit numerical solution of the water transport equation (used in FLUXI and in SFLUX.",
+                            "type": "number",
+                            "maximum": 1,
+                            "minimum": 0
+                        },
+                        "max_conductivity": {
+                            "description": "the maximum value for non-dimensional hydraulic conductivity",
+                            "type": "number"
+                        },
+                        "field_capacity_water_potential": {
+                            "description": "soil matric water potential at field capacity, bars (suggested value -0.33 to -0.1).",
+                            "type": "number"
+                        },
+                        "immediate_drainage_water_potential": {
+                            "description": "soil matric water potential, bars, for which immediate drainage will be simulated (suggested value -0.25 to -0.1)"
+                        },
+                        "layers": {
+                            "description": "soil horizons in the slab (down to 2 m)",
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "depth": {
+                                        "description": "depth from soil surface to the end of horizon layers, cm.",
+                                        "type": "number",
+                                        "minimum": 0
+                                    },
+                                    "air_dry": {
+                                        "description": "volumetric water content of soil at \"air-dry\" for each soil horizon, cm3 cm-3.",
+                                        "type": "number"
+                                    },
+                                    "theta": {
+                                        "description": "volumetric saturated water content of soil horizon, cm3 cm-3.",
+                                        "type": "number"
+                                    },
+                                    "alpha": {
+                                        "description": "parameter of the Van Genuchten equation.",
+                                        "type": "number"
+                                    },
+                                    "beta": {
+                                        "description": "parameter of the Van Genuchten equation.",
+                                        "type": "number"
+                                    },
+                                    "saturated_hydraulic_conductivity": {
+                                        "description": "saturated hydraulic conductivity, cm per day.",
+                                        "type": "number"
+                                    },
+                                    "field_capacity_hydraulic_conductivity": {
+                                        "description": "hydraulic conductivity at field capacity of horizon layers, cm per day.",
+                                        "type": "number"
+                                    },
+                                    "bulk_density": {
+                                        "description": "bulk density of soil in a horizon, g cm-3.",
+                                        "type": "number"
+                                    },
+                                    "clay": {
+                                        "description": "percentage of clay in soil horizon of horizon layers.",
+                                        "type": "number",
+                                        "maximum": 100,
+                                        "minimum": 0
+                                    },
+                                    "sand": {
+                                        "description": "percentage of sand in soil horizon of horizon layers.",
+                                        "type": "number",
+                                        "maximum": 100,
+                                        "minimum": 0
+                                    }
+                                }
+                            },
+                            "maxItems": 9
+                        }
+                    }
+                }
+            }
+        },
+        "climate_start_date": {
+            "type": "string",
+            "format": "date"
+        },
+        "climate": {
+            "description": "Climate data",
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "radiation": {
+                        "type": "number",
+                        "minimum": 0
+                    },
+                    "max": {
+                        "type": "number"
+                    },
+                    "min": {
+                        "type": "number"
+                    },
+                    "rain": {
+                        "type": "number"
+                    },
+                    "wind": {
+                        "type": "number"
+                    },
+                    "dewpoint": {
+                        "type": "number"
+                    }
+                }
+            }
+        },
+        "agricultural_inputs": {
+            "type": "array",
+            "items": {
+                "anyOf": [
+                    {
+                        "type": "object",
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "pattern": "fertilization"
+                            },
+                            "date": {
+                                "type": "string",
+                                "format": "date"
+                            }
+                        }
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "pattern": "irrigation"
+                            },
+                            "date": {
+                                "type": "string",
+                                "format": "date"
+                            },
+                            "amount": {
+                                "type": "number",
+                                "minimum": 0
+                            }
+                        }
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "pattern": "defoliation( prediction)?"
+                            },
+                            "date": {
+                                "type": "string",
+                                "format": "date"
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+    }
+}

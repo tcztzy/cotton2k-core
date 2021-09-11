@@ -1,0 +1,31 @@
+.coverage
+.python-version
+.venv/
+.vscode/
+__pycache__/
+*.egg-info/
+htmlcov/
+coverage.xml
+/.idea/
+/.vs/
+/.vscode/
+# VSCode CMake tools build directory
+/build/
+# CLion default build directory
+/cmake-build-debug/
+
+# distribution
+/dist/
+/MANIFEST
+
+# Added by cargo
+
+/target
+
+*.cotton2k.json
+*.cotton2k-output.json
+
+*.so
+*.pyd
+*.pdb
+*.whl
