@@ -364,6 +364,15 @@ def tdewest(maxt: float, site5: float, site6: float) -> float:
     ---------
     maxt
         maximum temperature of this day.
+
+    Examples
+    --------
+    >>> tdewest(22, 10, 18)
+    10.8
+    >>> tdewest(18, 10, 18)
+    10
+    >>> tdewest(40, 10, 18)
+    18
     """
 
     if maxt <= 20:
