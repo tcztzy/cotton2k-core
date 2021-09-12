@@ -224,7 +224,7 @@ extern "C" fn tdewhour(
     let im1 = if u > 1 { u - 1 } else { 0 }; // day of year yesterday
     let yesterday = sim.climate[im1 as usize];
     let today = sim.climate[u as usize];
-    let mut ip1 = u + 1; // day of year tomorrow
+    let ip1 = u + 1; // day of year tomorrow
     let tomorrow = sim.climate[ip1 as usize];
     let tdmin; // minimum of dew point temperature.
     let mut tdrange; // range of dew point temperature.
