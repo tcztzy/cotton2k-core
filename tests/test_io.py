@@ -19,7 +19,7 @@ def test_write_output(sim: Simulation):
     state = sim.states[-1]
     assert (state.lint_yield - 2219.4412479701537) < 1e-9
     assert (state.leaf_weight - 6.384953819149585) < 1e-9
-    assert (state.root_weight - 54.748594488769854) < 1e-9
-    assert (state.stem_weight - 27.388671543526538) < 1e-9
-    assert (state.plant_weight - 170.88176149303297) < 1e-9
+    assert (state.root_weight - 54.75045060060244) < 1e-9
+    assert (state.stem_weight - 27.389275880965116) < 1e-9
+    assert (state.plant_weight - 170.88351362245515) < 1e-9
     assert "date" in state.keys()
