@@ -1,3 +1,9 @@
+__init__.cpp
+climate.cpp
+leaf.cpp
 simulation.cpp
+soil.cpp
 soil_impedance.cpp
 state.cpp
+thermology.cpp
+utils.cpp

@@ -1,5 +1,3 @@
-# distutils: language=c++
-# cython: language_level=3
 from datetime import date, timedelta
 from math import sin, cos, acos, sqrt, pi, atan
 

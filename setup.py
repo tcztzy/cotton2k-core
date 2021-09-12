@@ -11,7 +11,6 @@ import setuptools
 from Cython.Build import build_ext, cythonize
 from pyproject_toml import setup
 from setuptools.command.develop import develop
-from setuptools.extension import Extension
 
 log = logging.getLogger("COTTON2K")
 
@@ -66,6 +65,8 @@ def get_extensions():
     extensions = cythonize(
         "src/_cotton2k/*.pyx",
         nthreads=cpu_count() if os.name != "nt" else 0,
+        language="c++",
+        compiler_directives={"language_level": 3},
     )
     for ext in extensions:
         ext.include_dirs = [numpy.get_include()]
