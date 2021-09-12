@@ -4,7 +4,6 @@
 
 mod climate;
 mod fruit;
-mod root;
 mod soil;
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));

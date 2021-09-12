@@ -136,3 +136,24 @@ def SoilAirOnRootGrowth(psislk: float, pore_space: float, vh2oclk: float) -> flo
     if psislk > p1:
         return p2
     return 1.0
+
+
+def SoilNitrateOnRootGrowth(  # pylint: disable=unused-argument
+    vno3clk: float,
+) -> float:
+    """Calculates the reduction of potential root growth rate in cells with low nitrate
+    content.
+
+    It has been adapted from GOSSYM. It is assumed that root growth is reduced when
+    nitrate N content falls below a certain level.
+
+    NOTE: This function actually does nothing. It is disabled by the choice of the
+    constant parameters. It may be redefined when more experimental data become
+    available.
+
+    Arguments
+    ---------
+    vno3clk
+        VolNo3NContent value for this cell
+    """
+    return 1.0

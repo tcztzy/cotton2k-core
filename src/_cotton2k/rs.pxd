@@ -8,7 +8,6 @@ cdef extern:
     int SlabLoc(int, double)
     double daywnd(double, double, double, double, double, double)
     double TemperatureOnFruitGrowthRate(double)
-    double SoilNitrateOnRootGrowth(double)
     double SoilMechanicResistance(double)
     double wcond(double, double, double, double, double, double)
     double PsiOsmotic(double, double, double)
