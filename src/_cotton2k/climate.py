@@ -354,3 +354,20 @@ def compute_incoming_long_wave_radiation(
         temperature + constants.zero_Celsius
     ) ** 4 - cloud_cor
     return rlzero / constants.calorie / 10_000
+
+
+def tdewest(maxt: float, site5: float, site6: float) -> float:
+    """Estimates the approximate daily average dewpoint temperature when it is not
+    available.
+
+    Arguments
+    ---------
+    maxt
+        maximum temperature of this day.
+    """
+
+    if maxt <= 20:
+        return site5
+    if maxt >= 40:
+        return site6
+    return ((40 - maxt) * site5 + (maxt - 20) * site6) / 20
