@@ -5,6 +5,30 @@ from _cotton2k.soil import SoilTemOnRootGrowth  # type: ignore[import]
 
 
 def depth_of_layer(l: int) -> float:
+    """
+    Examples
+    --------
+    >>> depth_of_layer(0)
+    2.0
+    >>> depth_of_layer(1)
+    2.0
+    >>> depth_of_layer(2)
+    2.0
+    >>> depth_of_layer(3)
+    4.0
+    >>> depth_of_layer(4)
+    5.0
+    >>> depth_of_layer(37)
+    5.0
+    >>> depth_of_layer(38)
+    10.0
+    >>> depth_of_layer(39)
+    10.0
+    >>> depth_of_layer(40)
+    Traceback (most recent call last):
+    ...
+    IndexError: Out of range
+    """
     if l >= 40:
         raise IndexError("Out of range")
     return (
@@ -16,7 +40,7 @@ def depth_of_layer(l: int) -> float:
             38: 10.0,
             39: 10.0,
         }
-    ).get(l, 5)
+    ).get(l, 5.0)
 
 
 class RootGrowth:  # pylint: disable=no-member,attribute-defined-outside-init,too-few-public-methods,too-many-arguments
