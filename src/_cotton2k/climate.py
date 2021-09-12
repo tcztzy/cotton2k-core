@@ -286,9 +286,12 @@ def clearskyemiss(vp: float, tk: float) -> float:
     """
     Estimates clear sky emissivity for long wave radiation.
 
-    Reference:
-    Idso, S.B. 1981. A set of equations for full spectrum and 8- to 14-um and 10.5- to
-    12.5- um thermal radiation from cloudless skies. Water Resources Res. 17:295.
+    References
+    ----------
+
+    Idso, S.B., 1981. A set of equations for full spectrum and 8- to 14-μm and 10.5- to
+    12.5-μm thermal radiation from cloudless skies. Water Resources Research 17,
+    295–304. https://doi.org/10.1029/WR017i002p00295
 
     Arguments
     ---------
@@ -296,13 +299,20 @@ def clearskyemiss(vp: float, tk: float) -> float:
         vapor pressure of the air in KPa
     tk
         air temperature in K.
+
+    Returns
+    -------
+    float
+        clear sky emissivity for long wave radiation.
+
+    Examples
+    --------
+    >>> clearskyemiss(2.33, 20+273.15)
+    0.9312521744252138
     """
     vp1 = vp * 10  # vapor pressure of the air in mbars.
 
-    ea0 = 0.70 + 5.95e-05 * vp1 * exp(
-        1500 / tk
-    )  # Compute clear sky emissivity by the method of Idso (1981)
-    return min(ea0, 1)
+    return min(0.70 + 5.95e-5 * vp1 * exp(1500 / tk), 1)
 
 
 def dayrh(tt: float, tdew: float) -> float:
