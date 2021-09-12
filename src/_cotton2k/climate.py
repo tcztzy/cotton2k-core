@@ -277,8 +277,24 @@ def sunangle(
 
 
 def VaporPressure(tt: float) -> float:
-    """`VaporPressure` computes the water vapor pressure in the air (in KPa units) as a
-    function of the air at temperature tt (C). This equation is widely used."""
+    """Computes the water vapor pressure in the air (in KPa units) as a function of the
+    air at temperature tt (C). This equation is widely used.
+
+    Arguments
+    ---------
+    tt
+        temperature in C.
+
+    Returns
+    -------
+    float
+        vapor pressure in KPa.
+
+    Examples
+    --------
+    >>> VaporPressure(20)
+    2.338022964146756
+    """
     return 0.61078 * exp(17.269 * tt / (tt + 237.3))
 
 
