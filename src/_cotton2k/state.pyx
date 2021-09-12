@@ -1,6 +1,5 @@
 # distutils: language=c++
 # cython: language_level=3
-# cython: linetrace=True
 import datetime
 
 import numpy as np

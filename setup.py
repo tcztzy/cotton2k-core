@@ -16,17 +16,6 @@ from setuptools.extension import Extension
 log = logging.getLogger("COTTON2K")
 
 
-extensions = cythonize(
-    [
-        Extension(
-            f"{source.parent.name}.{source.stem}",
-            [str(source)],
-            include_dirs=[numpy.get_include()],
-        )
-        for source in Path("src/_cotton2k").glob("*.pyx")
-    ],
-    nthreads=cpu_count() if os.name != "nt" else 0,
-)
 extra_compile_args = defaultdict(lambda: ["-std=c++20"])
 extra_compile_args["msvc"] = ["/std:c++latest"]
 libraries = defaultdict(lambda: ["cotton2k"])
@@ -36,21 +25,15 @@ libraries["nt"].extend(["ws2_32", "userenv", "advapi32"])
 class cotton2k_build_ext(build_ext):
     def build_extensions(self):
         cargo_build = ["cargo", "build"]
-        if self.debug:
-            self.cython_directives = {"linetrace": True}
-        else:
+        if not self.debug:
             cargo_build.append("--release")
         subprocess.run(cargo_build)
         args = extra_compile_args[self.compiler.compiler_type]
-        for extension in self.extensions:
-            extension.sources = glob("src/_cotton2k/*.cpp")
-            extension.libraries = libraries[os.name]
-            extension.library_dirs = [
-                "target/" + ("debug" if self.debug else "release")
+        for ext in self.extensions:
+            ext.library_dirs = [
+                os.path.join("target", "debug" if self.debug else "release")
             ]
-            extension.extra_compile_args = args
-            if self.debug:
-                extension.define_macros = [("CYTHON_TRACE_NOGIL", "1")]
+            ext.extra_compile_args = args
         super().build_extensions()
 
 
@@ -79,10 +62,22 @@ class cotton2k_develop(develop):
         self.process_distribution(None, self.dist, not self.no_deps)
 
 
+def get_extensions():
+    extensions = cythonize(
+        "src/_cotton2k/*.pyx",
+        nthreads=cpu_count() if os.name != "nt" else 0,
+    )
+    for ext in extensions:
+        ext.include_dirs = [numpy.get_include()]
+        ext.libraries = libraries[os.name]
+        ext.sources = glob("src/_cotton2k/*.cpp")
+    return extensions
+
+
 setup(
     packages=["cotton2k.core", "_cotton2k"],
     package_dir={"": "src"},
     package_data={"cotton2k.core": ["*.json", "*.csv"]},
-    ext_modules=extensions,
+    ext_modules=get_extensions(),
     cmdclass={"build_ext": cotton2k_build_ext, "develop": cotton2k_develop},
 )
