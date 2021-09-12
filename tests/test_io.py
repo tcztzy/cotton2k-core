@@ -1,17 +1,16 @@
 import pytest
 
-from cotton2k.core import read_input
 from cotton2k.core.simulation import Simulation
 
 
 def test_read_input(empty_json, test_json):
     with pytest.raises((KeyError, TypeError)):
-        read_input(empty_json)
+        Simulation(empty_json)
     with pytest.raises((KeyError, TypeError)):
-        read_input({})
+        Simulation({})
     with pytest.raises((KeyError, TypeError)):
-        read_input(str(empty_json))
-    read_input(test_json)
+        Simulation(str(empty_json))
+    Simulation(test_json)
 
 
 def test_write_output(sim: Simulation):

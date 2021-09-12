@@ -1,6 +1,7 @@
+# pylint: disable=import-error
 import numpy as np
 
-from _cotton2k.soil import SoilTemOnRootGrowth
+from _cotton2k.soil import SoilTemOnRootGrowth  # type: ignore[import]
 
 
 def depth_of_layer(l: int) -> float:

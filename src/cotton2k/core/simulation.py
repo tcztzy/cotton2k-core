@@ -1,17 +1,34 @@
-# pylint: disable=no-name-in-module
+# pylint: disable=no-name-in-module, import-error
+import csv
 import datetime
-from typing import Any
+import json
+from pathlib import Path
+from typing import Any, Union
 
 import numpy as np
 
-from _cotton2k.simulation import Simulation as CySimulation
+from _cotton2k import Climate, SoilImpedance, SoilInit  # type: ignore[import]
+from _cotton2k.simulation import Simulation as CySimulation  # type: ignore[import]
 from _cotton2k.simulation import State as CyState
 
+from .meteorology import METEOROLOGY
 from .nitrogen import PlantNitrogen
 from .phenology import Phenology, Stage
 from .photo import Photosynthesis
 from .root import RootGrowth
 from .stem import StemGrowth
+
+SOIL_IMPEDANCE = SoilImpedance()
+with open(Path(__file__).parent / "soil_imp.csv") as csvfile:
+    reader = csv.DictReader(csvfile)
+    SOIL_IMPEDANCE.curves = list(
+        map(
+            lambda row: {
+                (k if k == "water" else float(k)): float(v) for k, v in row.items()
+            },
+            reader,
+        )
+    )
 
 
 class State(
@@ -160,6 +177,30 @@ def physiological_age(hours) -> float:
 class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
     states: list[State] = []
 
+    def __init__(self, path: Union[Path, str, dict]):
+        if isinstance(path, dict):
+            kwargs = path
+        else:
+            kwargs = json.loads(Path(path).read_text())
+        super().__init__(kwargs.pop("id", 0), kwargs.pop("version", 0x0400), **kwargs)
+        soil = SoilInit(**kwargs.pop("soil", {}))  # type: ignore[arg-type]
+        start_date = kwargs["start_date"]
+        if not isinstance(start_date, (datetime.date, str)):
+            raise ValueError
+        self.year = (
+            start_date.year
+            if isinstance(start_date, datetime.date)
+            else int(start_date[:4])
+        )
+        self.read_input(lyrsol=soil.lyrsol, **kwargs)
+        METEOROLOGY[(kwargs["latitude"], kwargs["longitude"])] = {
+            datetime.date.fromisoformat(kwargs["climate_start_date"])
+            + datetime.timedelta(days=i): c
+            for i, c in enumerate(kwargs["climate"])
+        }
+        climate_start_date = kwargs.pop("climate_start_date", 0)
+        self.climate = Climate(climate_start_date, kwargs.pop("climate"))[self.start_date :]  # type: ignore[misc]  # pylint: disable=line-too-long
+
     def state(self, i):
         if isinstance(i, datetime.date):
             i = (i - self.start_date).days
@@ -275,6 +316,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             self._simulate()
         except RuntimeError:
             pass
+        return self
 
     def _simulate(self):
         self.states = []
