@@ -96,3 +96,43 @@ def SoilTemOnRootGrowth(t: float) -> float:
         return 1
     p = np.polynomial.Polynomial([-2.12, 0.2, -0.0032])
     return min(max(p(t), 0), 1)
+
+
+def SoilAirOnRootGrowth(psislk: float, pore_space: float, vh2oclk: float) -> float:
+    """Calculates the reduction of potential root growth rate in cells with low oxygen
+    content (high water content).
+
+    It has been adapted from GOSSYM, but the critical value of soil moisture potential
+    for root growth reduction (i.e., water logging conditions) has been changed.
+
+    Arguments
+    ---------
+    psislk
+        value of SoilPsi for this cell.
+    pore_space
+        value of PoreSpace (v/v) for this layer.
+    vh2oclk
+        water content (v/v) of this cell
+
+    Examples
+    --------
+    >>> SoilAirOnRootGrowth(0, 0.1, 0.05)
+    1.0
+    >>> SoilAirOnRootGrowth(1, 0.1, 0.1)
+    0.1
+    >>> SoilAirOnRootGrowth(1, 0.1, 0.05)
+    1.0
+    """
+    # Constant parameters:
+    p1 = 0
+    p2 = 1.0
+    p3 = 0.1
+    # The following is actually disabled by the choice of the calibration parameters.
+    # It may be redefined when more experimental data become available. Reduced root
+    # growth when water content is at pore - space saturation (below water table).
+    if vh2oclk >= pore_space:
+        return p3
+    # Effect of oxygen deficiency on root growth (the return value).
+    if psislk > p1:
+        return p2
+    return 1.0

@@ -9,7 +9,6 @@ cdef extern:
     double daywnd(double, double, double, double, double, double)
     double TemperatureOnFruitGrowthRate(double)
     double SoilNitrateOnRootGrowth(double)
-    double SoilAirOnRootGrowth(double, double, double)
     double SoilMechanicResistance(double)
     double wcond(double, double, double, double, double, double)
     double PsiOsmotic(double, double, double)

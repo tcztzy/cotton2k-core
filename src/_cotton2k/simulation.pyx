@@ -14,7 +14,7 @@ import numpy as np
 
 from _cotton2k.climate import compute_day_length, compute_incoming_long_wave_radiation, radiation, delta, gamma, refalbed, clcor, cloudcov, sunangle, clearskyemiss, dayrh, VaporPressure
 from _cotton2k.leaf import temperature_on_leaf_growth_rate, leaf_resistance_for_transpiration
-from _cotton2k.soil import compute_soil_surface_albedo, compute_incoming_short_wave_radiation, root_psi, SoilTemOnRootGrowth
+from _cotton2k.soil import compute_soil_surface_albedo, compute_incoming_short_wave_radiation, root_psi, SoilTemOnRootGrowth, SoilAirOnRootGrowth
 from _cotton2k.utils import date2doy, doy2date
 from _cotton2k.thermology import canopy_balance
 from .climate cimport ClimateStruct
@@ -57,7 +57,6 @@ from .rs cimport (
     daywnd,
     TemperatureOnFruitGrowthRate,
     SoilNitrateOnRootGrowth,
-    SoilAirOnRootGrowth,
     SoilMechanicResistance,
     wcond,
     PsiOsmotic,
