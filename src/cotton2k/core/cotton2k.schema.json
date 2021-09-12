@@ -84,11 +84,6 @@
             "description": "Soil measurements",
             "type": "object",
             "properties": {
-                "layer_depth": {
-                    "description": "The layer depth in cm of initial state",
-                    "type": "number",
-                    "minimum": 0
-                },
                 "initial": {
                     "description": "Soil initial status",
                     "type": "array",

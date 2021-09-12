@@ -50,7 +50,6 @@ cdef extern from "GettingInput_2.cpp":
     double condfc[9]
     double pclay[9]
     double psand[9]
-    double LayerDepth
 
 cdef extern from "SoilNitrogen.h":
     void UreaHydrolysis(cSoilCell &, int, int, double)

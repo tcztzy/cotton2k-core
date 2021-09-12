@@ -80,44 +80,18 @@ NumSheddingTags = 0  # number of 'box-car' units used for moving values in array
 
 cdef class SoilInit:
     cdef unsigned int number_of_layers
-    def __init__(self, initial, hydrology, layer_depth=None):
-        if layer_depth is not None:
-            self.layer_depth = layer_depth
-        self.initial = initial
+    def __init__(self, initial, hydrology):
+        for i, layer in enumerate(initial):
+            rnnh4[i] = layer["ammonium_nitrogen"]
+            rnno3[i] = layer["nitrate_nitrogen"]
+            oma[i] = layer["organic_matter"]
+            h2oint[i] = layer["water"]
         self.hydrology = hydrology
         self.number_of_layers = len(hydrology["layers"])
 
     @property
     def lyrsol(self):
         return self.number_of_layers
-
-    @property
-    def layer_depth(self):
-        return LayerDepth
-
-    @layer_depth.setter
-    def layer_depth(self, value):
-        global LayerDepth
-        LayerDepth = value
-
-    @property
-    def initial(self):
-        return [
-            {
-                "ammonium_nitrogen": rnnh4[i],
-                "nitrate_nitrogen": rnno3[i],
-                "organic_matter": oma[i],
-                "water": h2oint[i]
-            } for i in range(14)
-        ]
-
-    @initial.setter
-    def initial(self, init_soil):
-        for i, layer in enumerate(init_soil):
-            rnnh4[i] = layer["ammonium_nitrogen"]
-            rnno3[i] = layer["nitrate_nitrogen"]
-            oma[i] = layer["organic_matter"]
-            h2oint[i] = layer["water"]
 
     @property
     def hydrology(self):
@@ -212,16 +186,6 @@ cdef class Climate:
                 "rain": climate["Rain"],
                 "dewpoint": climate["Tdew"],
             }
-
-    def __iter__(self):
-        return self
-
-    def __next__(self):
-        if self.current < self.start_day + self.days:
-            self.current += 1
-            return self[self.current - 1]
-        else:
-            raise StopIteration
 
 
 cdef class Root:
@@ -763,9 +727,7 @@ cdef class Soil:
             for jj in range(inrim):
                 if Bd <= tstbd[jj][0]:
                     break
-            j1 = jj
-            if j1 > inrim - 1:
-                j1 = inrim - 1
+            j1 = min(jj, inrim - 1)
             j0 = max(0, jj - 1)
 
             for k in range(nk):
@@ -967,15 +929,15 @@ cdef class State(StateBase):
         # The following constant parameters are used:
         cdef double[6] vfrtnod = [1.32, 0.90, 33.0, 7.6725, -0.3297, 0.004657]
         # Compute the cumulative delay for the appearance of the next node on the fruiting branch, caused by carbohydrate, nitrogen, and water stresses.
-        self._[0].vegetative_branches[k].fruiting_branches[l].delay_for_new_node += self.phenological_delay_for_fruiting_by_carbon_stress + vfrtnod[0] * self.phenological_delay_by_nitrogen_stress
-        self._[0].vegetative_branches[k].fruiting_branches[l].delay_for_new_node += vfrtnod[1] * (1 - self.water_stress)
+        self.vegetative_branches[k].fruiting_branches[l].delay_for_new_node += self.phenological_delay_for_fruiting_by_carbon_stress + vfrtnod[0] * self.phenological_delay_by_nitrogen_stress
+        self.vegetative_branches[k].fruiting_branches[l].delay_for_new_node += vfrtnod[1] * (1 - self.water_stress)
         # Define nnid, and compute the average temperature of the last node of this fruiting branch, from the time it was formed.
         cdef int nnid = self._[0].vegetative_branches[k].fruiting_branches[l].number_of_fruiting_nodes - 1  # the number of the last node on this fruiting branche.
         cdef double tav = min(self._[0].vegetative_branches[k].fruiting_branches[l].nodes[nnid].average_temperature, vfrtnod[2])  # modified daily average temperature.
         # Compute TimeToNextFruNode, the time (in physiological days) needed for the formation of each successive node on the fruiting branch. This is a function of temperature, derived from data of K. R. Reddy, CSRU, adjusted for age in physiological days. It is modified for plant density.
         cdef double TimeToNextFruNode  # time, in physiological days, for the next node on the fruiting branch to be formed
         TimeToNextFruNode = var36 + tav * (vfrtnod[3] + tav * (vfrtnod[4] + tav * vfrtnod[5]))
-        TimeToNextFruNode = TimeToNextFruNode * (1 + var37 * (1 - density_factor)) + self._[0].vegetative_branches[k].fruiting_branches[l].delay_for_new_node
+        TimeToNextFruNode = TimeToNextFruNode * (1 + var37 * (1 - density_factor)) + self.vegetative_branches[k].fruiting_branches[l].delay_for_new_node
         # Check if the the age of the last node on the fruiting branch exceeds TimeToNextFruNode.
         # If so, form the new node:
         if self._[0].vegetative_branches[k].fruiting_branches[l].nodes[nnid].age < TimeToNextFruNode or self._[0].vegetative_branches[k].fruiting_branches[l].number_of_fruiting_nodes == 5:
@@ -1002,7 +964,7 @@ cdef class State(StateBase):
         self.stem_nitrogen -= leaf_weight * stemNRatio
         # Begin computing AvrgNodeTemper of the new node, and assign zero to DelayNewNode.
         self._[0].vegetative_branches[k].fruiting_branches[l].nodes[newnod].average_temperature = self.average_temperature
-        self._[0].vegetative_branches[k].fruiting_branches[l].delay_for_new_node = 0
+        self.vegetative_branches[k].fruiting_branches[l].delay_for_new_node = 0
 
     def leaf_water_potential(self, double row_space):
         """This function simulates the leaf water potential of cotton plants.
@@ -2020,9 +1982,7 @@ cdef class State(StateBase):
         sqr1n = sqr1n * vnewboll[0]
 
         cdef double seed1n  # the nitrogen content of seeds in a new boll on flowering.
-        seed1n = site.boll.weight * seedratio * vnewboll[1]
-        if seed1n > sqr1n:
-            seed1n = sqr1n
+        seed1n = min(site.boll.weight * seedratio * vnewboll[1], sqr1n)
         self.seed_nitrogen += seed1n
         self.burr_nitrogen += sqr1n - seed1n
 
@@ -2161,8 +2121,7 @@ cdef class State(StateBase):
                             xupt = (vh2ocx - thetar[l]) * dl(l) * wk(k, row_space)  # intermediate computation of upth2o
                             difupt += upth2o - xupt
                             upth2o = xupt
-                        if upth2o < 0:
-                            upth2o = 0
+                        upth2o = max(upth2o, 0)
 
                         # Compute sumep as the sum of the actual amount of water extracted from all soil cells. Recalculate uptk of this soil cell as cumulative upth2o.
                         sumep += upth2o
@@ -2932,7 +2891,7 @@ cdef class Simulation:
         cdef double so2 = SoilTemp[1][k]  # 2nd soil layer temperature, K
         cdef double so3 = SoilTemp[2][k]  # 3rd soil layer temperature, K
         # Compute soil surface albedo (based on Horton and Chung, 1991):
-        ag = compute_soil_surface_albedo(state.soil.cells[0][k].water_content, FieldCapacity[0], thad[0], SitePar[15], SitePar[16])
+        ag = compute_soil_surface_albedo(state.soil.cells[0][k].water_content, FieldCapacity[0], thad[0], self.site_parameters[15], self.site_parameters[16])
 
         rzero, rss, rsup = compute_incoming_short_wave_radiation(hour.radiation, sf * cswint, ag)
         rlzero = compute_incoming_long_wave_radiation(hour.humidity, hour.temperature, hour.cloud_cov, hour.cloud_cor)
@@ -3361,11 +3320,7 @@ cdef class Simulation:
                         ratebol = 4 * tfrt * rbmax * pex / (1 + pex) ** 2
                         # Potential growth rate of the burrs is assumed to be constant (vpotfrt[4] g dry weight per day) until the boll reaches its final volume. This occurs at the age of 22 physiological days in 'Acala-SJ2'. Both ratebol and ratebur are modified by temperature (tfrt) and ratebur is also affected by water stress (wfdb).
                         # Compute wfdb for the effect of water stress on burr growth rate. wfdb is the effect of water stress on rate of burr growth.
-                        wfdb = vpotfrt[0] + vpotfrt[1] * state.water_stress
-                        if wfdb < 0:
-                            wfdb = 0
-                        if wfdb > 1:
-                            wfdb = 1
+                        wfdb = min(max(vpotfrt[0] + vpotfrt[1] * state.water_stress, 0), 1)
                         ratebur = None  # rate of burr growth, g per boll per day.
                         if self._sim.states[u].vegetative_branches[k].fruiting_branches[l].nodes[m].boll.age >= 22:
                             ratebur = 0
