@@ -9,7 +9,7 @@ from libcpp cimport bool as bool_t
 cimport numpy
 import numpy as np
 
-from _cotton2k.climate import compute_day_length, compute_incoming_long_wave_radiation, radiation, delta, gamma, refalbed, clcor, cloudcov, sunangle, clearskyemiss, dayrh, VaporPressure, tdewest
+from _cotton2k.climate import compute_day_length, compute_incoming_long_wave_radiation, radiation, delta, gamma, refalbed, clcor, cloudcov, sunangle, clearskyemiss, dayrh, VaporPressure, tdewest, compute_hourly_wind_speed
 from _cotton2k.leaf import temperature_on_leaf_growth_rate, leaf_resistance_for_transpiration
 from _cotton2k.soil import compute_soil_surface_albedo, compute_incoming_short_wave_radiation, root_psi, SoilTemOnRootGrowth, SoilAirOnRootGrowth, SoilNitrateOnRootGrowth
 from _cotton2k.utils import date2doy, doy2date
@@ -50,7 +50,6 @@ from .rs cimport (
     SlabLoc,
     dl,
     wk,
-    daywnd,
     TemperatureOnFruitGrowthRate,
     SoilMechanicResistance,
     wcond,
@@ -3217,7 +3216,7 @@ cdef class Simulation:
             hour.temperature = daytmp(self._sim, u, ti, SitePar[8], sunr, suns)
             hour.dew_point = tdewhour(self._sim, u, ti, hour.temperature, sunr, state.solar_noon, SitePar[8], SitePar[12], SitePar[13], SitePar[14])
             hour.humidity = dayrh(hour.temperature, hour.dew_point)
-            hour.wind_speed = daywnd(ti, self._sim.climate[u].Wind, t1, t2, t3, wnytf)
+            hour.wind_speed = compute_hourly_wind_speed(ti, self._sim.climate[u].Wind * 1000 / 86400, t1, t2, t3, wnytf)
         # Compute average daily temperature, using function AverageAirTemperatures.
         state.calculate_average_temperatures()
         # Compute potential evapotranspiration.

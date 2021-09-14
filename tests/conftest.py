@@ -31,7 +31,7 @@ def test_json(tmp_path: Path) -> Path:
                     1.0,
                     4.0,
                     2.0,
-                    0.0025,
+                    0.216,
                     20,
                     24,
                     110,

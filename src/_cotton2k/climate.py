@@ -406,3 +406,77 @@ def tdewest(maxt: float, site5: float, site6: float) -> float:
     if maxt >= 40:
         return site6
     return ((40 - maxt) * site5 + (maxt - 20) * site6) / 20
+
+
+def compute_hourly_wind_speed(  # pylint: disable=too-many-arguments
+    ti: float, wind: float, t1: float, t2: float, t3: float, wnytf: float
+) -> float:
+    """Computes the hourly values of wind speed (m/sec), estimated from the measured
+    total daily wind run.
+
+    The algorithm is described by Ephrath et al. (1996). It is based on the following
+    assumptions:
+
+    Although the variability of wind speed during any day is very large, the diurnal
+    wind speed curves appear to be characterized by the following repetitive pattern:
+    increase in wind speed from time `t1` in the morning to time `t2` in the afternoon,
+    decrease from `t2` to `t3` in the evening, and a low constant wind speed at night,
+    from `t3` to `t1` in the next day.
+
+    The values of `t1`, `t2`, and `t3` have been determined in the calling routine:
+    `t1` is `SitePar(1)` hours after sunrise, `t2` is `SitePar(2)` hours after solar
+    noon, and `t3` is `SitePar(3)` hours after sunset. These parameters are site-
+    specific. They are 1, 3, and 0, respectively, for the San Joaquin valley of
+    California and for Arizona, and 1, 4, and 2, respectively, for the coastal plain of
+    israel.
+
+    The wind speed during the night, from `t3` to `t1` next day (`wmin`) is assumed to
+    be proportional to the daily total wind run. The ratio `wnytf` is also site-
+    specific, `SitePar(4)`, (0.008 for San Joaquin and Arizona, 0.0025 for the coastal
+    plain of Israel). wmin is the minimum wind speed from `t1` to `t3`.
+
+    `wtday` is computed by subtracting the daily integral of wmin, after converting it
+    from m/sec to km/day, from the total daily wind run (wndt).
+
+    `wmax`, the maximum wind speed at time `t2` (minus `wmin`), is computed from wtday
+    and converted to m/sec.
+
+    `daywnd` from t1 to t2 is now computed as an increasing sinusoidal function from
+    `wmin` to `wmin + wmax`, and it is computed from `t2` to `t3` as a decreasing
+    sinusoidal function from `wmin + wmax` to `wmin`.
+
+    Reference
+    ---------
+    Ephrath, J.E., Goudriaan, J., Marani, A., 1996. Modelling diurnal patterns of air
+    temperature, radiation wind speed and relative humidity by equations from daily
+    characteristics. Agricultural Systems 51, 377–393.
+    https://doi.org/10.1016/0308-521X(95)00068-G
+
+    Arguments
+    ---------
+    t1
+        the hour at which day-time wind begins to blow.
+    t2
+        the hour at which day-time wind speed is maximum.
+    t3
+        the hour at which day-time wind ceases to blow.
+    ti
+        the hour of the day.
+    wind
+        wind speed (m / s).
+    wnytf
+        Factor for estimating night-time wind (from time t3 to time t1 next day).
+    """
+    # constants related to t1, t2, t3 :
+    sf1 = 4 * (t2 - t1)
+    sf2 = 4 * (t3 - t2)
+    wmin = wind * wnytf  # the constant minimum wind speed during the night (m/sec).
+    wtday = wind - wmin  # integral of wind run from t1 to t3, minus wmin (km).
+    wmax = (
+        wtday * 2 * pi * 24 / (sf1 + sf2)
+    )  # the maximum wind speed (m per sec), above wmin.
+    if t1 <= ti < t2:
+        return wmin + wmax * sin(2 * pi * (ti - t1) / sf1)
+    if t2 <= ti < t3:
+        return wmin + wmax * sin(2 * pi * (ti - (2 * t2 - t3)) / sf2)
+    return wmin
