@@ -71,3 +71,9 @@ cdef extern from "global.h":
     double VolUreaNContent[40][20]
     double ElCondSatSoilToday
     double thetar[40]
+    double HeatCondDrySoil[40]
+    double HeatCapacitySoilSolid[40]
+    double MarginalWaterContent[40]
+    double HumusOrganicMatter[40][20]
+    double NO3FlowFraction[40]
+    double MaxWaterCapacity[40]

@@ -37,20 +37,6 @@ cdef extern:
     double tdewhour(cSimulation &, uint32_t, double, double, double, double, double, double, double, double)
     double SimulateRunoff(cSimulation &, uint32_t, double, double, uint32_t)
 
-cdef extern from "GettingInput_2.cpp":
-    void InitializeSoilTemperature()
-    void InitializeSoilData(cSimulation &, unsigned int)
-    double rnnh4[14]
-    double rnno3[14]
-    double oma[14]
-    double h2oint[14]
-    double psisfc
-    double psidra
-    double ldepth[9]
-    double condfc[9]
-    double pclay[9]
-    double psand[9]
-
 cdef extern from "SoilNitrogen.h":
     void UreaHydrolysis(cSoilCell &, int, int, double)
     void MineralizeNitrogen(cSoilCell &, int, int, const int &, const int &, double, double)
