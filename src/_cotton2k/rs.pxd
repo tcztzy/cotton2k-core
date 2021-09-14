@@ -11,4 +11,3 @@ cdef extern:
     double PsiOsmotic(double, double, double)
     double psiq(double, double, double, double, double)
     double qpsi(double, double, double, double, double)
-    double PsiOnTranspiration(double)

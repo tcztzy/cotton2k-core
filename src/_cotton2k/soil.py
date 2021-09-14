@@ -155,5 +155,34 @@ def SoilNitrateOnRootGrowth(  # pylint: disable=unused-argument
     ---------
     vno3clk
         VolNo3NContent value for this cell
+
+    Examples
+    --------
+    >>> SoilNitrateOnRootGrowth(0.07)
+    1.0
     """
     return 1.0
+
+
+def PsiOnTranspiration(psi_average: float) -> float:
+    """Computes and returns the effect of the average soil matrix water potential on
+    transpiration rate.
+
+    :math:`(\\frac{20 + \\psi}{14})^3`
+
+    Arguments
+    ---------
+    psi_average
+        the average soil water matrix potential, bars.
+
+    Examples
+    --------
+    >>> PsiOnTranspiration(-6)
+    1.0
+    >>> PsiOnTranspiration(-10)
+    0.36443148688046634
+    >>> PsiOnTranspiration(-14.842355901903458)
+    0.05
+    """
+    p = np.polynomial.Polynomial((20 ** 3, 3 * 20 ** 2, 3 * 20, 1)) / 14 ** 3
+    return min(max(p(psi_average), 0.05), 1.0)

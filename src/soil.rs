@@ -1,26 +1,3 @@
-/// The function `PsiOnTranspiration` computes and returns the effect of the average soil
-/// matrix water potential on transpiration rate. It is called by `WaterUptake`.
-/// The argument PsiAverage is the average soil water matrix potential, bars.
-#[no_mangle]
-extern "C" fn PsiOnTranspiration(psi_average: f64) -> f64 {
-    // This is a third degree function with two parameters (a, b). It has the
-    // value of 1 when PsiAverage = b - a, and the value of 0 when PsiAverage = - a.
-
-    // The minimum value, however, is set to d, and the maximum value to c.
-    let a = 20.;
-    let b = 14.;
-    let c = 1.00;
-    let d = 0.05;
-    let rfep = ((a + psi_average) / b).powi(3);
-    if rfep > c {
-        c
-    } else if rfep < d {
-        d
-    } else {
-        rfep
-    }
-}
-
 /// This function computes soil water hydraulic conductivity for a given value of soil water content, using the Van-Genuchten equation. The units of the computed conductivity are the same as the given saturated conductivity (`SaturatedHydCond`).
 #[no_mangle]
 extern "C" fn wcond(
