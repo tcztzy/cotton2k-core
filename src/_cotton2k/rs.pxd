@@ -5,7 +5,6 @@ cdef extern:
     double dl(unsigned int)
     double wk(unsigned int, double)
     int SlabLoc(int, double)
-    double TemperatureOnFruitGrowthRate(double)
     double SoilMechanicResistance(double)
     double wcond(double, double, double, double, double, double)
     double PsiOsmotic(double, double, double)

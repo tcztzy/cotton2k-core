@@ -3,7 +3,6 @@
 #![allow(non_snake_case)]
 
 mod climate;
-mod fruit;
 mod soil;
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
