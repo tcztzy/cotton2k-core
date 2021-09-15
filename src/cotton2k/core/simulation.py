@@ -183,7 +183,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
         else:
             kwargs = json.loads(Path(path).read_text())
         super().__init__(kwargs.pop("id", 0), kwargs.pop("version", 0x0400), **kwargs)
-        soil = SoilInit(**kwargs.pop("soil", {}))  # type: ignore[arg-type]
+        SoilInit(**kwargs.pop("soil", {}))  # type: ignore[arg-type]
         start_date = kwargs["start_date"]
         if not isinstance(start_date, (datetime.date, str)):
             raise ValueError
@@ -192,7 +192,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             if isinstance(start_date, datetime.date)
             else int(start_date[:4])
         )
-        self.read_input(lyrsol=soil.lyrsol, **kwargs)
+        self.read_input(**kwargs)
         METEOROLOGY[(kwargs["latitude"], kwargs["longitude"])] = {
             datetime.date.fromisoformat(kwargs["climate_start_date"])
             + datetime.timedelta(days=i): c
@@ -297,7 +297,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
                 )
 
     def read_input(
-        self, lyrsol, agricultural_inputs=None, **kwargs
+        self, agricultural_inputs=None, **kwargs
     ):  # pylint: disable=unused-argument
         """This is the main function for reading input."""
         # pylint: disable=attribute-defined-outside-init
@@ -308,7 +308,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
         self._initialize_switch()
         self._init_grid()
         self._read_agricultural_input(agricultural_inputs or [])
-        self._initialize_soil_data(lyrsol)
+        self._initialize_soil_data()
         self._initialize_root_data()
 
     def run(self):

@@ -67,10 +67,12 @@ ShedByNitrogenStress = np.zeros(20)  # the effect of nitrogen stress on shedding
 ShedByCarbonStress = np.zeros(20)  # the effect of carbohydrate stress on shedding
 NumSheddingTags = 0  # number of 'box-car' units used for moving values in arrays defining fruit shedding (AbscissionLag, ShedByCarbonStress, ShedByNitrogenStress and ShedByWaterStress).
 
+SOIL = np.array([], dtype=[
+    ("depth", np.double),  # depth from soil surface to the end of horizon layers, cm.
+])
 cdef double condfc[9]  # hydraulic conductivity at field capacity of horizon layers, cm per day.
 cdef double h2oint[14]  # initial soil water content, percent of field capacity,
 # defined by input for consecutive 15 cm soil layers.
-cdef double ldepth[9]  # depth from soil surface to the end of horizon layers, cm.
 cdef double oma[14]  # organic matter at the beginning of the season, percent of soil weight,
 # defined by input for consecutive 15 cm soil layers.
 cdef double pclay[9]  # percentage of clay in soil horizon of horizon layers.
@@ -183,7 +185,7 @@ cdef class SoilInit:
             "immediate_drainage_water_potential": psidra,
             "layers": [
                 {
-                    "depth": ldepth[i],
+                    "depth": SOIL["depth"][i],
                     "air_dry": airdr[i],
                     "theta": thetas[i],
                     "alpha": alpha[i],
@@ -200,13 +202,13 @@ cdef class SoilInit:
 
     @hydrology.setter
     def hydrology(self, soil_hydrology):
-        global RatioImplicit, conmax, psisfc, psidra
+        global RatioImplicit, conmax, psisfc, psidra, SOIL
         RatioImplicit = soil_hydrology["ratio_implicit"]
         conmax = soil_hydrology["max_conductivity"]
         psisfc = soil_hydrology["field_capacity_water_potential"]
         psidra = soil_hydrology["immediate_drainage_water_potential"]
         for i, layer in enumerate(soil_hydrology["layers"]):
-            ldepth[i] = layer["depth"]
+            SOIL = np.append(SOIL, np.array([layer["depth"]], dtype=[("depth", np.double)]))
             airdr[i] = layer["air_dry"]
             thetas[i] = layer["theta"]
             alpha[i] = layer["alpha"]
@@ -2512,17 +2514,18 @@ cdef class State(StateBase):
         self.nighttime_temperature /= night_hours
         self.daytime_temperature /= (24 - night_hours)
 
-    def initialize_soil_data(self, lyrsol):
+    def initialize_soil_data(self):
         """Computes and sets the initial soil data. It is executed once at the beginning of the simulation, after the soil hydraulic data file has been read. It is called by ReadInput()."""
         cdef int j = 0  # horizon number
         cdef double sumdl = 0  # depth to the bottom this layer (cm);
         cdef double rm = 2.65  # density of the solid fraction of the soil (g / cm3)
         cdef double bdl[40]  # array of bulk density of soil layers
         for l in range(40):
-            # Using the depth of each horizon layer (ldepth), the horizon number (SoilHorizonNum) is computed for each soil layer.
+            # Using the depth of each horizon layer, the horizon number (SoilHorizonNum) is computed for each soil layer.
             sumdl += dl(l)
-            while sumdl > ldepth[j] and j < lyrsol:
-                j += 1
+            for j, layer_depth in enumerate(SOIL["depth"]):
+                if sumdl <= layer_depth:
+                    break
             SoilHorizonNum[l] = j
             # bdl, thad, thts are defined for each soil layer, using the respective input variables BulkDensity, airdr, thetas.
             # FieldCapacity, MaxWaterCapacity and thetar are computed for each layer, as water content (cm3 cm-3) of each layer corresponding to matric potentials of psisfc (for field capacity), psidra (for free drainage) and -15 bars (for permanent wilting point), respectively, using function qpsi.
@@ -3855,6 +3858,6 @@ cdef class Simulation:
                 DefoliationMethod[idef] = i.get("method", 0)
                 idef += 1
 
-    def _initialize_soil_data(self, lyrsol):
-        self._current_state.initialize_soil_data(lyrsol)
+    def _initialize_soil_data(self):
+        self._current_state.initialize_soil_data()
         InitializeSoilTemperature()
