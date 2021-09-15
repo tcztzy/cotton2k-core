@@ -20,25 +20,15 @@ from .cxx cimport (
     cSimulation,
     SandVolumeFraction,
     ClayVolumeFraction,
-    CumNitrogenUptake,
     ElCondSatSoilToday,
-    FoliageTemp,
-    AverageLwp,
     LocationColumnDrip,
     LocationLayerDrip,
-    LwpX,
-    LwpMinX,
     PotGroAllSquares,
     PotGroAllBolls,
     PotGroAllBurrs,
-    PotGroLeafAreaPreFru,
-    PotGroLeafWeightPreFru,
-    PotGroPetioleWeightPreFru,
     PoreSpace,
     SoilPsi,
-    RootImpede,
     SoilHorizonNum,
-    PetioleWeightPreFru,
     AverageSoilPsi,
     VolNh4NContent,
     VolUreaNContent,
@@ -94,6 +84,23 @@ cdef double rnnh4[14]  # residual nitrogen as ammonium in soil at beginning of s
 cdef double rnno3[14]  # residual nitrogen as nitrate in soil at beginning of season, kg per ha.
 # defined by input for consecutive 15 cm soil layers.
 cdef double LayerDepth = 15
+cdef double AverageLwp = 0  # running average of state.min_leaf_water_potential + state.max_leaf_water_potential for the last 3 days.
+PercentDefoliation = 0
+
+LwpMinX = np.zeros(3, dtype=np.double)  # array of values of min_leaf_water_potential for the last 3 days.
+LwpX = np.zeros(3, dtype=np.double)  # array of values of min_leaf_water_potential + max_leaf_water_potential for the last 3 days.
+FoliageTemp = np.ones(20, dtype=np.double) * 295  # average foliage temperature (oK).
+
+DefoliationDate = np.zeros(5, dtype=np.int_)  # Dates (DOY) of defoliant applications.
+DefoliationMethod = np.zeros(5, dtype=np.int_)  # code number of method of application of defoliants:  0 = 'banded'; 1 = 'sprinkler'; 2 = 'broaddcast'.
+DefoliantAppRate = np.zeros(5, dtype=np.double)  # rate of defoliant application in pints per acre.
+
+
+PetioleWeightPreFru = np.zeros(9, dtype=np.double)  # weight of prefruiting node petioles, g.
+PotGroLeafAreaPreFru = np.zeros(9, dtype=np.double)  # potentially added area of a prefruiting node leaf, dm2 day-1.
+PotGroLeafWeightPreFru = np.zeros(9, dtype=np.double)  # potentially added weight of a prefruiting node leaf, g day-1.
+PotGroPetioleWeightPreFru = np.zeros(9, dtype=np.double)  # potentially added weight of a prefruiting node petiole, g day-1.
+RootImpede = np.zeros((40, 20), dtype=np.double)  # root mechanical impedance for a soil cell, kg cm-2.
 
 
 cdef void InitializeSoilData(cSimulation &sim, unsigned int lyrsol):
@@ -1732,7 +1739,7 @@ cdef class State(StateBase):
                     lp1 = l if l == nl - 1 else l + 1  # layer below l.
 
                     # columns to the left and to the right of k.
-                    kp1 = min(k + 1, nk)
+                    kp1 = min(k + 1, nk - 1)
                     km1 = max(k - 1, 0)
 
                     rtimpd0 = RootImpede[l][k]
@@ -3711,7 +3718,7 @@ cdef class Simulation:
 
     def _soil_procedures(self, u):
         """This function manages all the soil related processes, and is executed once each day."""
-        global AverageSoilPsi, CumNitrogenUptake, LocationColumnDrip, LocationLayerDrip, noitr
+        global AverageSoilPsi, LocationColumnDrip, LocationLayerDrip, noitr
         state = self._current_state
         # The following constant parameters are used:
         cdef double cpardrip = 0.2
@@ -3738,8 +3745,6 @@ cdef class Simulation:
             AverageSoilPsi = state.average_psi(self.row_space)  # function computes the average matric soil water
             # potential in the root zone, weighted by the roots-capable-of-uptake.
             state.water_uptake(self.row_space, self.per_plant_area)  # function  computes water and nitrogen uptake by plants.
-            # Update the total uptake of nitrogen (CumNitrogenUptake, mg N per slab, converted from total N supply, g per plant).
-            CumNitrogenUptake += (state.supplied_nitrate_nitrogen + state.supplied_ammonium_nitrogen) * 10 * self.row_space / self.per_plant_area
         if WaterToApply > 0:
             # For rain or surface irrigation.
             # The number of iterations is computed from the thickness of the first soil layer.
@@ -3795,7 +3800,6 @@ cdef class Simulation:
         global nl, nk
         nl = maxl
         nk = maxk
-        InitializeGlobal()
 
     def _read_agricultural_input(self, inputs):
         global NumNitApps, NumIrrigations

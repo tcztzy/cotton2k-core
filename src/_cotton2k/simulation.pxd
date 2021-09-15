@@ -2,12 +2,7 @@ from libc.stdint cimport uint32_t
 
 from .cxx cimport (
 BulkDensity,
-DefoliantAppRate,
-DefoliationDate,
-DefoliationMethod,
 FieldCapacity,
-PercentDefoliation,
-InitializeGlobal,
 NFertilizer,
 NitrogenFertilizer,
 NumIrrigations,

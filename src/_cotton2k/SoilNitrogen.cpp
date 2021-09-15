@@ -233,11 +233,9 @@ void MineralizeNitrogen(SoilCell &soil_cell, int l, int k, const int &Daynum, co
 //     Negative value of netNReleased indicates net N immobilization.
     double netNReleased; // the net N released from all organic sources (mg/cm3).
     netNReleased = (1 - cparHumusN) * grossReleaseN + rhmin - immobilizationRateN;
-//     If the net N released is positive, it is added to the NH4 fraction. MineralizedOrganicN,
-//  the accumulated nitrogen released by mineralization in the slab, is updated.
+//     If the net N released is positive, it is added to the NH4 fraction.
     if (netNReleased > 0) {
         VolNh4NContent[l][k] += netNReleased;
-        MineralizedOrganicN += netNReleased * dl(l) * wk(k, row_space);
     }
 //     If net N released is negative (net immobilization), the NH4 fraction
 //  is reduced, but at least 0.25 ppm (=cparMinNH4 in mg cm-3) of NH4 N
@@ -254,7 +252,6 @@ void MineralizeNitrogen(SoilCell &soil_cell, int l, int k, const int &Daynum, co
             else
                 addvnc = VolNh4NContent[l][k] - cparMinNH4;
             VolNh4NContent[l][k] -= addvnc;
-            MineralizedOrganicN -= addvnc * dl(l) * wk(k, row_space);
             FreshOrganicNitrogen[l][k] += addvnc;
             nnom1 = netNReleased + addvnc;
         }
@@ -267,7 +264,6 @@ void MineralizeNitrogen(SoilCell &soil_cell, int l, int k, const int &Daynum, co
                 addvnc = soil_cell.nitrate_nitrogen_content - cparMinNH4;
             soil_cell.nitrate_nitrogen_content -= addvnc;
             FreshOrganicNitrogen[l][k] += addvnc;
-            MineralizedOrganicN -= addvnc * dl(l) * wk(k, row_space);
         }
     }
 }
@@ -366,5 +362,4 @@ void Denitrification(SoilCell &soil_cell, int l, int k, double row_space, double
         dnrate = 0;
 //     Update VolNo3NContent, and add the amount of nitrogen lost to SoilNitrogenLoss.
     soil_cell.nitrate_nitrogen_content -= dnrate;
-    SoilNitrogenLoss += dnrate * dl(l) * wk(k, row_space);
 }

@@ -30,13 +30,6 @@ void GravityFlow(SoilCell soil_cells[40][20], double applywat, double row_space)
 //     Add the applied amount of water to the top soil cell of each column.
     for (int k = 0; k < nk; k++)
         soil_cells[0][k].water_content += 0.10 * applywat / dl(0);
-//     Call function Drain() to compute downflow of water.
-    double WaterDrainedOut; // water drained out of the slab, mm.
-    WaterDrainedOut = Drain(soil_cells, row_space);
-//     If there is drainage out of the slab, transform it to mm,
-//  and update the cumulative drainage (CumWaterDrained)
-    if (WaterDrainedOut > 0)
-        CumWaterDrained += 10 * WaterDrainedOut / row_space;
 }
 
 ///////////////////////////////////////////////////////////////////////////

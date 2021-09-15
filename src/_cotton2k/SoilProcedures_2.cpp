@@ -130,8 +130,6 @@ void CapillaryFlow(Simulation &sim, unsigned int u)
 //  of the column. Update cumulative drainage.
     double WaterDrainedOut = 0;    // water drained out of the slab, mm.
     WaterDrainedOut += Drain(state.soil.cells, sim.row_space);
-    if (WaterDrainedOut > 0)
-        CumWaterDrained += 10 * WaterDrainedOut / sim.row_space;
 //  Compute the soil water potential for all soil cells.
     for (int l = 0; l < nl; l++) {
         int j = SoilHorizonNum[l];
@@ -251,8 +249,6 @@ double Drain(SoilCell soil_cells[40][20], double row_space)
             soil_cells[nlx - 1][k].water_content = MaxWaterCapacity[nlx - 1];
             soil_cells[nlx - 1][k].nitrate_nitrogen_content = nitconc * MaxWaterCapacity[nlx - 1];
             VolUreaNContent[nlx - 1][k] = nurconc * MaxWaterCapacity[nlx - 1];
-            SoilNitrogenLoss +=
-                    saven - (soil_cells[nlx - 1][k].nitrate_nitrogen_content + VolUreaNContent[nlx - 1][k]) * dl(nlx - 1) * wk(k, row_space);
         } // end if Vol...
     } // end loop k
     return Drainage;
@@ -446,8 +442,6 @@ void DripFlow(SoilCell soil_cells[40][20], double Drip, double row_space)
 //     If this is the last ring, the outflowing water will be added to the drainage,
 //  CumWaterDrained, the outflowing nitrogen to SoilNitrogenLoss.
         {
-            CumWaterDrained += 10 * drwout / row_space;
-            SoilNitrogenLoss += drnout + druout;
             return;
         } // end if kr...
 //     Repeat all these procedures for the next ring.

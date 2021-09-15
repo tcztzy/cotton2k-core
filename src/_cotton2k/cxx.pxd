@@ -20,7 +20,6 @@ cdef extern from "global.h":
         double amtamm
         double amtnit
         double amtura
-    void InitializeGlobal()
     const int maxl
     const int maxk
     int nl
@@ -34,38 +33,26 @@ cdef extern from "global.h":
     double vanGenuchtenBeta[9]
     double SaturatedHydCond[9]
     double BulkDensity[9]
-    double DefoliantAppRate[5]
     double SandVolumeFraction[40]
     double ClayVolumeFraction[40]
     double thad[40]
     double FieldCapacity[40]
-    double FoliageTemp[20]
     double SoilTemp[40][20]
-    double LwpMinX[3]
-    double LwpX[3]
-    double AverageLwp
     double PotGroAllSquares
     double PotGroAllBolls
     double PotGroAllBurrs
-    double PotGroLeafAreaPreFru[9]
-    double PotGroLeafWeightPreFru[9]
-    double PotGroPetioleWeightPreFru[9]
-    double PetioleWeightPreFru[9]
     int DefoliationDate[5]
     int DefoliationMethod[5]
-    double PercentDefoliation
     NitrogenFertilizer NFertilizer[150]
     int NumNitApps
     int NumIrrigations
     double PoreSpace[40]
     double SoilPsi[40][20]
-    double RootImpede[40][20]
     int SoilHorizonNum[40]
     double AverageSoilPsi
     double thts[40]
     int LocationColumnDrip
     int LocationLayerDrip
-    double CumNitrogenUptake
     int noitr
     double VolNh4NContent[40][20]
     double VolUreaNContent[40][20]
