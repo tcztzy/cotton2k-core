@@ -103,97 +103,6 @@ PotGroPetioleWeightPreFru = np.zeros(9, dtype=np.double)  # potentially added we
 RootImpede = np.zeros((40, 20), dtype=np.double)  # root mechanical impedance for a soil cell, kg cm-2.
 
 
-cdef void InitializeSoilData(cSimulation &sim, unsigned int lyrsol):
-    """Computes and sets the initial soil data. It is executed once at the beginning of the simulation, after the soil hydraulic data file has been read. It is called by ReadInput()."""
-    cdef int j = 0  # horizon number
-    cdef double sumdl = 0  # depth to the bottom this layer (cm);
-    cdef double rm = 2.65  # density of the solid fraction of the soil (g / cm3)
-    cdef double bdl[40]  # array of bulk density of soil layers
-    for l in range(40):
-        # Using the depth of each horizon layer (ldepth), the horizon number (SoilHorizonNum) is computed for each soil layer.
-        sumdl += dl(l)
-        while sumdl > ldepth[j] and j < lyrsol:
-            j += 1
-        SoilHorizonNum[l] = j
-        # bdl, thad, thts are defined for each soil layer, using the respective input variables BulkDensity, airdr, thetas.
-        # FieldCapacity, MaxWaterCapacity and thetar are computed for each layer, as water content (cm3 cm-3) of each layer corresponding to matric potentials of psisfc (for field capacity), psidra (for free drainage) and -15 bars (for permanent wilting point), respectively, using function qpsi.
-        # pore space volume (PoreSpace) is also computed for each layer.
-        # make sure that saturated water content is not more than pore space.
-        bdl[l] = BulkDensity[j]
-        PoreSpace[l] = 1 - BulkDensity[j] / rm
-        if thetas[j] > PoreSpace[l]:
-            thetas[j] = PoreSpace[l]
-        thad[l] = airdr[j]
-        thts[l] = thetas[j]
-        FieldCapacity[l] = qpsi(psisfc, thad[l], thts[l], alpha[j], vanGenuchtenBeta[j])
-        MaxWaterCapacity[l] = qpsi(psidra, thad[l], thts[l], alpha[j], vanGenuchtenBeta[j])
-        thetar[l] = qpsi(-15., thad[l], thts[l], alpha[j], vanGenuchtenBeta[j])
-        # When the saturated hydraulic conductivity (SaturatedHydCond) is not given, it is computed from the hydraulic conductivity at field capacity (condfc), using the wcond function.
-        if SaturatedHydCond[j] <= 0:
-            SaturatedHydCond[j] = condfc[j] / wcond(FieldCapacity[l], thad[l], thts[l], vanGenuchtenBeta[j], 1, 1)
-    # Loop for all soil layers. Compute depth from soil surface to the end of each layer (sumdl).
-    sumdl = 0
-    for l in range(40):
-        sumdl += dl(l)
-        # At start of simulation compute estimated movable fraction of nitrates in each soil layer, following the work of:
-        # Bowen, W.T., Jones, J.W., Carsky, R.J., and Quintana, J.O. 1993. Evaluation of the nitrogen submodel of CERES-maize following legume green manure incorporation. Agron. J. 85:153-159.
-        # The fraction of total nitrate in a layer that is in solution and can move from one layer to the next with the downward flow of water, FLOWNO3[l], is a function of the adsorption coefficient, soil bulk density, and the volumetric soil water content at the drained upper limit.
-        # Adsorption coefficients are assumed to be 0.0 up to 30 cm depth, and deeper than 30 cm - 0.2, 0.4, 0.8, 1.0, 1.2, and 1.6 for each successive 15 cm layer.
-        coeff: float  # Adsorption coefficient
-        if sumdl <= 30:
-            coeff = 0
-        elif sumdl <= 45:
-            coeff = 0.2
-        elif sumdl <= 60:
-            coeff = 0.4
-        elif sumdl <= 75:
-            coeff = 0.6
-        elif sumdl <= 90:
-            coeff = 0.8
-        elif sumdl <= 105:
-            coeff = 1.0
-        elif sumdl <= 120:
-            coeff = 1.2
-        else:
-            coeff = 1.6
-        NO3FlowFraction[l] = 1 / (1 + coeff * bdl[l] / MaxWaterCapacity[l])
-        # Determine the corresponding 15 cm layer of the input file.
-        # Compute the initial volumetric water content (cell.water_content) of each layer, and check that it will not be less than the air-dry value or more than pore space volume.
-        j = int((sumdl - 1) / LayerDepth)
-        if j > 13:
-            j = 13
-        n = SoilHorizonNum[l]
-        sim.states[0].soil.cells[l][0].water_content = FieldCapacity[l] * h2oint[j] / 100
-        if sim.states[0].soil.cells[l][0].water_content < airdr[n]:
-            sim.states[0].soil.cells[l][0].water_content = airdr[n]
-        if sim.states[0].soil.cells[l][0].water_content > PoreSpace[l]:
-            sim.states[0].soil.cells[l][0].water_content = PoreSpace[l]
-        # Initial values of ammonium N (rnnh4, VolNh4NContent) and nitrate N (rnno3, VolNo3NContent) are converted from kgs per ha to mg / cm3 for each soil layer, after checking for minimal amounts.
-        if rnno3[j] < 2.0:
-            rnno3[j] = 2.0
-        if rnnh4[j] < 0.2:
-            rnnh4[j] = 0.2
-        sim.states[0].soil.cells[l][0].nitrate_nitrogen_content = rnno3[j] / LayerDepth * 0.01
-        VolNh4NContent[l][0] = rnnh4[j] / LayerDepth * 0.01
-        # organic matter in mg / cm3 units.
-        om = (oma[j] / 100) * bdl[l] * 1000
-        # potom is the proportion of readily mineralizable om. it is a function of soil depth (sumdl, in cm), modified from GOSSYM (where it probably includes the 0.4 factor for organic C in om).
-        potom = max(0.0, 0.15125 - 0.02878 * log(sumdl))
-        # FreshOrganicMatter is the readily mineralizable organic matter (= "fresh organic matter" in CERES models). HumusOrganicMatter is the remaining organic matter, which is mineralized very slowly.
-        sim.states[0].soil.cells[l][0].fresh_organic_matter = om * potom
-        HumusOrganicMatter[l][0] = om * (1 - potom)
-    # Since the initial value has been set for the first column only in each layer, these values are now assigned to all the other columns.
-    for l in range(40):
-        VolUreaNContent[l][0] = 0
-        for k in range(1, 20):
-            sim.states[0].soil.cells[l][k].water_content = sim.states[0].soil.cells[l][0].water_content
-            sim.states[0].soil.cells[l][k].nitrate_nitrogen_content = sim.states[0].soil.cells[l][0].nitrate_nitrogen_content
-            VolNh4NContent[l][k] = VolNh4NContent[l][0]
-            sim.states[0].soil.cells[l][k].fresh_organic_matter = sim.states[0].soil.cells[l][0].fresh_organic_matter
-            HumusOrganicMatter[l][k] = HumusOrganicMatter[l][0]
-            VolUreaNContent[l][k] = 0
-
-
 cdef void InitializeSoilTemperature():
     """Initializes the variables needed for the simulation of soil temperature, and variables used by functions ThermalCondSoil() and SoilHeatFlux().
 
@@ -416,6 +325,15 @@ cdef class SoilCell:
     @nitrate_nitrogen_content.setter
     def nitrate_nitrogen_content(self, value):
         self._[0].nitrate_nitrogen_content = value
+
+    @property
+    def fresh_organic_matter(self):
+        return self._[0].fresh_organic_matter
+
+    @fresh_organic_matter.setter
+    def fresh_organic_matter(self, value):
+        self._[0].fresh_organic_matter = value
+
 
 cdef class NodeLeaf:
     cdef Leaf *_
@@ -2594,6 +2512,96 @@ cdef class State(StateBase):
         self.nighttime_temperature /= night_hours
         self.daytime_temperature /= (24 - night_hours)
 
+    def initialize_soil_data(self, lyrsol):
+        """Computes and sets the initial soil data. It is executed once at the beginning of the simulation, after the soil hydraulic data file has been read. It is called by ReadInput()."""
+        cdef int j = 0  # horizon number
+        cdef double sumdl = 0  # depth to the bottom this layer (cm);
+        cdef double rm = 2.65  # density of the solid fraction of the soil (g / cm3)
+        cdef double bdl[40]  # array of bulk density of soil layers
+        for l in range(40):
+            # Using the depth of each horizon layer (ldepth), the horizon number (SoilHorizonNum) is computed for each soil layer.
+            sumdl += dl(l)
+            while sumdl > ldepth[j] and j < lyrsol:
+                j += 1
+            SoilHorizonNum[l] = j
+            # bdl, thad, thts are defined for each soil layer, using the respective input variables BulkDensity, airdr, thetas.
+            # FieldCapacity, MaxWaterCapacity and thetar are computed for each layer, as water content (cm3 cm-3) of each layer corresponding to matric potentials of psisfc (for field capacity), psidra (for free drainage) and -15 bars (for permanent wilting point), respectively, using function qpsi.
+            # pore space volume (PoreSpace) is also computed for each layer.
+            # make sure that saturated water content is not more than pore space.
+            bdl[l] = BulkDensity[j]
+            PoreSpace[l] = 1 - BulkDensity[j] / rm
+            if thetas[j] > PoreSpace[l]:
+                thetas[j] = PoreSpace[l]
+            thad[l] = airdr[j]
+            thts[l] = thetas[j]
+            FieldCapacity[l] = qpsi(psisfc, thad[l], thts[l], alpha[j], vanGenuchtenBeta[j])
+            MaxWaterCapacity[l] = qpsi(psidra, thad[l], thts[l], alpha[j], vanGenuchtenBeta[j])
+            thetar[l] = qpsi(-15., thad[l], thts[l], alpha[j], vanGenuchtenBeta[j])
+            # When the saturated hydraulic conductivity (SaturatedHydCond) is not given, it is computed from the hydraulic conductivity at field capacity (condfc), using the wcond function.
+            if SaturatedHydCond[j] <= 0:
+                SaturatedHydCond[j] = condfc[j] / wcond(FieldCapacity[l], thad[l], thts[l], vanGenuchtenBeta[j], 1, 1)
+        # Loop for all soil layers. Compute depth from soil surface to the end of each layer (sumdl).
+        sumdl = 0
+        for l in range(40):
+            sumdl += dl(l)
+            # At start of simulation compute estimated movable fraction of nitrates in each soil layer, following the work of:
+            # Bowen, W.T., Jones, J.W., Carsky, R.J., and Quintana, J.O. 1993. Evaluation of the nitrogen submodel of CERES-maize following legume green manure incorporation. Agron. J. 85:153-159.
+            # The fraction of total nitrate in a layer that is in solution and can move from one layer to the next with the downward flow of water, FLOWNO3[l], is a function of the adsorption coefficient, soil bulk density, and the volumetric soil water content at the drained upper limit.
+            # Adsorption coefficients are assumed to be 0.0 up to 30 cm depth, and deeper than 30 cm - 0.2, 0.4, 0.8, 1.0, 1.2, and 1.6 for each successive 15 cm layer.
+            coeff: float  # Adsorption coefficient
+            if sumdl <= 30:
+                coeff = 0
+            elif sumdl <= 45:
+                coeff = 0.2
+            elif sumdl <= 60:
+                coeff = 0.4
+            elif sumdl <= 75:
+                coeff = 0.6
+            elif sumdl <= 90:
+                coeff = 0.8
+            elif sumdl <= 105:
+                coeff = 1.0
+            elif sumdl <= 120:
+                coeff = 1.2
+            else:
+                coeff = 1.6
+            NO3FlowFraction[l] = 1 / (1 + coeff * bdl[l] / MaxWaterCapacity[l])
+            # Determine the corresponding 15 cm layer of the input file.
+            # Compute the initial volumetric water content (cell.water_content) of each layer, and check that it will not be less than the air-dry value or more than pore space volume.
+            j = int((sumdl - 1) / LayerDepth)
+            if j > 13:
+                j = 13
+            n = SoilHorizonNum[l]
+            self.soil.cells[l][0].water_content = FieldCapacity[l] * h2oint[j] / 100
+            if self.soil.cells[l][0].water_content < airdr[n]:
+                self.soil.cells[l][0].water_content = airdr[n]
+            if self.soil.cells[l][0].water_content > PoreSpace[l]:
+                self.soil.cells[l][0].water_content = PoreSpace[l]
+            # Initial values of ammonium N (rnnh4, VolNh4NContent) and nitrate N (rnno3, VolNo3NContent) are converted from kgs per ha to mg / cm3 for each soil layer, after checking for minimal amounts.
+            if rnno3[j] < 2.0:
+                rnno3[j] = 2.0
+            if rnnh4[j] < 0.2:
+                rnnh4[j] = 0.2
+            self.soil.cells[l][0].nitrate_nitrogen_content = rnno3[j] / LayerDepth * 0.01
+            VolNh4NContent[l][0] = rnnh4[j] / LayerDepth * 0.01
+            # organic matter in mg / cm3 units.
+            om = (oma[j] / 100) * bdl[l] * 1000
+            # potom is the proportion of readily mineralizable om. it is a function of soil depth (sumdl, in cm), modified from GOSSYM (where it probably includes the 0.4 factor for organic C in om).
+            potom = max(0.0, 0.15125 - 0.02878 * log(sumdl))
+            # FreshOrganicMatter is the readily mineralizable organic matter (= "fresh organic matter" in CERES models). HumusOrganicMatter is the remaining organic matter, which is mineralized very slowly.
+            self.soil.cells[l][0].fresh_organic_matter = om * potom
+            HumusOrganicMatter[l][0] = om * (1 - potom)
+        # Since the initial value has been set for the first column only in each layer, these values are now assigned to all the other columns.
+        for l in range(40):
+            VolUreaNContent[l][0] = 0
+            for k in range(1, 20):
+                self.soil.cells[l][k].water_content = self.soil.cells[l][0].water_content
+                self.soil.cells[l][k].nitrate_nitrogen_content = self.soil.cells[l][0].nitrate_nitrogen_content
+                VolNh4NContent[l][k] = VolNh4NContent[l][0]
+                self.soil.cells[l][k].fresh_organic_matter = self.soil.cells[l][0].fresh_organic_matter
+                HumusOrganicMatter[l][k] = HumusOrganicMatter[l][0]
+                VolUreaNContent[l][k] = 0
+
 
 def SensibleHeatTransfer(tsf, tenviron, height, wndcanp) -> float:
     """This function computes the sensible heat transfer coefficient, using the friction potential (shear) temperature (thstar), and the surface friction (shear) velocity (ustar) at the atmospheric boundary. It is called three times from EnergyBalance(): for canopy or soil surface with their environment.
@@ -3848,5 +3856,5 @@ cdef class Simulation:
                 idef += 1
 
     def _initialize_soil_data(self, lyrsol):
-        InitializeSoilData(self._sim, lyrsol)
+        self._current_state.initialize_soil_data(lyrsol)
         InitializeSoilTemperature()
