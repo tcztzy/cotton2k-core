@@ -2571,20 +2571,12 @@ cdef class State(StateBase):
             NO3FlowFraction[l] = 1 / (1 + coeff * bdl[l] / MaxWaterCapacity[l])
             # Determine the corresponding 15 cm layer of the input file.
             # Compute the initial volumetric water content (cell.water_content) of each layer, and check that it will not be less than the air-dry value or more than pore space volume.
-            j = int((sumdl - 1) / LayerDepth)
-            if j > 13:
-                j = 13
+            j = min(int((sumdl - 1) / LayerDepth), 13)
             n = SoilHorizonNum[l]
-            self.soil.cells[l][0].water_content = FieldCapacity[l] * h2oint[j] / 100
-            if self.soil.cells[l][0].water_content < airdr[n]:
-                self.soil.cells[l][0].water_content = airdr[n]
-            if self.soil.cells[l][0].water_content > PoreSpace[l]:
-                self.soil.cells[l][0].water_content = PoreSpace[l]
+            self.soil.cells[l][0].water_content = min(max(FieldCapacity[l] * h2oint[j] / 100, airdr[n]), PoreSpace[l])
             # Initial values of ammonium N (rnnh4, VolNh4NContent) and nitrate N (rnno3, VolNo3NContent) are converted from kgs per ha to mg / cm3 for each soil layer, after checking for minimal amounts.
-            if rnno3[j] < 2.0:
-                rnno3[j] = 2.0
-            if rnnh4[j] < 0.2:
-                rnnh4[j] = 0.2
+            rnno3[j] = max(rnno3[j], 2.0)
+            rnnh4[j] = max(rnnh4[j], 0.2)
             self.soil.cells[l][0].nitrate_nitrogen_content = rnno3[j] / LayerDepth * 0.01
             VolNh4NContent[l][0] = rnnh4[j] / LayerDepth * 0.01
             # organic matter in mg / cm3 units.
