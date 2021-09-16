@@ -207,8 +207,9 @@ cdef class SoilInit:
         conmax = soil_hydrology["max_conductivity"]
         psisfc = soil_hydrology["field_capacity_water_potential"]
         psidra = soil_hydrology["immediate_drainage_water_potential"]
+        SOIL = np.zeros(len(soil_hydrology["layers"]), dtype=[("depth", np.double)])
+        SOIL["depth"] = np.array([layer["depth"] for layer in soil_hydrology["layers"]], dtype=np.double)
         for i, layer in enumerate(soil_hydrology["layers"]):
-            SOIL = np.append(SOIL, np.array([layer["depth"]], dtype=[("depth", np.double)]))
             airdr[i] = layer["air_dry"]
             thetas[i] = layer["theta"]
             alpha[i] = layer["alpha"]
@@ -2516,16 +2517,13 @@ cdef class State(StateBase):
 
     def initialize_soil_data(self):
         """Computes and sets the initial soil data. It is executed once at the beginning of the simulation, after the soil hydraulic data file has been read. It is called by ReadInput()."""
-        cdef int j = 0  # horizon number
         cdef double sumdl = 0  # depth to the bottom this layer (cm);
         cdef double rm = 2.65  # density of the solid fraction of the soil (g / cm3)
         cdef double bdl[40]  # array of bulk density of soil layers
         for l in range(40):
             # Using the depth of each horizon layer, the horizon number (SoilHorizonNum) is computed for each soil layer.
             sumdl += dl(l)
-            for j, layer_depth in enumerate(SOIL["depth"]):
-                if sumdl <= layer_depth:
-                    break
+            j = np.searchsorted(SOIL["depth"], sumdl)
             SoilHorizonNum[l] = j
             # bdl, thad, thts are defined for each soil layer, using the respective input variables BulkDensity, airdr, thetas.
             # FieldCapacity, MaxWaterCapacity and thetar are computed for each layer, as water content (cm3 cm-3) of each layer corresponding to matric potentials of psisfc (for field capacity), psidra (for free drainage) and -15 bars (for permanent wilting point), respectively, using function qpsi.
