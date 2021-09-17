@@ -45,7 +45,6 @@ from .cxx cimport (
 from .irrigation cimport Irrigation
 from .rs cimport (
     SlabLoc,
-    dl,
     wk,
     SoilMechanicResistance,
     wcond,
@@ -104,6 +103,12 @@ PotGroLeafWeightPreFru = np.zeros(9, dtype=np.double)  # potentially added weigh
 PotGroPetioleWeightPreFru = np.zeros(9, dtype=np.double)  # potentially added weight of a prefruiting node petiole, g day-1.
 RootImpede = np.zeros((40, 20), dtype=np.double)  # root mechanical impedance for a soil cell, kg cm-2.
 
+SIMULATED_LAYER_DEPTH = np.ones(40) * 5
+SIMULATED_LAYER_DEPTH[:3] = 2
+SIMULATED_LAYER_DEPTH[3] = 4
+SIMULATED_LAYER_DEPTH[-2:] = 10
+SIMULATED_LAYER_DEPTH_CUMSUM = np.cumsum(SIMULATED_LAYER_DEPTH)
+
 
 cdef void InitializeSoilTemperature():
     """Initializes the variables needed for the simulation of soil temperature, and variables used by functions ThermalCondSoil() and SoilHeatFlux().
@@ -126,8 +131,7 @@ cdef void InitializeSoilTemperature():
     cdef double dclayair = form(bclay, cka, ga)  # aggregation factor for clay in air
     # Loop over all soil layers, and define indices for some soil arrays.
     cdef double sumdl = 0  # sum of depth of consecutive soil layers.
-    for l in range(40):
-        sumdl += dl(l)
+    for l, sumdl in enumerate(SIMULATED_LAYER_DEPTH_CUMSUM):
         j = int((sumdl + LayerDepth - 1) / LayerDepth) - 1  # layer definition for oma
         if j > 13:
             j = 13
@@ -910,8 +914,7 @@ cdef class State(StateBase):
             self.seed_moisture = 8
             # Compute soil layer number for seed depth.
             sumdl = 0  # depth to the bottom of a soil layer.
-            for l in range(40):
-                sumdl += dl(l)
+            for l, sumdl in enumerate(SIMULATED_LAYER_DEPTH_CUMSUM):
                 if sumdl >= dpl:
                     self.seed_layer_number = l
                     break
@@ -1094,7 +1097,7 @@ cdef class State(StateBase):
                 if self.soil.cells[l][k].root.weight_capable_uptake >= vpsil[10]:
                     psinum += min(self.soil.cells[l][k].root.weight_capable_uptake, vpsil[11])
                     sumlv += min(self.soil.cells[l][k].root.weight_capable_uptake, vpsil[11]) * cmg
-                    rootvol += dl(l) * wk(k, row_space)
+                    rootvol += SIMULATED_LAYER_DEPTH[l] * wk(k, row_space)
                     if SoilPsi[l][k] <= vpsil[1]:
                         rrl = vpsil[2] / cmg
                     else:
@@ -1429,7 +1432,7 @@ cdef class State(StateBase):
             return
         # The following is executed when the taproot reaches a new soil layer.
         self.taproot_layer_number += 1
-        self.last_layer_with_root_depth += dl(self.taproot_layer_number)
+        self.last_layer_with_root_depth += SIMULATED_LAYER_DEPTH[self.taproot_layer_number]
         if self.taproot_layer_number > self._[0].soil.number_of_layers_with_root - 1:
             self._[0].soil.number_of_layers_with_root = self.taproot_layer_number + 1
             if self._[0].soil.number_of_layers_with_root > nl:
@@ -1449,13 +1452,13 @@ cdef class State(StateBase):
             # root mass transferred to the cell below when the elongating taproot
             # reaches a new soil layer.
             # first column
-            tran = self.root_weights[self.taproot_layer_number - 1][plant_row_column][i] * 2 / dl(self.taproot_layer_number - 1)
+            tran = self.root_weights[self.taproot_layer_number - 1][plant_row_column][i] * 2 / SIMULATED_LAYER_DEPTH[self.taproot_layer_number - 1]
             if tran > 0.5 * self.root_weights[self.taproot_layer_number - 1][plant_row_column][i]:
                 tran = 0.5 * self.root_weights[self.taproot_layer_number - 1][plant_row_column][i]
             self.root_weights[self.taproot_layer_number][plant_row_column][i] += tran
             self.root_weights[self.taproot_layer_number - 1][plant_row_column][i] -= tran
             # second column
-            tran = self.root_weights[self.taproot_layer_number - 1][klocp1][i] * 2 / dl(self.taproot_layer_number - 1)
+            tran = self.root_weights[self.taproot_layer_number - 1][klocp1][i] * 2 / SIMULATED_LAYER_DEPTH[self.taproot_layer_number - 1]
             if tran > 0.5 * self.root_weights[self.taproot_layer_number - 1][klocp1][i]:
                 tran = 0.5 * self.root_weights[self.taproot_layer_number - 1][klocp1][i]
             self.root_weights[self.taproot_layer_number][klocp1][i] += tran
@@ -1707,7 +1710,7 @@ cdef class State(StateBase):
         cdef double efacr  # as efac1 for the cell to the right of this cell.
         cdef double efacu  # as efac1 for the cell above this cell.
         cdef double srwp  # sum of all efac values.
-        efac1 = dl(l) * column_width * self.soil.cells[l][k].root.growth_factor
+        efac1 = SIMULATED_LAYER_DEPTH[l] * column_width * self.soil.cells[l][k].root.growth_factor
         efacl = rgfsd * self.soil.cells[l][km1].root.growth_factor
         efacr = rgfsd * self.soil.cells[l][kp1].root.growth_factor
         efacu = rgfup * self.soil.cells[lm1][k].root.growth_factor
@@ -1741,7 +1744,7 @@ cdef class State(StateBase):
         if k == plant_row_column or k == plant_row_column + 1:
             if lp1 > self.taproot_layer_number and efacd > 0:
                 self.taproot_length = self.last_layer_with_root_depth + 0.01
-                self.last_layer_with_root_depth += dl(lp1)
+                self.last_layer_with_root_depth += SIMULATED_LAYER_DEPTH[lp1]
                 self.taproot_layer_number = lp1
         # Update state.soil.number_of_layers_with_root, if necessary, and the values of RootColNumLeft and RootColNumRight for this layer.
         if self.soil.number_of_layers_with_root <= l and efacd > 0:
@@ -1754,15 +1757,12 @@ cdef class State(StateBase):
     def initialize_lateral_roots(self):
         """This function initiates lateral root growth."""
         cdef double distlr = 12  # the minimum distance, in cm, from the tip of the taproot, for a lateral root to be able to grow.
-        cdef double sdl  # distance of a layer from tip of taproot, cm.
-        sdl = self.taproot_length - self.last_layer_with_root_depth
         # Loop on soil layers, from the lowest layer with roots upward:
-        for l in reversed(range(self.taproot_layer_number + 1)):
+        for i, depth in enumerate(np.cumsum(SIMULATED_LAYER_DEPTH[self.taproot_layer_number:-1:-1])):
             # Compute distance from tip of taproot.
-            sdl += dl(l)
             # If a layer is marked for a lateral (LateralRootFlag[l] = 1) and its distance from the tip is larger than distlr - initiate a lateral (LateralRootFlag[l] = 2).
-            if sdl > distlr and LateralRootFlag[l] == 1:
-                LateralRootFlag[l] = 2
+            if self.taproot_length - self.last_layer_with_root_depth + depth > distlr and LateralRootFlag[self.taproot_layer_number - i] == 1:
+                LateralRootFlag[self.taproot_layer_number - i] = 2
 
     def lateral_root_growth(self, NumRootAgeGroups, plant_row_column, row_space):
         # Call functions for growth of lateral roots
@@ -2096,17 +2096,9 @@ cdef class State(StateBase):
                 # If this is a BROADCAST fertilizer application:
                 if NFertilizer[i].mthfrt == 0:
                     # Compute the number of layers affected by broadcast fertilizer incorporation (lplow), assuming that the depth of incorporation is 20 cm.
-                    lplow = 0  # number of soil layers affected by cultivation
-                    sdl = 0.0  # sum of depth of consecutive soil layers
-                    for l in range(40):
-                        sdl += dl(l)
-                        if sdl >= 20:
-                            lplow = l + 1
-                            break
+                    lplow = np.searchsorted(SIMULATED_LAYER_DEPTH_CUMSUM, 20, side="right")  # number of soil layers affected by cultivation
                     # Calculate the actual depth of fertilizer incorporation in the soil (fertdp) as the sum of all soil layers affected by incorporation.
-                    fertdp = 0.0  # depth of broadcast fertilizer incorporation, cm
-                    for l in range(lplow):
-                        fertdp += dl(l)
+                    fertdp = SIMULATED_LAYER_DEPTH_CUMSUM[lplow]  # depth of broadcast fertilizer incorporation, cm
                     # Update the nitrogen contents of all soil soil cells affected by this fertilizer application.
                     for l in range(lplow):
                         for k in range(20):
@@ -2120,17 +2112,18 @@ cdef class State(StateBase):
                     # The amount not intercepted by the canopy is added to the soil. If the fertilizer is nitrate, it is assumed that all of it is added to the upper soil layer.
                     # Update nitrogen contents of the upper layer.
                     for k in range(20):
-                        VolNh4NContent[0][k] += NFertilizer[i].amtamm * (1 - 0.70 * self.light_interception) * ferc / dl(0)
-                        self.soil.cells[0][k].nitrate_nitrogen_content += NFertilizer[i].amtnit * ferc / dl(0)
-                        VolUreaNContent[0][k] += NFertilizer[i].amtura * (1 - 0.70 * self.light_interception) * ferc / dl(0)
+                        VolNh4NContent[0][k] += NFertilizer[i].amtamm * (1 - 0.70 * self.light_interception) * ferc / SIMULATED_LAYER_DEPTH[0]
+                        self.soil.cells[0][k].nitrate_nitrogen_content += NFertilizer[i].amtnit * ferc / SIMULATED_LAYER_DEPTH[0]
+                        VolUreaNContent[0][k] += NFertilizer[i].amtura * (1 - 0.70 * self.light_interception) * ferc / SIMULATED_LAYER_DEPTH[0]
                 # If this is a SIDE-DRESSING of N fertilizer:
                 elif NFertilizer[i].mthfrt == 1:
                     # Define the soil column (ksdr) and the soil layer (lsdr) in which the side-dressed fertilizer is applied.
                     ksdr = NFertilizer[i].ksdr  # the column in which the side-dressed is applied
                     lsdr = NFertilizer[i].ksdr  # the layer in which the side-dressed is applied
+                    side_dressed_layer_depth = SIMULATED_LAYER_DEPTH[lsdr]
                     n00 = 1  # number of soil soil cells in which side-dressed fertilizer is incorporated.
                     # If the volume of this soil cell is less than 100 cm3, it is assumed that the fertilizer is also incorporated in the soil cells below and to the sides of it.
-                    if (dl(lsdr) * wk(ksdr, row_space)) < 100:
+                    if side_dressed_layer_depth * wk(ksdr, row_space) < 100:
                         if ksdr < nk - 1:
                             n00 += 1
                         if ksdr > 0:
@@ -2144,31 +2137,33 @@ cdef class State(StateBase):
                     # amount of urea N added to the soil by sidedressing (mg per cell)
                     addnur = NFertilizer[i].amtura * ferc * row_space / n00
                     # Update the nitrogen contents of these soil cells.
-                    self.soil.cells[lsdr][ksdr].nitrate_nitrogen_content += addnit / (dl(lsdr) * wk(ksdr, row_space))
-                    VolNh4NContent[lsdr][ksdr] += addamm / (dl(lsdr) * wk(ksdr, row_space))
-                    VolUreaNContent[lsdr][ksdr] += addnur / (dl(lsdr) * wk(ksdr, row_space))
-                    if (dl(lsdr) * wk(ksdr, row_space)) < 100:
+                    self.soil.cells[lsdr][ksdr].nitrate_nitrogen_content += addnit / (side_dressed_layer_depth * wk(ksdr, row_space))
+                    VolNh4NContent[lsdr][ksdr] += addamm / (side_dressed_layer_depth * wk(ksdr, row_space))
+                    VolUreaNContent[lsdr][ksdr] += addnur / (side_dressed_layer_depth * wk(ksdr, row_space))
+                    if side_dressed_layer_depth * wk(ksdr, row_space) < 100:
                         if ksdr < nk - 1:
                             kp1 = ksdr + 1  # column to the right of ksdr.
-                            self.soil.cells[lsdr][kp1].nitrate_nitrogen_content += addnit / (dl(lsdr) * wk(kp1, row_space))
-                            VolNh4NContent[lsdr][kp1] += addamm / (dl(lsdr) * wk(kp1, row_space))
-                            VolUreaNContent[lsdr][kp1] += addnur / (dl(lsdr) * wk(kp1, row_space))
+                            self.soil.cells[lsdr][kp1].nitrate_nitrogen_content += addnit / (side_dressed_layer_depth * wk(kp1, row_space))
+                            VolNh4NContent[lsdr][kp1] += addamm / (side_dressed_layer_depth * wk(kp1, row_space))
+                            VolUreaNContent[lsdr][kp1] += addnur / (side_dressed_layer_depth * wk(kp1, row_space))
                         if ksdr > 0:
                             km1 = ksdr - 1  # column to the left of ksdr.
-                            self.soil.cells[lsdr][km1].nitrate_nitrogen_content += addnit / (dl(lsdr) * wk(km1, row_space))
-                            VolNh4NContent[lsdr][km1] += addamm / (dl(lsdr) * wk(km1, row_space))
-                            VolUreaNContent[lsdr][km1] += addnur / (dl(lsdr) * wk(km1, row_space))
+                            self.soil.cells[lsdr][km1].nitrate_nitrogen_content += addnit / (side_dressed_layer_depth * wk(km1, row_space))
+                            VolNh4NContent[lsdr][km1] += addamm / (side_dressed_layer_depth * wk(km1, row_space))
+                            VolUreaNContent[lsdr][km1] += addnur / (side_dressed_layer_depth * wk(km1, row_space))
                         if lsdr < nl - 1:
                             lp1 = lsdr + 1
-                            self.soil.cells[lp1][ksdr].nitrate_nitrogen_content += addnit / (dl(lp1) * wk(ksdr, row_space))
-                            VolNh4NContent[lp1][ksdr] += addamm / (dl(lp1) * wk(ksdr, row_space))
-                            VolUreaNContent[lp1][ksdr] += addnur / (dl(lp1) * wk(ksdr, row_space))
+                            depth = SIMULATED_LAYER_DEPTH[lp1]
+                            self.soil.cells[lp1][ksdr].nitrate_nitrogen_content += addnit / (depth * wk(ksdr, row_space))
+                            VolNh4NContent[lp1][ksdr] += addamm / (depth * wk(ksdr, row_space))
+                            VolUreaNContent[lp1][ksdr] += addnur / (depth * wk(ksdr, row_space))
                 # If this is FERTIGATION (N fertilizer applied in drip irrigation):
                 elif NFertilizer[i].mthfrt == 3:
                     # Convert amounts added to mg cm-3, and update the nitrogen content of the soil cell in which the drip outlet is situated.
-                    VolNh4NContent[LocationLayerDrip][LocationColumnDrip] += NFertilizer[i].amtamm * ferc * row_space / (dl(LocationLayerDrip) * wk(LocationColumnDrip, row_space))
-                    self.soil.cells[LocationLayerDrip][LocationColumnDrip].nitrate_nitrogen_content += NFertilizer[i].amtnit * ferc * row_space / (dl(LocationLayerDrip) * wk(LocationColumnDrip, row_space))
-                    VolUreaNContent[LocationLayerDrip][LocationColumnDrip] += NFertilizer[i].amtura * ferc * row_space / (dl(LocationLayerDrip) * wk(LocationColumnDrip, row_space))
+                    depth = SIMULATED_LAYER_DEPTH[LocationLayerDrip]
+                    VolNh4NContent[LocationLayerDrip][LocationColumnDrip] += NFertilizer[i].amtamm * ferc * row_space / (depth * wk(LocationColumnDrip, row_space))
+                    self.soil.cells[LocationLayerDrip][LocationColumnDrip].nitrate_nitrogen_content += NFertilizer[i].amtnit * ferc * row_space / (depth * wk(LocationColumnDrip, row_space))
+                    VolUreaNContent[LocationLayerDrip][LocationColumnDrip] += NFertilizer[i].amtura * ferc * row_space / (depth * wk(LocationColumnDrip, row_space))
 
     def water_uptake(self, row_space, per_plant_area):
         """This function computes the uptake of water by plant roots from the soil (i.e., actual transpiration rate)."""
@@ -2205,13 +2200,13 @@ cdef class State(StateBase):
                         upth2o = Transp * upf[l][k] / upf.sum()  # transpiration from a soil cell, cm3 per day
                         # Update cell.water_content, storing its previous value as vh2ocx.
                         vh2ocx = self.soil.cells[l][k].water_content  # previous value of water_content of this cell
-                        self.soil.cells[l][k].water_content -= upth2o / (dl(l) * wk(k, row_space))
+                        self.soil.cells[l][k].water_content -= upth2o / (SIMULATED_LAYER_DEPTH[l] * wk(k, row_space))
                         # If the new value of cell.water_content is less than the permanent wilting point, modify the value of upth2o so that water_content will be equal to it.
                         if self.soil.cells[l][k].water_content < thetar[l]:
                             self.soil.cells[l][k].water_content = thetar[l]
 
                             # Compute the difference due to this correction and add it to difupt.
-                            xupt = (vh2ocx - thetar[l]) * dl(l) * wk(k, row_space)  # intermediate computation of upth2o
+                            xupt = (vh2ocx - thetar[l]) * SIMULATED_LAYER_DEPTH[l] * wk(k, row_space)  # intermediate computation of upth2o
                             difupt += upth2o - xupt
                             upth2o = xupt
                         upth2o = max(upth2o, 0)
@@ -2263,13 +2258,13 @@ cdef class State(StateBase):
         # Compute sum of dl as sumdl for each soil horizon.
         for l in range(self.soil.number_of_layers_with_root):
             j = SoilHorizonNum[l]
-            sumdl[j] += dl(l)
+            sumdl[j] += SIMULATED_LAYER_DEPTH[l]
             for k in range(self.soil._[0].layers[l].number_of_left_columns_with_root, self.soil._[0].layers[l].number_of_right_columns_with_root + 1):
                 # Check that RootWtCapblUptake in any cell is more than a minimum value vrcumin.
                 if self.soil.cells[l][k].root.weight_capable_uptake >= vrcumin:
                     # Compute sumwat as the weighted sum of the water content, and psinum as the sum of these weights. Weighting is by root weight capable of uptake, or if it exceeds a maximum value (vrcumax) this maximum value is used for weighting.
-                    sumwat[j] += self.soil.cells[l][k].water_content * dl(l) * wk(k, row_space) * min(self.soil.cells[l][k].root.weight_capable_uptake, vrcumax)
-                    psinum[j] += dl(l) * wk(k, row_space) * min(self.soil.cells[l][k].root.weight_capable_uptake, vrcumax)
+                    sumwat[j] += self.soil.cells[l][k].water_content * SIMULATED_LAYER_DEPTH[l] * wk(k, row_space) * min(self.soil.cells[l][k].root.weight_capable_uptake, vrcumax)
+                    psinum[j] += SIMULATED_LAYER_DEPTH[l] * wk(k, row_space) * min(self.soil.cells[l][k].root.weight_capable_uptake, vrcumax)
         sumpsi = 0  # weighted sum of avgpsi
         sumnum = 0  # sum of weighting coefficients for computing AverageSoilPsi.
         for j in range(9):
@@ -2328,9 +2323,10 @@ cdef class State(StateBase):
             rosoil1 = ThermalCondSoil(self._[0].soil.cells[0][k].water_content, so, 1)
             rosoil2 = ThermalCondSoil(self._[0].soil.cells[1][k].water_content, so2, 2)
             rosoil3 = ThermalCondSoil(self._[0].soil.cells[2][k].water_content, so3, 3)
+            surface_layer_depth = SIMULATED_LAYER_DEPTH[:3]
             # Compute average rosoil between layers 1 to 3,and heat transfer from soil surface to 3rd soil layer.
             # multiplier for heat flux between 1st and 3rd soil layers.
-            rosoil = (rosoil1 * dl(0) + rosoil2 * dl(1) + rosoil3 * dl(2)) / (dl(0) + dl(1) + dl(2)) / (.5 * dl(0) + dl(1) + .5 * dl(2))
+            rosoil = (np.array([rosoil1, rosoil2, rosoil3]) * surface_layer_depth).sum() / surface_layer_depth.sum() / (np.array([0.5, 1, 0.5]) * surface_layer_depth).sum()
             # bbsoil is the heat energy transfer by conductance from soil surface to soil
             bbsoil = rosoil * (so - so3)
             # emtlw is emitted long wave radiation from soil surface
@@ -2350,7 +2346,7 @@ cdef class State(StateBase):
                 + senheat  # (d) heat transfer from soil surface to air
             )
 
-            if abs(bb) < 10e-6:
+            if abs(bb) < 1e-5:
                 return so, so2, so3  # end computation for so
             # If bb is not small enough, compute its derivative by so.
 
@@ -2360,7 +2356,7 @@ cdef class State(StateBase):
             # heat conductivity of 1st soil layer for so+0.001
             rosoil1p = ThermalCondSoil(self._[0].soil.cells[0][k].water_content, sop001, 1)
             # rosoil for so+0.001
-            rosoilp = (rosoil1p * dl(0) + rosoil2 * dl(1) + rosoil3 * dl(2)) / (dl(0) + dl(1) + dl(2)) / (.5 * dl(0) + dl(1) + .5 * dl(2))
+            rosoilp = (np.array([rosoil1p, rosoil2, rosoil3]) * surface_layer_depth).sum() / surface_layer_depth.sum() / (np.array([0.5, 1, 0.5]) * surface_layer_depth).sum()
             drosoil = (rosoilp - rosoil) / 0.001  # derivative of rosoil
             dbbsoil = rosoil + drosoil * (so - so3)  # derivative of bbsoil
             # The derivative of the energy balance function
@@ -2522,7 +2518,7 @@ cdef class State(StateBase):
         cdef double bdl[40]  # array of bulk density of soil layers
         for l in range(40):
             # Using the depth of each horizon layer, the horizon number (SoilHorizonNum) is computed for each soil layer.
-            sumdl += dl(l)
+            sumdl = SIMULATED_LAYER_DEPTH_CUMSUM[l]
             j = np.searchsorted(SOIL["depth"], sumdl)
             SoilHorizonNum[l] = j
             # bdl, thad, thts are defined for each soil layer, using the respective input variables BulkDensity, airdr, thetas.
@@ -2541,10 +2537,9 @@ cdef class State(StateBase):
             # When the saturated hydraulic conductivity (SaturatedHydCond) is not given, it is computed from the hydraulic conductivity at field capacity (condfc), using the wcond function.
             if SaturatedHydCond[j] <= 0:
                 SaturatedHydCond[j] = condfc[j] / wcond(FieldCapacity[l], thad[l], thts[l], vanGenuchtenBeta[j], 1, 1)
-        # Loop for all soil layers. Compute depth from soil surface to the end of each layer (sumdl).
-        sumdl = 0
+        # Loop for all soil layers. Compute depth from soil surface to the end of each layer.
         for l in range(40):
-            sumdl += dl(l)
+            sumdl = SIMULATED_LAYER_DEPTH_CUMSUM[l]
             # At start of simulation compute estimated movable fraction of nitrates in each soil layer, following the work of:
             # Bowen, W.T., Jones, J.W., Carsky, R.J., and Quintana, J.O. 1993. Evaluation of the nitrogen submodel of CERES-maize following legume green manure incorporation. Agron. J. 85:153-159.
             # The fraction of total nitrate in a layer that is in solution and can move from one layer to the next with the downward flow of water, FLOWNO3[l], is a function of the adsorption coefficient, soil bulk density, and the volumetric soil water content at the drained upper limit.
@@ -3006,9 +3001,7 @@ cdef class Simulation:
             # Using the value of rlint (interval between lateral roots), the layers from which lateral roots may be initiated are now computed.
             # LateralRootFlag[l] is assigned a value of 1 for these layers.
             LateralRootFlag[l] = 0
-            if l > 0:
-                sumdl += 0.5 * dl(l - 1)
-            sumdl += 0.5 * dl(l)
+            sumdl = 0.5 * SIMULATED_LAYER_DEPTH[l] + (SIMULATED_LAYER_DEPTH_CUMSUM[l - 1] if l > 0 else 0)
             if sumdl >= ll * rlint:
                 LateralRootFlag[l] = 1
                 ll += 1
@@ -3026,11 +3019,9 @@ cdef class Simulation:
 
         state0.init_root_data(self.plant_row_column, 0.01 * self.row_space / self.per_plant_area)
         # Start loop for all soil layers containing roots.
-        self.last_layer_with_root_depth = 0
-        for l in range(7):
-            self.last_layer_with_root_depth += dl(l)  # compute total depth to the last layer with roots (self.last_layer_with_root_depth).
+        self.last_layer_with_root_depth = SIMULATED_LAYER_DEPTH_CUMSUM[6]  # compute total depth to the last layer with roots (self.last_layer_with_root_depth).
         # Initial value of taproot length, taproot_length, is computed to the middle of the last layer with roots. The last soil layer with taproot, state.taproot_layer_number, is defined.
-        state0.taproot_length = (self.last_layer_with_root_depth - 0.5 * dl(6))
+        state0.taproot_length = (self.last_layer_with_root_depth - 0.5 * SIMULATED_LAYER_DEPTH[6])
         state0.taproot_layer_number = 6
 
 
@@ -3268,9 +3259,9 @@ cdef class Simulation:
                 escol1k = state.hours[ihr].et1 * self.relative_radiation_received_by_a_soil_column[k] + state.hours[ihr].et2
                 es += escol1k * wk(k, self.row_space)
                 # Compute actual evaporation from soil surface. update cell.water_content of the soil soil cell, and add to daily sum of actual evaporation.
-                evapmax = 0.9 * (state._[0].soil.cells[0][k].water_content - thad[0]) * 10 * dl(0)  # maximum possible evaporatio from a soil cell near the surface.
+                evapmax = 0.9 * (state._[0].soil.cells[0][k].water_content - thad[0]) * 10 * SIMULATED_LAYER_DEPTH[0]  # maximum possible evaporatio from a soil cell near the surface.
                 escol1k = min(evapmax, escol1k)
-                state._[0].soil.cells[0][k].water_content -= 0.1 * escol1k / dl(0)
+                state._[0].soil.cells[0][k].water_content -= 0.1 * escol1k / SIMULATED_LAYER_DEPTH[0]
                 state.actual_soil_evaporation += escol1k * wk(k, self.row_space)
                 ess = escol1k / dlt
                 # Call self._energy_balance to compute soil surface and canopy temperature.
@@ -3749,7 +3740,7 @@ cdef class Simulation:
         if WaterToApply > 0:
             # For rain or surface irrigation.
             # The number of iterations is computed from the thickness of the first soil layer.
-            noitr = <int>(cparelse * WaterToApply / (dl(0) + 2) + 1)
+            noitr = <int>(cparelse * WaterToApply / (SIMULATED_LAYER_DEPTH[0] + 2) + 1)
             # the amount of water applied, mm per iteration.
             applywat = WaterToApply / noitr
             # The following subroutines are called noitr times per day:
@@ -3760,7 +3751,7 @@ cdef class Simulation:
         if DripWaterAmount > 0:
             # For drip irrigation.
             # The number of iterations is computed from the volume of the soil cell in which the water is applied.
-            noitr = <int>(cpardrip * DripWaterAmount / (dl(LocationLayerDrip) * wk(LocationColumnDrip, self.row_space)) + 1)
+            noitr = <int>(cpardrip * DripWaterAmount / (SIMULATED_LAYER_DEPTH[LocationLayerDrip] * wk(LocationColumnDrip, self.row_space)) + 1)
             # the amount of water applied, mm per iteration.
             applywat = DripWaterAmount / noitr
             # If water is applied, DripFlow() is called followed by CapillaryFlow().
@@ -3775,12 +3766,6 @@ cdef class Simulation:
     def _soil_nitrogen(self, u):
         """This function computes the transformations of the nitrogen compounds in the soil."""
         state = self._current_state
-        cdef double depth[40]  # depth to the end of each layer.
-        # At start compute depth[l] as the depth to the bottom of each layer, cm.
-        sumdl = 0  # sum of layer thicknesses.
-        for l in range(nl):
-            sumdl += dl(l)
-            depth[l] = sumdl
         # For each soil cell: call functions UreaHydrolysis(), MineralizeNitrogen(), Nitrification() and Denitrification().
         for l in range(nl):
             for k in range(nk):
@@ -3788,7 +3773,7 @@ cdef class Simulation:
                     UreaHydrolysis(self._sim.states[u].soil.cells[l][k], l, k, state.soil_temperature[l][k])
                 MineralizeNitrogen(self._sim.states[u].soil.cells[l][k], l, k, state.date.timetuple().tm_yday, self.start_date.timetuple().tm_yday, self.row_space, state.soil_temperature[l][k])
                 if VolNh4NContent[l][k] > 0.00001:
-                    Nitrification(self._sim.states[u].soil.cells[l][k], l, k, depth[l], state.soil_temperature[l][k])
+                    Nitrification(self._sim.states[u].soil.cells[l][k], l, k, SIMULATED_LAYER_DEPTH_CUMSUM[l], state.soil_temperature[l][k])
                 # Denitrification() is called if there are enough water and nitrates in the soil cell. cparmin is the minimum temperature C for denitrification.
                 cparmin = 5
                 if self._sim.states[u].soil.cells[l][k].nitrate_nitrogen_content > 0.001 and self._sim.states[u].soil.cells[l][k].water_content > FieldCapacity[l] and state.soil_temperature[l][k] >= (cparmin + 273.161):

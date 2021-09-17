@@ -2,7 +2,6 @@ from libc.stdint cimport uint32_t, int32_t
 from .fruiting_site cimport Stage
 
 cdef extern:
-    double dl(unsigned int)
     double wk(unsigned int, double)
     int SlabLoc(int, double)
     double SoilMechanicResistance(double)
