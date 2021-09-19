@@ -2,6 +2,8 @@ import datetime
 from enum import IntEnum
 from typing import Optional
 
+import numpy as np
+
 
 class DaysToFirstSquare:  # pylint: disable=too-few-public-methods
     """This class is tricky for speed"""
@@ -83,9 +85,9 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
         # is to be added. Note that dense plant populations (large per_plant_area)
         # prevent new vegetative branch formation.
         if len(self.vegetative_branches) == 1 and self._sim.per_plant_area >= vpheno[5]:
-            self._sim._add_vegetative_branch(u, stemNRatio, self._sim.DaysTo1stSqare)
-        if len(self.vegetative_branches) == 1 and self._sim.per_plant_area >= vpheno[6]:
-            self._sim._add_vegetative_branch(u, stemNRatio, self._sim.DaysTo1stSqare)
+            self.add_vegetative_branch(u, stemNRatio, self._sim.DaysTo1stSqare)
+        if len(self.vegetative_branches) == 2 and self._sim.per_plant_area >= vpheno[6]:
+            self.add_vegetative_branch(u, stemNRatio, self._sim.DaysTo1stSqare)
         # The maximum number of nodes per fruiting branch (nidmax) is affected by plant
         # density. It is computed as a function of density_factor.
         nidmax = min(
@@ -296,6 +298,65 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
                 var42,
             )
         return None
+
+    def add_vegetative_branch(self, stemNRatio, DaysTo1stSqare, initial_leaf_area):
+        """Decides whether a new vegetative branch is to be added, and then forms it."""
+        if len(self.vegetative_branches) == 3:
+            return
+        # TimeToNextVegBranch is computed as a function of this average temperature.
+        node = self.vegetative_branches[-1].fruiting_branches[0].nodes[0]
+        # time, in physiological days, for the next vegetative branch to be formed.
+        TimeToNextVegBranch = np.polynomial.Polynomial([13.39, -0.696, 0.012])(
+            node.average_temperature
+        )
+        # Compare the age of the first fruiting site of the last formed vegetative
+        # branch with TimeToNextVegBranch plus DaysTo1stSqare and the delays caused by
+        # stresses, in order to decide if a new vegetative branch is to be formed.
+        if (
+            node.age
+            < TimeToNextVegBranch
+            + self.phenological_delay_for_vegetative_by_carbon_stress
+            + self.phenological_delay_by_nitrogen_stress
+            + DaysTo1stSqare
+        ):
+            return
+        vb = self._new_vegetative_branch
+        # Assign 1 to FruitFraction and FruitingCode of the first site of this branch.
+        vb.fruiting_branches[0].nodes[0].fraction = 1
+        vb.fruiting_branches[0].nodes[0].stage = Stage.Square
+        # Add a new leaf to the first site of this branch.
+        vb.fruiting_branches[0].nodes[0].leaf.area = initial_leaf_area
+        vb.fruiting_branches[0].nodes[0].leaf.weight = (
+            initial_leaf_area * self.leaf_weight_area_ratio
+        )
+        # Add a new mainstem leaf to the first node of this branch.
+        vb.fruiting_branches[0].main_stem_leaf.area = initial_leaf_area
+        vb.fruiting_branches[0].main_stem_leaf.weight = (
+            vb.fruiting_branches[0].main_stem_leaf.area * self.leaf_weight_area_ratio
+        )
+        # The initial mass and nitrogen in the new leaves are substracted from the stem.
+        self.stem_weight -= (
+            vb.fruiting_branches[0].nodes[0].leaf.weight
+            + vb.fruiting_branches[0].main_stem_leaf.weight
+        )
+        self.leaf_weight += (
+            vb.fruiting_branches[0].nodes[0].leaf.weight
+            + vb.fruiting_branches[0].main_stem_leaf.weight
+        )
+        # nitrogen moved to new leaves from stem.
+        addlfn = (
+            vb.fruiting_branches[0].nodes[0].leaf.weight
+            + vb.fruiting_branches[0].main_stem_leaf.weight
+        ) * stemNRatio
+        self.leaf_nitrogen += addlfn
+        self.stem_nitrogen -= addlfn
+        # Assign the initial value of the average temperature of the first site.
+        # Define initial NumFruitBranches and NumNodes for the new vegetative branch.
+        vb.fruiting_branches[0].nodes[0].average_temperature = self.average_temperature
+        vb.number_of_fruiting_branches = 1
+        vb.fruiting_branches[0].number_of_fruiting_nodes = 1
+        # When a new vegetative branch is formed, increase NumVegBranches by 1.
+        self.number_of_vegetative_branches += 1
 
     def create_first_square(self, stemNRatio, first_square_leaf_area):
         """Initiates the first square."""

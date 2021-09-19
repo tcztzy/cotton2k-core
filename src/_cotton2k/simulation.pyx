@@ -891,6 +891,10 @@ cdef class State(StateBase):
     def vegetative_branches(self):
         return [VegetativeBranch.from_ptr(&self._[0].vegetative_branches[k], k) for k in range(self.number_of_vegetative_branches)]
 
+    @property
+    def _new_vegetative_branch(self):
+        return VegetativeBranch.from_ptr(&self._[0].vegetative_branches[self.number_of_vegetative_branches], self.number_of_vegetative_branches)
+
     def roots_capable_of_uptake(self):
         """This function computes the weight of roots capable of uptake for all soil cells."""
         cuind = [1, 0.5, 0]  # the indices for the relative capability of uptake (between 0 and 1) of water and nutrients by root age classes.
@@ -3610,45 +3614,6 @@ cdef class Simulation:
                             node.petiole.potential_growth = node.leaf.potential_growth * state.leaf_weight_area_ratio * vpotlf[13]
                             state.leaf_potential_growth += node.leaf.potential_growth * state.leaf_weight_area_ratio
                             state.petiole_potential_growth += node.petiole.potential_growth
-
-    def _add_vegetative_branch(self, u, stemNRatio, DaysTo1stSqare):
-        """
-        This function decides whether a new vegetative branch is to be added, and then forms it. It is called from CottonPhenology().
-        """
-        state = self._current_state
-        if len(state.vegetative_branches) == 3:
-            return
-        # TimeToNextVegBranch is computed as a function of this average temperature.
-        cdef double TimeToNextVegBranch  # time, in physiological days, for the next vegetative branch to be formed.
-        node = state.vegetative_branches[-1].fruiting_branches[0].nodes[0]
-        TimeToNextVegBranch = np.polynomial.Polynomial([13.39, -0.696, 0.012])(node.average_temperature)
-        # Compare the age of the first fruiting site of the last formed vegetative branch with TimeToNextVegBranch plus DaysTo1stSqare and the delays caused by stresses, in order to decide if a new vegetative branch is to be formed.
-        if node.age < TimeToNextVegBranch + state.phenological_delay_for_vegetative_by_carbon_stress + state.phenological_delay_by_nitrogen_stress + DaysTo1stSqare:
-            return
-        vb = VegetativeBranch.from_ptr(&state._[0].vegetative_branches[state.number_of_vegetative_branches], state.number_of_vegetative_branches)
-        # Assign 1 to FruitFraction and FruitingCode of the first site of this branch.
-        vb.fruiting_branches[0].nodes[0].fraction = 1
-        vb.fruiting_branches[0].nodes[0].stage = Stage.Square
-        # Add a new leaf to the first site of this branch.
-        vb.fruiting_branches[0].nodes[0].leaf.area = self.cultivar_parameters[34]
-        vb.fruiting_branches[0].nodes[0].leaf.weight = self.cultivar_parameters[34] * state.leaf_weight_area_ratio
-        # Add a new mainstem leaf to the first node of this branch.
-        vb.fruiting_branches[0].main_stem_leaf.area = self.cultivar_parameters[34]
-        vb.fruiting_branches[0].main_stem_leaf.weight = vb.fruiting_branches[0].main_stem_leaf.area * state.leaf_weight_area_ratio
-        # The initial mass and nitrogen in the new leaves are substracted from the stem.
-        state.stem_weight -= vb.fruiting_branches[0].nodes[0].leaf.weight + vb.fruiting_branches[0].main_stem_leaf.weight
-        state.leaf_weight += vb.fruiting_branches[0].nodes[0].leaf.weight + vb.fruiting_branches[0].main_stem_leaf.weight
-        cdef double addlfn  # nitrogen moved to new leaves from stem.
-        addlfn = (vb.fruiting_branches[0].nodes[0].leaf.weight + vb.fruiting_branches[0].main_stem_leaf.weight) * stemNRatio
-        state.leaf_nitrogen += addlfn
-        state.stem_nitrogen -= addlfn
-        # Assign the initial value of the average temperature of the first site.
-        # Define initial NumFruitBranches and NumNodes for the new vegetative branch.
-        vb.fruiting_branches[0].nodes[0].average_temperature = state.average_temperature
-        vb.number_of_fruiting_branches = 1
-        vb.fruiting_branches[0].number_of_fruiting_nodes = 1
-        # When a new vegetative branch is formed, increase NumVegBranches by 1.
-        state.number_of_vegetative_branches += 1
 
     def _defoliate(self, u):
         """This function simulates the effects of defoliating chemicals applied on the cotton. It is called from SimulateThisDay()."""
