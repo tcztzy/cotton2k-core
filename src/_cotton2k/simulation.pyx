@@ -2712,7 +2712,6 @@ cdef class Simulation:
     cdef public double max_leaf_area_index
     cdef public double ptsred  # The effect of moisture stress on the photosynthetic rate
     cdef public double density_factor  # empirical plant density factor.
-    cdef double DaysTo1stSqare   # number of days from emergence to 1st square
     cdef double defkgh  # amount of defoliant applied, kg per ha
     cdef double tdfkgh  # total cumulative amount of defoliant
     cdef bool_t idsw  # switch indicating if predicted defoliation date was defined.

@@ -59,7 +59,7 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
         # and method pre_fruiting_node() is called to simulate the formation of
         # prefruiting nodes.
         if self._sim.first_square_date is None:
-            self._sim.DaysTo1stSqare = days_to_first_square(
+            DaysTo1stSqare = days_to_first_square(
                 self.average_temperature,
                 self.water_stress,
                 self.nitrogen_stress_vegetative,
@@ -68,7 +68,7 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
             self.pre_fruiting_node(stemNRatio, *self._sim.cultivar_parameters[31:35])
             # When first square is formed, FirstSquare is assigned the day of year.
             # Function create_first_square() is called for formation of first square.
-            if self.kday >= int(self._sim.DaysTo1stSqare):
+            if self.kday >= int(DaysTo1stSqare):
                 self._sim.first_square_date = self.date
                 self.create_first_square(stemNRatio, self._sim.cultivar_parameters[34])
             # if a first square has not been formed, call LeafAbscission() and exit.
@@ -85,9 +85,9 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
         # is to be added. Note that dense plant populations (large per_plant_area)
         # prevent new vegetative branch formation.
         if len(self.vegetative_branches) == 1 and self._sim.per_plant_area >= vpheno[5]:
-            self.add_vegetative_branch(u, stemNRatio, self._sim.DaysTo1stSqare)
+            self.add_vegetative_branch(u, stemNRatio, DaysTo1stSqare)
         if len(self.vegetative_branches) == 2 and self._sim.per_plant_area >= vpheno[6]:
-            self.add_vegetative_branch(u, stemNRatio, self._sim.DaysTo1stSqare)
+            self.add_vegetative_branch(u, stemNRatio, DaysTo1stSqare)
         # The maximum number of nodes per fruiting branch (nidmax) is affected by plant
         # density. It is computed as a function of density_factor.
         nidmax = min(
