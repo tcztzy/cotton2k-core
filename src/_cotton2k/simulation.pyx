@@ -2695,7 +2695,6 @@ def SensibleHeatTransfer(tsf, tenviron, height, wndcanp) -> float:
 cdef class Simulation:
     cdef cSimulation _sim
     cdef public unsigned int year
-    cdef public unsigned int profile_id
     cdef public unsigned int version
     cdef public double latitude
     cdef public double longitude
@@ -2726,8 +2725,7 @@ cdef class Simulation:
     cdef public State _current_state
     relative_radiation_received_by_a_soil_column = np.ones(20)  # the relative radiation received by a soil column, as affected by shading by plant canopy.
 
-    def __init__(self, profile_id=0, version=0x0400, **kwargs):
-        self.profile_id = profile_id
+    def __init__(self, version=0x0400, **kwargs):
         self.version = version
         self.max_leaf_area_index = 0.001
         for attr in (

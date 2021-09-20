@@ -8,11 +8,10 @@ class FruitingBranch: ...
 
 class Simulation:
     climate: list
-    profile_id: int
     start_date: datetime.date
     version: int
     year: int
-    def __init__(self, profile_id: int = 0, version: int = 0x0400, **kwargs): ...
+    def __init__(self, version: int = 0x0400, **kwargs): ...
 
 class SoilImpedance:
     @property
