@@ -44,6 +44,22 @@ class Stage(IntEnum):
 
 
 class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined-outside-init,too-many-instance-attributes
+    @property
+    def phenological_delay_for_vegetative_by_carbon_stress(self):
+        """delay in formation of new fruiting branches caused by carbon stress."""
+        delay = np.polynomial.Polynomial(
+            [self._sim.cultivar_parameters[27], -0.25, -0.75]
+        )(self.carbon_stress)
+        return min(max(delay, 0), 1)
+
+    @property
+    def phenological_delay_for_fruiting_by_carbon_stress(self):
+        """delay in formation of new fruiting sites caused by carbon stress."""
+        delay = np.polynomial.Polynomial(
+            [self._sim.cultivar_parameters[28], -0.83, -1.67]
+        )(self.carbon_stress)
+        return min(max(delay, 0), self._sim.cultivar_parameters[29])
+
     def phenology(self):
         """Simulates events of phenology and abscission in the cotton plant."""
         u = (self.date - self._sim.start_date).days
@@ -357,6 +373,170 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
         vb.fruiting_branches[0].number_of_fruiting_nodes = 1
         # When a new vegetative branch is formed, increase NumVegBranches by 1.
         self.number_of_vegetative_branches += 1
+
+    def add_fruiting_branch(  # pylint: disable=too-many-arguments,too-many-locals
+        self,
+        k,
+        density_factor,
+        stemNRatio,
+        time_to_new_fruiting_branch,
+        new_node_initial_leaf_area,
+        topping_date=None,
+    ):
+        """Decides if a new fruiting branch is to be added to a vegetative branch, and
+        forms it."""
+        if topping_date is not None and self.date >= topping_date:
+            return
+        # The following constant parameters are used:
+        vfrtbr = [0.8, 0.95, 33.0, 4.461, -0.1912, 0.00265, 1.8, -1.32]
+        # Compute the cumulative delay for the appearance of the next caused by
+        # carbohydrate, nitrogen, and water stresses.
+        vb = self.vegetative_branches[k]
+        vb.delay_for_new_fruiting_branch += (
+            self.phenological_delay_for_vegetative_by_carbon_stress
+            + vfrtbr[0] * self.phenological_delay_by_nitrogen_stress
+        )
+        vb.delay_for_new_fruiting_branch += vfrtbr[1] * (1 - self.water_stress)
+        # Define nbrch and compute TimeToNextFruBranch, the time in physiological days
+        # needed for the formation of each successive fruiting branch, as a function of
+        # the average temperature. This function is derived from data of K. R. Reddy,
+        # CSRU, adjusted for age expressed in physiological days.
+
+        # It is different for the main stem (k = 0) than for the other vegetative
+        # branches. TimeToNextFruNode is modified for plant density.
+        last_fruiting_branch = vb.fruiting_branches[-1]
+        # modified average daily temperature.
+        tav = min(last_fruiting_branch.nodes[0].average_temperature, vfrtbr[2])
+        # TimeToNextFruBranch is the time, in physiological days, for the next fruiting
+        # branch to be formed.
+        # Add DelayNewFruBranch to TimeToNextFruNode.
+        TimeToNextFruBranch = time_to_new_fruiting_branch + tav * (
+            vfrtbr[3] + tav * (vfrtbr[4] + tav * vfrtbr[5])
+        )
+        if k > 0:
+            TimeToNextFruBranch = TimeToNextFruBranch * vfrtbr[6]
+        TimeToNextFruBranch = (
+            TimeToNextFruBranch * (1 + vfrtbr[7] * (1 - density_factor))
+            + vb.delay_for_new_fruiting_branch
+        )
+        # Check if the the age of the last fruiting branch exceeds TimeToNextFruBranch.
+        # If so, form the new fruiting branch:
+        if last_fruiting_branch.nodes[0].age < TimeToNextFruBranch:
+            return
+        # Increment NumFruitBranches, define newbr, and assign 1 to NumNodes,
+        # FruitFraction and FruitingCode.
+        vb.number_of_fruiting_branches += 1
+        if vb.number_of_fruiting_branches > 30:
+            vb.number_of_fruiting_branches = 30
+            return
+        if self.version >= 0x500:
+            leaf_weight = min(
+                new_node_initial_leaf_area * self.leaf_weight_area_ratio,
+                self.stem_weight - 0.2,
+            )
+            if leaf_weight <= 0:
+                return
+            leaf_area = leaf_weight / self.leaf_weight_area_ratio
+        else:
+            leaf_area = new_node_initial_leaf_area
+            leaf_weight = leaf_area * self.leaf_weight_area_ratio
+        # the index number of the new fruiting branch on this vegetative branch, after
+        # a new branch has been added.
+        new_branch = vb.fruiting_branches[-1]
+        new_branch.number_of_fruiting_nodes = 1
+        new_node = new_branch.nodes[0]
+        new_node.fraction = 1
+        new_node.stage = Stage.Square
+        # Initiate new leaves at the first node of the new fruiting branch, and at the
+        # corresponding main stem node. The mass and nitrogen in the new leaves is
+        # substacted from the stem.
+        new_node.leaf.area = leaf_area
+        new_node.leaf.weight = leaf_weight
+        main_stem_leaf = new_branch.main_stem_leaf
+
+        main_stem_leaf.area = leaf_area
+        main_stem_leaf.weight = leaf_weight
+        self.stem_weight -= main_stem_leaf.weight + new_node.leaf.weight
+        self.leaf_weight += main_stem_leaf.weight + new_node.leaf.weight
+        # addlfn is the nitrogen added to new leaves from stem.
+        addlfn = (main_stem_leaf.weight + new_node.leaf.weight) * stemNRatio
+        self.leaf_nitrogen += addlfn
+        self.stem_nitrogen -= addlfn
+        # Begin computing AvrgNodeTemper of the new node and assign zero to
+        # DelayNewFruBranch.
+        new_node.average_temperature = self.average_temperature
+        vb.delay_for_new_fruiting_branch = 0
+
+    # pylint: disable=too-many-arguments,too-many-locals
+    def add_fruiting_node(self, k, l, stemNRatio, density_factor, var34, var36, var37):
+        """Decide if a new node is to be added to a fruiting branch, and forms it."""
+        # The following constant parameters are used:
+        vfrtnod = [1.32, 0.90, 33.0, 7.6725, -0.3297, 0.004657]
+        # Compute the cumulative delay for the appearance of the next node on the
+        # fruiting branch, caused by carbohydrate, nitrogen, and water stresses.
+        fb = self.vegetative_branches[k].fruiting_branches[l]
+        fb.delay_for_new_node += (
+            self.phenological_delay_for_fruiting_by_carbon_stress
+            + vfrtnod[0] * self.phenological_delay_by_nitrogen_stress
+        )
+        fb.delay_for_new_node += vfrtnod[1] * (1 - self.water_stress)
+        # Define nnid, and compute the average temperature of the last node of this
+        # fruiting branch, from the time it was formed.
+        nnid = (
+            fb.number_of_fruiting_nodes - 1
+        )  # the number of the last node on this fruiting branche.
+        tav = min(
+            fb.nodes[nnid].average_temperature,
+            vfrtnod[2],
+        )  # modified daily average temperature.
+
+        # Compute TimeToNextFruNode, the time (in physiological days) needed for the
+        # formation of each successive node on the fruiting branch. This is a function
+        # of temperature, derived from data of K. R. Reddy, CSRU, adjusted for age in
+        # physiological days. It is modified for plant density.
+
+        # time, in physiological days, for the next node on the fruiting branch to be
+        # formed
+        TimeToNextFruNode = var36 + tav * (
+            vfrtnod[3] + tav * (vfrtnod[4] + tav * vfrtnod[5])
+        )
+        TimeToNextFruNode = (
+            TimeToNextFruNode * (1 + var37 * (1 - density_factor))
+            + fb.delay_for_new_node
+        )
+        # Check if the the age of the last node on the fruiting branch exceeds
+        # TimeToNextFruNode.
+        # If so, form the new node:
+        if fb.nodes[nnid].age < TimeToNextFruNode or len(fb.nodes) >= 5:
+            return
+        # Increment NumNodes, define newnod, and assign 1 to FruitFraction and
+        # FruitingCode.
+        if self.version >= 0x500:
+            leaf_weight = min(
+                var34 * self.leaf_weight_area_ratio, self.stem_weight - 0.2
+            )
+            if leaf_weight <= 0:
+                return
+            leaf_area = leaf_weight / self.leaf_weight_area_ratio
+        else:
+            leaf_area = var34
+            leaf_weight = leaf_area * self.leaf_weight_area_ratio
+        fb.number_of_fruiting_nodes += 1
+        node = fb.nodes[nnid + 1]
+        node.fraction = 1
+        node.stage = Stage.Square
+        # Initiate a new leaf at the new node. The mass and nitrogen in the new leaf is
+        # substacted from the stem.
+        node.leaf.area = leaf_area
+        node.leaf.weight = leaf_weight
+        self.stem_weight -= leaf_weight
+        self.leaf_weight += leaf_weight
+        self.leaf_nitrogen += leaf_weight * stemNRatio
+        self.stem_nitrogen -= leaf_weight * stemNRatio
+        # Begin computing AvrgNodeTemper of the new node, and assign zero to
+        # DelayNewNode.
+        node.average_temperature = self.average_temperature
+        fb.delay_for_new_node = 0
 
     def create_first_square(self, stemNRatio, first_square_leaf_area):
         """Initiates the first square."""

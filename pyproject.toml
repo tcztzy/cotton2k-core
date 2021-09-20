@@ -1,6 +1,6 @@
 [project]
 name = "cotton2k.core"
-version = "0.1a1"
+version = "0.1"
 description = "Reimplementation for Cotton2k simulation model"
 authors = [{ name = "Tang Ziya", email = "tcztzy@gmail.com" }]
 readme = "README.rst"

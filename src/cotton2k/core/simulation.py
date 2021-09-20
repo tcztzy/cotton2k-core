@@ -182,7 +182,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             kwargs = path
         else:
             kwargs = json.loads(Path(path).read_text())
-        super().__init__(kwargs.pop("id", 0), kwargs.pop("version", 0x0400), **kwargs)
+        super().__init__(kwargs.pop("version", 0x0400), **kwargs)
         SoilInit(**kwargs.pop("soil", {}))  # type: ignore[arg-type]
         start_date = kwargs["start_date"]
         if not isinstance(start_date, (datetime.date, str)):
