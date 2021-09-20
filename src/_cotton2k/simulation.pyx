@@ -110,61 +110,6 @@ SIMULATED_LAYER_DEPTH[-2:] = 10
 SIMULATED_LAYER_DEPTH_CUMSUM = np.cumsum(SIMULATED_LAYER_DEPTH)
 
 
-cdef void InitializeSoilTemperature():
-    """Initializes the variables needed for the simulation of soil temperature, and variables used by functions ThermalCondSoil() and SoilHeatFlux().
-
-    It is executed once at the beginning of the simulation.
-    """
-    cdef double bsand = 20    # heat conductivity of sand and silt (mcal cm-1 s-1 C-1).
-    cdef double bclay = 7     # heat conductivity of clay (mcal cm-1 s-1 C-1).
-    cdef double cka = 0.0615  # heat conductivity of air (mcal cm-1 s-1 C-1).
-    cdef double ckw = 1.45    # heat conductivity of water (mcal cm-1 s-1 C-1).
-    cdef double cmin = 0.46   # heat capacity of the mineral fraction of the soil.
-    cdef double corg = 0.6    # heat capacity of the organic fraction of the soil.
-    cdef double ga = 0.144    # shape factor for air in pore spaces.
-    cdef double rm = 2.65     # specific weight of mineral fraction of soil.
-    cdef double ro = 1.3      # specific weight of organic fraction of soil.
-    # Compute aggregation factors:
-    dsand = form(bsand, ckw, ga)  # aggregation factor for sand in water
-    dclay = form(bclay, ckw, ga)  # aggregation factor for clay in water
-    cdef double dsandair = form(bsand, cka, ga)  # aggregation factor for sand in air
-    cdef double dclayair = form(bclay, cka, ga)  # aggregation factor for clay in air
-    # Loop over all soil layers, and define indices for some soil arrays.
-    cdef double sumdl = 0  # sum of depth of consecutive soil layers.
-    for l, sumdl in enumerate(SIMULATED_LAYER_DEPTH_CUMSUM):
-        j = int((sumdl + LayerDepth - 1) / LayerDepth) - 1  # layer definition for oma
-        if j > 13:
-            j = 13
-        # Using the values of the clay and organic matter percentages in the soil, compute mineral and organic fractions of the soil, by weight and by volume.
-        mmo = oma[j] / 100  # organic matter fraction of dry soil (by weight).
-        mm = 1 - mmo  # mineral fraction of dry soil (by weight).
-        # MarginalWaterContent is set as a function of the sand fraction of the soil.
-        i1 = SoilHorizonNum[l]  # layer definition as in soil hydrology input file.
-        MarginalWaterContent[l] = 0.1 - 0.07 * psand[i1] / 100
-        # The volume fractions of clay (ClayVolumeFraction) and of sand plus silt (SandVolumeFraction), are calculated.
-        ra = (mmo / ro) / (mm / rm)  # volume ratio of organic to mineral soil fractions.
-        xo = (1 - PoreSpace[l]) * ra / (1 + ra)  # organic fraction of soil (by volume).
-        xm = (1 - PoreSpace[l]) - xo  # mineral fraction of soil (by volume).
-        ClayVolumeFraction[l] = pclay[i1] * xm / mm / 100
-        SandVolumeFraction[l] = 1 - PoreSpace[l] - ClayVolumeFraction[l]
-        # Heat capacity of the solid soil fractions (mineral + organic, by volume )
-        HeatCapacitySoilSolid[l] = xm * cmin + xo * corg
-        # The heat conductivity of dry soil (HeatCondDrySoil) is computed using the procedure suggested by De Vries.
-        HeatCondDrySoil[l] = (
-            1.25
-            * (
-                PoreSpace[l] * cka
-                + dsandair * bsand * SandVolumeFraction[l]
-                + dclayair * bclay * ClayVolumeFraction[l]
-            )
-            / (
-                PoreSpace[l]
-                + dsandair * SandVolumeFraction[l]
-                + dclayair * ClayVolumeFraction[l]
-            )
-        )
-
-
 cdef class SoilInit:
     cdef unsigned int number_of_layers
     def __init__(self, initial, hydrology):
@@ -874,6 +819,60 @@ cdef class State(StateBase):
         for i in range(_ptr[0].number_of_pre_fruiting_nodes):
             state.pre_fruiting_nodes.append(PreFruitingNode.from_ptr(&_ptr[0].age_of_pre_fruiting_nodes[i]))
         return state
+
+    @staticmethod
+    def initialize_soil_temperature():
+        """Initializes the variables needed for the simulation of soil temperature, and variables used by functions ThermalCondSoil() and SoilHeatFlux().
+
+        It is executed once at the beginning of the simulation.
+        """
+        cdef double bsand = 20    # heat conductivity of sand and silt (mcal cm-1 s-1 C-1).
+        cdef double bclay = 7     # heat conductivity of clay (mcal cm-1 s-1 C-1).
+        cdef double cka = 0.0615  # heat conductivity of air (mcal cm-1 s-1 C-1).
+        cdef double ckw = 1.45    # heat conductivity of water (mcal cm-1 s-1 C-1).
+        cdef double cmin = 0.46   # heat capacity of the mineral fraction of the soil.
+        cdef double corg = 0.6    # heat capacity of the organic fraction of the soil.
+        cdef double ga = 0.144    # shape factor for air in pore spaces.
+        cdef double rm = 2.65     # specific weight of mineral fraction of soil.
+        cdef double ro = 1.3      # specific weight of organic fraction of soil.
+        # Compute aggregation factors:
+        dsand = form(bsand, ckw, ga)  # aggregation factor for sand in water
+        dclay = form(bclay, ckw, ga)  # aggregation factor for clay in water
+        cdef double dsandair = form(bsand, cka, ga)  # aggregation factor for sand in air
+        cdef double dclayair = form(bclay, cka, ga)  # aggregation factor for clay in air
+        # Loop over all soil layers, and define indices for some soil arrays.
+        for l, sumdl in enumerate(SIMULATED_LAYER_DEPTH_CUMSUM):
+            j = int((sumdl + LayerDepth - 1) / LayerDepth) - 1  # layer definition for oma
+            if j > 13:
+                j = 13
+            # Using the values of the clay and organic matter percentages in the soil, compute mineral and organic fractions of the soil, by weight and by volume.
+            mmo = oma[j] / 100  # organic matter fraction of dry soil (by weight).
+            mm = 1 - mmo  # mineral fraction of dry soil (by weight).
+            # MarginalWaterContent is set as a function of the sand fraction of the soil.
+            i1 = SoilHorizonNum[l]  # layer definition as in soil hydrology input file.
+            MarginalWaterContent[l] = 0.1 - 0.07 * psand[i1] / 100
+            # The volume fractions of clay (ClayVolumeFraction) and of sand plus silt (SandVolumeFraction), are calculated.
+            ra = (mmo / ro) / (mm / rm)  # volume ratio of organic to mineral soil fractions.
+            xo = (1 - PoreSpace[l]) * ra / (1 + ra)  # organic fraction of soil (by volume).
+            xm = (1 - PoreSpace[l]) - xo  # mineral fraction of soil (by volume).
+            ClayVolumeFraction[l] = pclay[i1] * xm / mm / 100
+            SandVolumeFraction[l] = 1 - PoreSpace[l] - ClayVolumeFraction[l]
+            # Heat capacity of the solid soil fractions (mineral + organic, by volume )
+            HeatCapacitySoilSolid[l] = xm * cmin + xo * corg
+            # The heat conductivity of dry soil (HeatCondDrySoil) is computed using the procedure suggested by De Vries.
+            HeatCondDrySoil[l] = (
+                1.25
+                * (
+                    PoreSpace[l] * cka
+                    + dsandair * bsand * SandVolumeFraction[l]
+                    + dclayair * bclay * ClayVolumeFraction[l]
+                )
+                / (
+                    PoreSpace[l]
+                    + dsandair * SandVolumeFraction[l]
+                    + dclayair * ClayVolumeFraction[l]
+                )
+            )
 
     @property
     def vegetative_branches(self):
@@ -2476,6 +2475,7 @@ cdef class State(StateBase):
                 self.soil.cells[l][k].fresh_organic_matter = self.soil.cells[l][0].fresh_organic_matter
                 HumusOrganicMatter[l][k] = HumusOrganicMatter[l][0]
                 VolUreaNContent[l][k] = 0
+        self.initialize_soil_temperature()
 
 
 def SensibleHeatTransfer(tsf, tenviron, height, wndcanp) -> float:
@@ -3006,7 +3006,6 @@ cdef class Simulation:
         SoilTemp[0][k] = so
         SoilTemp[1][k] = so2
         SoilTemp[2][k] = so3
-
 
     def _soil_temperature_init(self):
         """This function is called from SoilTemperature() at the start of the simulation. It sets initial values to soil and canopy temperatures."""
@@ -3680,4 +3679,3 @@ cdef class Simulation:
 
     def _initialize_soil_data(self):
         self._current_state.initialize_soil_data()
-        InitializeSoilTemperature()
