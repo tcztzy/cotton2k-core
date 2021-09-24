@@ -215,6 +215,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             "average_min_leaf_water_potential",
             "carbon_allocated_for_root_growth",
             "delay_of_emergence",
+            "delay_of_new_fruiting_branch",
             "extra_carbon",
             "fiber_length",
             "fiber_strength",

@@ -392,11 +392,11 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
         # Compute the cumulative delay for the appearance of the next caused by
         # carbohydrate, nitrogen, and water stresses.
         vb = self.vegetative_branches[k]
-        vb.delay_for_new_fruiting_branch += (
+        self.delay_of_new_fruiting_branch[k] += (
             self.phenological_delay_for_vegetative_by_carbon_stress
             + vfrtbr[0] * self.phenological_delay_by_nitrogen_stress
         )
-        vb.delay_for_new_fruiting_branch += vfrtbr[1] * (1 - self.water_stress)
+        self.delay_of_new_fruiting_branch[k] += vfrtbr[1] * (1 - self.water_stress)
         # Define nbrch and compute TimeToNextFruBranch, the time in physiological days
         # needed for the formation of each successive fruiting branch, as a function of
         # the average temperature. This function is derived from data of K. R. Reddy,
@@ -417,7 +417,7 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
             TimeToNextFruBranch = TimeToNextFruBranch * vfrtbr[6]
         TimeToNextFruBranch = (
             TimeToNextFruBranch * (1 + vfrtbr[7] * (1 - density_factor))
-            + vb.delay_for_new_fruiting_branch
+            + self.delay_of_new_fruiting_branch[k]
         )
         # Check if the the age of the last fruiting branch exceeds TimeToNextFruBranch.
         # If so, form the new fruiting branch:
@@ -465,7 +465,7 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
         # Begin computing AvrgNodeTemper of the new node and assign zero to
         # DelayNewFruBranch.
         new_node.average_temperature = self.average_temperature
-        vb.delay_for_new_fruiting_branch = 0
+        self.delay_of_new_fruiting_branch[k] = 0
 
     # pylint: disable=too-many-arguments,too-many-locals
     def add_fruiting_node(self, k, l, stemNRatio, density_factor, var34, var36, var37):

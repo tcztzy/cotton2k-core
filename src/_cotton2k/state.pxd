@@ -20,7 +20,6 @@ cdef extern from "State.hpp":
 
     ctypedef struct cVegetativeBranch "VegetativeBranch":
         unsigned int number_of_fruiting_branches
-        double delay_for_new_fruiting_branch
         cFruitingBranch fruiting_branches[30]
 
     ctypedef struct cState "State":

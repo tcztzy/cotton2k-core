@@ -671,14 +671,6 @@ cdef class VegetativeBranch:
         self._[0].number_of_fruiting_branches = value
 
     @property
-    def delay_for_new_fruiting_branch(self):
-        return self._[0].delay_for_new_fruiting_branch
-
-    @delay_for_new_fruiting_branch.setter
-    def delay_for_new_fruiting_branch(self, value):
-        self._[0].delay_for_new_fruiting_branch = value
-
-    @property
     def fruiting_branches(self):
         return [FruitingBranch.from_ptr(&self._[0].fruiting_branches[i], self.k, i) for i in
                 range(self._[0].number_of_fruiting_branches)]
@@ -798,6 +790,7 @@ cdef class State(StateBase):
     cdef Simulation _sim
     cdef public Soil soil
     cdef public numpy.ndarray root_weights
+    cdef public double delay_of_new_fruiting_branch[3]  # cumulative effect of stresses on delaying the formation of a new fruiting branch.
     pre_fruiting_nodes = []
 
     @staticmethod
@@ -2822,6 +2815,7 @@ cdef class Simulation:
         state0.supplied_ammonium_nitrogen = 0
         state0.supplied_nitrate_nitrogen = 0
         state0.petiole_nitrate_nitrogen_concentration = 0
+        state0.delay_of_new_fruiting_branch = [0, 0, 0]
         for i in range(9):
             state0.age_of_pre_fruiting_nodes[i] = 0
             state0.leaf_area_pre_fruiting[i] = 0

@@ -23,7 +23,6 @@ typedef struct FruitingBranchStruct
 typedef struct VegetativeBranchStruct
 {
     unsigned int number_of_fruiting_branches; // number of fruiting branches at each vegetative branch.
-    double delay_for_new_fruiting_branch; // cumulative effect of stresses on delaying the formation of a new fruiting branch.
     FruitingBranch fruiting_branches[30];
 } VegetativeBranch;
 typedef struct State
