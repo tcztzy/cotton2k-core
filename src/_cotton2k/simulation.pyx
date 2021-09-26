@@ -3101,7 +3101,6 @@ cdef class Simulation:
         state.soil_temperature[:] = 0
         # es and ActualSoilEvaporation are computed as the average for the whole soil slab, weighted by column widths.
         cdef double es = 0  # potential evaporation rate, mm day-1
-        state.potential_evaporation = 0
         state.actual_soil_evaporation = 0
         # Start hourly loop of iterations.
         for ihr in range(iter1):
@@ -3185,8 +3184,6 @@ cdef class Simulation:
         else:
             es /= self.row_space
             state.actual_soil_evaporation /= self.row_space
-        if state.kday > 0:
-            state.potential_evaporation = es
         # compute daily averages.
         state.soil_temperature[:] /= iter1
 

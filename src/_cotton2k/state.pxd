@@ -26,7 +26,6 @@ cdef extern from "State.hpp":
         double day_length
         double runoff
         double solar_noon
-        double potential_evaporation
         double actual_soil_evaporation
         unsigned int number_of_vegetative_branches
         double number_of_squares
