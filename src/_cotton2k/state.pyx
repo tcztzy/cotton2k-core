@@ -118,14 +118,6 @@ cdef class StateBase:
         self._[0].reserve_carbohydrate = value
 
     @property
-    def cumulative_nitrogen_loss(self):
-        return self._[0].cumulative_nitrogen_loss
-
-    @cumulative_nitrogen_loss.setter
-    def cumulative_nitrogen_loss(self, value):
-        self._[0].cumulative_nitrogen_loss = value
-
-    @property
     def carbon_stress(self):
         return self._[0].carbon_stress
 

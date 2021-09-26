@@ -1674,7 +1674,6 @@ cdef class State(StateBase):
                 self.petiole_weight -= PetioleWeightPreFru[j]
                 self.leaf_nitrogen -= self.leaf_weight_pre_fruiting[j] * self.leaf_nitrogen_concentration
                 self.petiole_nitrogen -= PetioleWeightPreFru[j] * self.petiole_nitrogen_concentration
-                self.cumulative_nitrogen_loss += self.leaf_weight_pre_fruiting[j] * self.leaf_nitrogen_concentration + PetioleWeightPreFru[j] * self.petiole_nitrogen_concentration
                 self._[0].leaf_area_pre_fruiting[j] = 0
                 self._[0].leaf_weight_pre_fruiting[j] = 0
                 PetioleWeightPreFru[j] = 0
@@ -1691,7 +1690,6 @@ cdef class State(StateBase):
                     self.petiole_weight -= PetioleWeightPreFru[j]
                     self.leaf_nitrogen -= self.leaf_weight_pre_fruiting[j] * self.leaf_nitrogen_concentration
                     self.petiole_nitrogen -= PetioleWeightPreFru[j] * self.petiole_nitrogen_concentration
-                    self.cumulative_nitrogen_loss += self.leaf_weight_pre_fruiting[j] * self.leaf_nitrogen_concentration + PetioleWeightPreFru[j] * self.petiole_nitrogen_concentration
                     self.leaf_weight_pre_fruiting[j] = 0
                     PetioleWeightPreFru[j] = 0
         # When this is after the first day of defoliation - count the number of existing leaves and sort them by age
@@ -1720,7 +1718,6 @@ cdef class State(StateBase):
                     self.petiole_weight -= main_stem_leaf.petiole_weight
                     self.leaf_nitrogen -= main_stem_leaf.weight * self.leaf_nitrogen_concentration
                     self.petiole_nitrogen -= main_stem_leaf.petiole_weight * self.petiole_nitrogen_concentration
-                    self.cumulative_nitrogen_loss += main_stem_leaf.weight * self.leaf_nitrogen_concentration + main_stem_leaf.petiole_weight * self.petiole_nitrogen_concentration
                     self.leaf_area -= main_stem_leaf.area
                     main_stem_leaf.area = 0
                     main_stem_leaf.weight = 0
@@ -1731,7 +1728,6 @@ cdef class State(StateBase):
                     self.petiole_weight -= site.petiole.weight
                     self.leaf_nitrogen -= site.leaf.weight * self.leaf_nitrogen_concentration
                     self.petiole_nitrogen -= site.petiole.weight * self.petiole_nitrogen_concentration
-                    self.cumulative_nitrogen_loss += site.leaf.weight * self.leaf_nitrogen_concentration + site.petiole.weight * self.petiole_nitrogen_concentration
                     self.leaf_area -= site.leaf.area
                     site.leaf.area = 0
                     site.leaf.weight = 0
@@ -1865,7 +1861,6 @@ cdef class State(StateBase):
         # Compute the square weight lost by shedding (wtlos) as a proportion of SquareWeight of this site. Update state.square_nitrogen, CumPlantNLoss, SquareWeight[k][l][m], BloomWeightLoss, state.square_weight and FruitFraction[k][l][m].
         cdef double wtlos = site.square.weight * abscissionRatio  # weight lost by shedding at this site.
         self.square_nitrogen -= wtlos * self.square_nitrogen_concentration
-        self.cumulative_nitrogen_loss += wtlos * self.square_nitrogen_concentration
         site.square.weight -= wtlos
         self.square_weight -= wtlos
         site.fraction *= (1 - abscissionRatio)
@@ -1873,7 +1868,6 @@ cdef class State(StateBase):
         if site.fraction <= 0.001:
             site.fraction = 0
             self.square_nitrogen -= site.square.weight * self.square_nitrogen_concentration
-            self.cumulative_nitrogen_loss += site.square.weight * self.square_nitrogen_concentration
             self.square_weight -= site.square.weight
             site.square.weight = 0
             site.stage = Stage.AbscisedAsSquare
@@ -1891,8 +1885,6 @@ cdef class State(StateBase):
         # Update state.seed_nitrogen, state.burr_nitrogen, CumPlantNLoss, state.green_bolls_weight, state.green_bolls_burr_weight, BollWeight[k][l][m], state.site[k][l][m].burr.weight, and FruitFraction[k][l][m].
         self.seed_nitrogen -= site.boll.weight * abscissionRatio * (1 - gin1) * self.seed_nitrogen_concentration
         self.burr_nitrogen -= site.burr.weight * abscissionRatio * self.burr_nitrogen_concentration
-        self.cumulative_nitrogen_loss += site.boll.weight * abscissionRatio * (1. - gin1) * self.seed_nitrogen_concentration
-        self.cumulative_nitrogen_loss += site.burr.weight * abscissionRatio * self.burr_nitrogen_concentration
         self.green_bolls_weight -= site.boll.weight * abscissionRatio
         self.green_bolls_burr_weight -= site.burr.weight * abscissionRatio
         site.boll.weight -= site.boll.weight * abscissionRatio
@@ -1905,8 +1897,6 @@ cdef class State(StateBase):
             site.stage = Stage.AbscisedAsBoll
             self.seed_nitrogen -= site.boll.weight * (1 - gin1) * self.seed_nitrogen_concentration
             self.burr_nitrogen -= site.burr.weight * self.burr_nitrogen_concentration
-            self.cumulative_nitrogen_loss += site.boll.weight * (1 - gin1) * self.seed_nitrogen_concentration
-            self.cumulative_nitrogen_loss += site.burr.weight * self.burr_nitrogen_concentration
             site.fraction = 0
             self.green_bolls_weight -= site.boll.weight
             self.green_bolls_burr_weight -= site.burr.weight
@@ -1950,7 +1940,6 @@ cdef class State(StateBase):
         cdef double sqr1n  # the nitrogen content of one square before flowering.
         sqr1n = self.square_nitrogen_concentration * site.square.weight
         self.square_nitrogen -= sqr1n
-        self.cumulative_nitrogen_loss += sqr1n * (1 - vnewboll[0])
         sqr1n = sqr1n * vnewboll[0]
 
         cdef double seed1n  # the nitrogen content of seeds in a new boll on flowering.
@@ -2774,7 +2763,6 @@ cdef class Simulation:
         state0.open_bolls_weight = 0
         state0.open_bolls_burr_weight = 0
         state0.reserve_carbohydrate = 0.06
-        state0.cumulative_nitrogen_loss = 0
         state0.water_stress = 1
         state0.water_stress_stem = 1
         state0.carbon_stress = 1

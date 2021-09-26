@@ -107,9 +107,6 @@ class RootGrowth:  # pylint: disable=no-member,attribute-defined-outside-init,to
         daily_root_loss *= 100.0 * per_plant_area / row_space
         # Adjust root_nitrogen (root N content) for loss by death of roots.
         self.root_nitrogen -= daily_root_loss * self.root_nitrogen_concentration
-        self.cumulative_nitrogen_loss += (
-            daily_root_loss * self.root_nitrogen_concentration
-        )
 
     def distribute_root_weight_in_cell(
         self, NumRootAgeGroups, adwr1, column_width, plant_row_column

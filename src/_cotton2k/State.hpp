@@ -27,7 +27,6 @@ typedef struct VegetativeBranchStruct
 } VegetativeBranch;
 typedef struct State
 {
-    double cumulative_nitrogen_loss; // total cumulative nitrogen lost in sloughed roots, and abscised leaves, squares and bolls, g per plant.
     double carbon_stress;            // carbohydrate stress factor.
     double day_length;               // day length, in hours
     double petiole_weight;          // total petiole weight, g per plant.

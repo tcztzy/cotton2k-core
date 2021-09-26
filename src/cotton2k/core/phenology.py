@@ -568,10 +568,9 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
         self.fruit_growth_ratio = 1
         # It is assumed that the cotyledons are dropped at time of first square.
         # Compute changes in AbscisedLeafWeight, self.leaf_weight, self.leaf_nitrogen
-        # and self.cumulative_nitrogen_loss caused by the abscission of the cotyledons.
+        # caused by the abscission of the cotyledons.
         cotylwt = 0.20  # cotylwt is the leaf weight of the cotyledons.
         self.leaf_weight -= cotylwt
-        self.cumulative_nitrogen_loss += cotylwt * self.leaf_nitrogen / self.leaf_weight
         self.leaf_nitrogen -= cotylwt * self.leaf_nitrogen / self.leaf_weight
 
     def boll_opening(  # pylint: disable=too-many-arguments
@@ -739,10 +738,6 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
             self.petiole_nitrogen -= (
                 main_stem_leaf.petiole_weight * self.petiole_nitrogen_concentration
             )
-            self.cumulative_nitrogen_loss += (
-                main_stem_leaf.weight * self.leaf_nitrogen_concentration
-                + main_stem_leaf.petiole_weight * self.petiole_nitrogen_concentration
-            )
             self.leaf_area -= main_stem_leaf.area
             main_stem_leaf.area = 0
             main_stem_leaf.weight = 0
@@ -786,10 +781,6 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
             self.leaf_nitrogen -= site.leaf.weight * self.leaf_nitrogen_concentration
             self.petiole_nitrogen -= (
                 site.petiole.weight * self.petiole_nitrogen_concentration
-            )
-            self.cumulative_nitrogen_loss += (
-                site.leaf.weight * self.leaf_nitrogen_concentration
-                + site.petiole.weight * self.petiole_nitrogen_concentration
             )
             self.leaf_area -= site.leaf.area
             site.leaf.area = 0
