@@ -62,14 +62,6 @@ cdef class StateBase:
         self._[0].day_length = value
 
     @property
-    def reserve_carbohydrate(self):
-        return self._[0].reserve_carbohydrate
-
-    @reserve_carbohydrate.setter
-    def reserve_carbohydrate(self, value):
-        self._[0].reserve_carbohydrate = value
-
-    @property
     def leaf_area_index(self):
         return self._[0].leaf_area_index
 

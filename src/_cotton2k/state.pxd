@@ -24,7 +24,6 @@ cdef extern from "State.hpp":
 
     ctypedef struct cState "State":
         double day_length
-        double reserve_carbohydrate
         double runoff
         double solar_noon
         double evapotranspiration
@@ -114,6 +113,7 @@ cdef class StateBase:
     cdef public double petiole_potential_growth  # sum of potential growth rates of all petioles, g plant-1 day-1.
     cdef public double petiole_weight  # total petiole weight, g per plant.
     cdef public double plant_height
+    cdef public double reserve_carbohydrate  # reserve carbohydrates in leaves, g per plant.
     cdef public double root_potential_growth  # potential growth rate of roots, g plant-1 day-1
     cdef public double seed_moisture  # moisture content of germinating seeds, percent.
     cdef public double square_weight  # total square weight, g per plant.

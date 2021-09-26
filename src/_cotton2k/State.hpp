@@ -28,7 +28,6 @@ typedef struct VegetativeBranchStruct
 typedef struct State
 {
     double day_length;               // day length, in hours
-    double reserve_carbohydrate;    // reserve carbohydrates in leaves, g per plant.
     double runoff;
     double solar_noon;
     double evapotranspiration;                  // daily sum of hourly reference evapotranspiration, mm per day.
