@@ -62,14 +62,6 @@ cdef class StateBase:
         self._[0].day_length = value
 
     @property
-    def square_weight(self):
-        return self._[0].square_weight
-
-    @square_weight.setter
-    def square_weight(self, value):
-        self._[0].square_weight = value
-
-    @property
     def green_bolls_weight(self):
         return self._[0].green_bolls_weight
 

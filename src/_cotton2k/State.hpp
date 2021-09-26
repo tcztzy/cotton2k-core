@@ -28,7 +28,6 @@ typedef struct VegetativeBranchStruct
 typedef struct State
 {
     double day_length;               // day length, in hours
-    double square_weight;           // total square weight, g per plant.
     double green_bolls_weight;      // total weight of seedcotton in green bolls, g plant-1.
     double green_bolls_burr_weight; // total weight of burrs in green bolls, g plant-1.
     double open_bolls_weight;       // total weight of seedcotton in open bolls, g per plant.

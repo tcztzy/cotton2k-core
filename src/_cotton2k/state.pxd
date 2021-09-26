@@ -24,7 +24,6 @@ cdef extern from "State.hpp":
 
     ctypedef struct cState "State":
         double day_length
-        double square_weight
         double green_bolls_weight
         double green_bolls_burr_weight
         double open_bolls_weight
@@ -117,6 +116,7 @@ cdef class StateBase:
     cdef public double plant_height
     cdef public double root_potential_growth  # potential growth rate of roots, g plant-1 day-1
     cdef public double seed_moisture  # moisture content of germinating seeds, percent.
+    cdef public double square_weight  # total square weight, g per plant.
     cdef public double stem_potential_growth  # potential growth rate of stems, g plant-1 day-1.
     cdef public double stem_weight  # total stem weight, g per plant.
     cdef public double taproot_length  # the length of the taproot, in cm.
