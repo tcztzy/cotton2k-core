@@ -66,7 +66,6 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
         # The following constant parameters are used:
         vpheno = [0.65, -0.83, -1.67, -0.25, -0.75, 10.0, 15.0, 7.10]
 
-        self.number_of_fruiting_sites = 0
         stemNRatio = (
             self.stem_nitrogen / self.stem_weight
         )  # the ratio of N to dry matter in the stems.
@@ -206,7 +205,6 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
         if site.stage == Stage.NotYetFormed:
             site.boll.cumulative_temperature = 0
             return None
-        self.number_of_fruiting_sites += 1  # Increment site number.
         # LeafAge(k,l,m) is the age of the leaf at this site.
         # it is updated by adding the physiological age of this day,
         # the effect of water and nitrogen stresses (agefac).
