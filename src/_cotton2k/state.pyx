@@ -200,14 +200,6 @@ cdef class StateBase:
         self._[0].number_of_open_bolls = value
 
     @property
-    def number_of_fruiting_sites(self):
-        return self._[0].number_of_fruiting_sites
-
-    @number_of_fruiting_sites.setter
-    def number_of_fruiting_sites(self, value):
-        self._[0].number_of_fruiting_sites = value
-
-    @property
     def nitrogen_stress(self):
         return self._[0].nitrogen_stress
 

@@ -41,7 +41,6 @@ cdef extern from "State.hpp":
         double potential_evaporation
         double actual_soil_evaporation
         unsigned int number_of_vegetative_branches
-        unsigned int number_of_fruiting_sites
         double number_of_squares
         double number_of_green_bolls
         double number_of_open_bolls
@@ -97,6 +96,7 @@ cdef class StateBase:
     cdef public unsigned int year
     cdef public unsigned int version
     cdef public unsigned int kday
+    cdef public unsigned int number_of_fruiting_sites  # total number of fruiting sites per plant.
     cdef unsigned int _ordinal
     cdef public double average_min_leaf_water_potential  #running average of min_leaf_water_potential for the last 3 days.
     cdef public double average_temperature  # average daily temperature, C, for 24 hours.

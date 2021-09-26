@@ -1,0 +1,4 @@
+-isystem
+C:\Users\Tang\scoop\apps\miniconda3\current\envs\cotton2k\Include
+--include-directory=C:\Users\Tang\scoop\apps\miniconda3\current\envs\cotton2k\Include
+--include-directory=C:\Users\Tang\scoop\apps\miniconda3\current\envs\cotton2k\lib\site-packages\numpy\core\include

@@ -45,7 +45,6 @@ typedef struct State
     double potential_evaporation;               //
     double actual_soil_evaporation;             // actual evaporation from soil surface, mm day-1.
     unsigned int number_of_vegetative_branches; // number of vegetative branches (including the main branch), per plant.
-    unsigned int number_of_fruiting_sites;      // total number of fruiting sites per plant.
     double number_of_squares;                   // number of squares per plant.
     double number_of_green_bolls;               // average number of retained green bolls, per plant.
     double number_of_open_bolls;                // number of open bolls, per plant.
