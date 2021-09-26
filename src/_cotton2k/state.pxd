@@ -24,7 +24,6 @@ cdef extern from "State.hpp":
 
     ctypedef struct cState "State":
         double day_length
-        double open_bolls_burr_weight
         double reserve_carbohydrate
         double runoff
         double solar_noon
@@ -109,6 +108,7 @@ cdef class StateBase:
     cdef public double net_photosynthesis  # net photosynthetic rate, g per plant per day.
     cdef public double net_radiation  # daily total net radiation, W m-2.
     cdef public double nighttime_temperature  # average night-time temperature, C.
+    cdef public double open_bolls_burr_weight
     cdef public double open_bolls_weight  # total weight of seedcotton in open bolls, g per plant.
     cdef public double pavail  # residual available carbon for root growth from previous day.
     cdef public double petiole_potential_growth  # sum of potential growth rates of all petioles, g plant-1 day-1.

@@ -62,14 +62,6 @@ cdef class StateBase:
         self._[0].day_length = value
 
     @property
-    def open_bolls_burr_weight(self):
-        return self._[0].open_bolls_burr_weight
-
-    @open_bolls_burr_weight.setter
-    def open_bolls_burr_weight(self, value):
-        self._[0].open_bolls_burr_weight = value
-
-    @property
     def reserve_carbohydrate(self):
         return self._[0].reserve_carbohydrate
 
