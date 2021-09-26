@@ -24,7 +24,6 @@ cdef extern from "State.hpp":
 
     ctypedef struct cState "State":
         double day_length
-        double green_bolls_weight
         double green_bolls_burr_weight
         double open_bolls_weight
         double open_bolls_burr_weight
@@ -101,6 +100,7 @@ cdef class StateBase:
     cdef public double extra_carbon  # Extra carbon, not used for plant potential growth requirements, assumed to accumulate in taproot.
     cdef public double fiber_length
     cdef public double fiber_strength
+    cdef public double green_bolls_weight  # total weight of seedcotton in green bolls, g plant-1.
     cdef public double hypocotyl_length  # length of hypocotyl, cm.
     cdef public double leaf_potential_growth  # sum of potential growth rates of all leaves, g plant-1 day-1.
     cdef public double light_interception  # ratio of light interception by plant canopy.
