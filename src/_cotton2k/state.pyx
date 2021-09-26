@@ -262,14 +262,6 @@ cdef class StateBase:
         self._[0].fruit_growth_ratio = value
 
     @property
-    def ginning_percent(self):
-        return self._[0].ginning_percent
-
-    @ginning_percent.setter
-    def ginning_percent(self, value):
-        self._[0].ginning_percent = value
-
-    @property
     def number_of_pre_fruiting_nodes(self):
         return self._[0].number_of_pre_fruiting_nodes
 

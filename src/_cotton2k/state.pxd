@@ -52,7 +52,6 @@ cdef extern from "State.hpp":
         double stem_nitrogen_concentration
         double stem_nitrogen
         double fruit_growth_ratio
-        double ginning_percent
         double deep_soil_temperature
         double total_actual_leaf_growth
         double total_actual_petiole_growth
@@ -94,6 +93,7 @@ cdef class StateBase:
     cdef public double extra_carbon  # Extra carbon, not used for plant potential growth requirements, assumed to accumulate in taproot.
     cdef public double fiber_length
     cdef public double fiber_strength
+    cdef public double ginning_percent  # weighted average ginning percentage of all open bolls.
     cdef public double green_bolls_burr_weight  # total weight of burrs in green bolls, g plant-1.
     cdef public double green_bolls_weight  # total weight of seedcotton in green bolls, g plant-1.
     cdef public double hypocotyl_length  # length of hypocotyl, cm.

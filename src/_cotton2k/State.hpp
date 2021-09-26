@@ -56,7 +56,6 @@ typedef struct State
     double stem_nitrogen_concentration;         // ratio of stem nitrogen to dry matter.
     double stem_nitrogen;                       // total stem nitrogen, g per plant
     double fruit_growth_ratio;                  // ratio between actual and potential square and boll growth.
-    double ginning_percent;                     // weighted average ginning percentage of all open bolls.
     double deep_soil_temperature;               // boundary soil temperature of deepest layer (K)
     double total_actual_leaf_growth;            // actual growth rate of all the leaves, g plant-1 day-1.
     double total_actual_petiole_growth;         // actual growth rate of all the petioles, g plant-1 day-1.

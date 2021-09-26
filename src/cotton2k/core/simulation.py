@@ -193,6 +193,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             "extra_carbon",
             "fiber_length",
             "fiber_strength",
+            "ginning_percent",
             "hypocotyl_length",
             "leaf_weight",
             "lint_yield",
