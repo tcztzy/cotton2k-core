@@ -26,7 +26,6 @@ cdef extern from "State.hpp":
         double day_length
         double runoff
         double solar_noon
-        double actual_transpiration
         double potential_evaporation
         double actual_soil_evaporation
         unsigned int number_of_vegetative_branches
@@ -86,6 +85,7 @@ cdef class StateBase:
     cdef public unsigned int version
     cdef public unsigned int kday
     cdef unsigned int _ordinal
+    cdef public double actual_transpiration  # actual transpiration from plants, mm day-1.
     cdef public double average_min_leaf_water_potential  #running average of min_leaf_water_potential for the last 3 days.
     cdef public double average_temperature  # average daily temperature, C, for 24 hours.
     cdef public double carbon_allocated_for_root_growth  # available carbon allocated for root growth, g per plant.
