@@ -30,7 +30,6 @@ typedef struct State
     double day_length;               // day length, in hours
     double runoff;
     double solar_noon;
-    double actual_soil_evaporation;             // actual evaporation from soil surface, mm day-1.
     unsigned int number_of_vegetative_branches; // number of vegetative branches (including the main branch), per plant.
     double number_of_squares;                   // number of squares per plant.
     double number_of_green_bolls;               // average number of retained green bolls, per plant.
