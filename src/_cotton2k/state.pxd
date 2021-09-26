@@ -24,7 +24,6 @@ cdef extern from "State.hpp":
 
     ctypedef struct cState "State":
         double day_length
-        double petiole_weight
         double square_weight
         double green_bolls_weight
         double green_bolls_burr_weight
@@ -114,6 +113,7 @@ cdef class StateBase:
     cdef public double nighttime_temperature  # average night-time temperature, C.
     cdef public double pavail  # residual available carbon for root growth from previous day.
     cdef public double petiole_potential_growth  # sum of potential growth rates of all petioles, g plant-1 day-1.
+    cdef public double petiole_weight  # total petiole weight, g per plant.
     cdef public double plant_height
     cdef public double root_potential_growth  # potential growth rate of roots, g plant-1 day-1
     cdef public double seed_moisture  # moisture content of germinating seeds, percent.
