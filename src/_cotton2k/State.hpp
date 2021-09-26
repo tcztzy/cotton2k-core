@@ -27,7 +27,6 @@ typedef struct VegetativeBranchStruct
 } VegetativeBranch;
 typedef struct State
 {
-    double carbon_stress;            // carbohydrate stress factor.
     double day_length;               // day length, in hours
     double petiole_weight;          // total petiole weight, g per plant.
     double square_weight;           // total square weight, g per plant.

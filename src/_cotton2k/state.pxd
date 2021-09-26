@@ -23,7 +23,6 @@ cdef extern from "State.hpp":
         cFruitingBranch fruiting_branches[30]
 
     ctypedef struct cState "State":
-        double carbon_stress
         double day_length
         double petiole_weight
         double square_weight
@@ -98,6 +97,7 @@ cdef class StateBase:
     cdef public double average_min_leaf_water_potential  #running average of min_leaf_water_potential for the last 3 days.
     cdef public double average_temperature  # average daily temperature, C, for 24 hours.
     cdef public double carbon_allocated_for_root_growth  # available carbon allocated for root growth, g per plant.
+    cdef public double carbon_stress  # carbohydrate stress factor.
     cdef public double daytime_temperature  # average day-time temperature, C.
     cdef public double delay_of_emergence  # effect of negative values of xt on germination rate.
     cdef public double extra_carbon  # Extra carbon, not used for plant potential growth requirements, assumed to accumulate in taproot.

@@ -118,14 +118,6 @@ cdef class StateBase:
         self._[0].reserve_carbohydrate = value
 
     @property
-    def carbon_stress(self):
-        return self._[0].carbon_stress
-
-    @carbon_stress.setter
-    def carbon_stress(self, value):
-        self._[0].carbon_stress = value
-
-    @property
     def leaf_area_index(self):
         return self._[0].leaf_area_index
 
