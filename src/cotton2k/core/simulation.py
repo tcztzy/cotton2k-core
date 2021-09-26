@@ -197,6 +197,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             "lint_yield",
             "min_leaf_water_potential",
             "net_photosynthesis",
+            "number_of_vegetative_branches",
             "pavail",
             "plant_height",
             "seed_layer_number",

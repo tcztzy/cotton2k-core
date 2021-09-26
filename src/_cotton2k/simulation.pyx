@@ -3317,7 +3317,7 @@ cdef class Simulation:
         cdef double rbmax = self.cultivar_parameters[10]  # maximum rate of boll (seed and lint) growth, g per boll per physiological day.
         cdef double wbmax = self.cultivar_parameters[11]  # maximum possible boll (seed and lint) weight, g per boll.
         # Loop for all vegetative stems.
-        for k in range(self._sim.states[u].number_of_vegetative_branches):  # loop of vegetative stems
+        for k in range(state.number_of_vegetative_branches):  # loop of vegetative stems
             for l in range(self._sim.states[u].vegetative_branches[k].number_of_fruiting_branches):  # loop of fruiting branches
                 for m in range(self._sim.states[u].vegetative_branches[k].fruiting_branches[l].number_of_fruiting_nodes):  # loop for nodes on a fruiting branch
                     # Calculate potential square growth for node (k,l,m).

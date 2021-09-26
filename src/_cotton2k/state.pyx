@@ -110,14 +110,6 @@ cdef class StateBase:
         self._[0].leaf_nitrogen_concentration = value
 
     @property
-    def number_of_vegetative_branches(self):
-        return self._[0].number_of_vegetative_branches
-
-    @number_of_vegetative_branches.setter
-    def number_of_vegetative_branches(self, value):
-        self._[0].number_of_vegetative_branches = value
-
-    @property
     def number_of_squares(self):
         return self._[0].number_of_squares
 

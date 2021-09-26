@@ -26,7 +26,6 @@ cdef extern from "State.hpp":
         double day_length
         double runoff
         double solar_noon
-        unsigned int number_of_vegetative_branches
         double number_of_squares
         double number_of_green_bolls
         double number_of_open_bolls
@@ -82,6 +81,7 @@ cdef class StateBase:
     cdef public unsigned int year
     cdef public unsigned int version
     cdef public unsigned int kday
+    cdef public unsigned int number_of_vegetative_branches  # number of vegetative branches (including the main branch), per plant.
     cdef unsigned int _ordinal
     cdef public double actual_soil_evaporation  # actual evaporation from soil surface, mm day-1.
     cdef public double actual_transpiration  # actual transpiration from plants, mm day-1.
