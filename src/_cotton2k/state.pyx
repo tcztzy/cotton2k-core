@@ -78,14 +78,6 @@ cdef class StateBase:
         self._[0].leaf_area = value
 
     @property
-    def leaf_weight(self):
-        return self._[0].leaf_weight
-
-    @leaf_weight.setter
-    def leaf_weight(self, value):
-        self._[0].leaf_weight = value
-
-    @property
     def leaf_weight_area_ratio(self):
         return self._[0].leaf_weight_area_ratio
 

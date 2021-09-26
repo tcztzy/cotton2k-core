@@ -552,11 +552,11 @@ cdef class MainStemLeaf:
 
     @property
     def area(self):
-        return self._.leaf_area
+        return self._[0].leaf_area
 
     @area.setter
     def area(self, value):
-        self._.leaf_area = value
+        self._[0].leaf_area = value
 
     @property
     def potential_growth_of_area(self):
@@ -584,11 +584,11 @@ cdef class MainStemLeaf:
 
     @property
     def weight(self):
-        return self._.leaf_weight
+        return self._[0].leaf_weight
 
     @weight.setter
     def weight(self, value):
-        self._.leaf_weight = value
+        self._[0].leaf_weight = value
 
     @property
     def petiole_weight(self):
