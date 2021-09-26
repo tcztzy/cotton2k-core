@@ -23,7 +23,6 @@ cdef extern from "State.hpp":
         cFruitingBranch fruiting_branches[30]
 
     ctypedef struct cState "State":
-        double day_inc
         double cumulative_nitrogen_loss
         double carbon_stress
         double day_length
