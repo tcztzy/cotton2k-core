@@ -26,7 +26,6 @@ cdef extern from "State.hpp":
         double day_length
         double runoff
         double solar_noon
-        double evapotranspiration
         double actual_transpiration
         double potential_evaporation
         double actual_soil_evaporation
@@ -93,6 +92,7 @@ cdef class StateBase:
     cdef public double carbon_stress  # carbohydrate stress factor.
     cdef public double daytime_temperature  # average day-time temperature, C.
     cdef public double delay_of_emergence  # effect of negative values of xt on germination rate.
+    cdef public double evapotranspiration  # daily sum of hourly reference evapotranspiration, mm per day.
     cdef public double extra_carbon  # Extra carbon, not used for plant potential growth requirements, assumed to accumulate in taproot.
     cdef public double fiber_length
     cdef public double fiber_strength

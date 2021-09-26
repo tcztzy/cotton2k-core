@@ -306,14 +306,6 @@ cdef class StateBase:
         return self._[0].leaf_weight_pre_fruiting
 
     @property
-    def evapotranspiration(self):
-        return self._[0].evapotranspiration
-
-    @evapotranspiration.setter
-    def evapotranspiration(self, value):
-        self._[0].evapotranspiration = value
-
-    @property
     def actual_transpiration(self):
         return self._[0].actual_transpiration
 

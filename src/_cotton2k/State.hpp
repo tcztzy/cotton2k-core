@@ -30,7 +30,6 @@ typedef struct State
     double day_length;               // day length, in hours
     double runoff;
     double solar_noon;
-    double evapotranspiration;                  // daily sum of hourly reference evapotranspiration, mm per day.
     double actual_transpiration;                // actual transpiration from plants, mm day-1.
     double potential_evaporation;               //
     double actual_soil_evaporation;             // actual evaporation from soil surface, mm day-1.
