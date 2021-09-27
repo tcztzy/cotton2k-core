@@ -30,7 +30,6 @@ typedef struct State
     double day_length;               // day length, in hours
     double runoff;
     double solar_noon;
-    double leaf_weight_pre_fruiting[9];         // weight of prefruiting node leaves, g.
     double leaf_weight_area_ratio;              // temperature dependent factor for converting leaf area to leaf weight during the day, g dm-1
     double leaf_nitrogen_concentration;         // average nitrogen concentration in leaves.
     double leaf_nitrogen;                       // total leaf nitrogen, g per plant.
