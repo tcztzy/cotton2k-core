@@ -30,7 +30,6 @@ typedef struct State
     double day_length;               // day length, in hours
     double runoff;
     double solar_noon;
-    double number_of_squares;                   // number of squares per plant.
     double number_of_green_bolls;               // average number of retained green bolls, per plant.
     double number_of_open_bolls;                // number of open bolls, per plant.
     double nitrogen_stress;                     // the average nitrogen stress coefficient for vegetative and reproductive organs
