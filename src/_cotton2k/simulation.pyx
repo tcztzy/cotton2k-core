@@ -821,6 +821,10 @@ cdef class State:
     cdef public double net_photosynthesis  # net photosynthetic rate, g per plant per day.
     cdef public double net_radiation  # daily total net radiation, W m-2.
     cdef public double nighttime_temperature  # average night-time temperature, C.
+    cdef public double nitrogen_stress  # the average nitrogen stress coefficient for vegetative and reproductive organs
+    cdef public double nitrogen_stress_vegetative  # nitrogen stress limiting vegetative development.
+    cdef public double nitrogen_stress_fruiting  # nitrogen stress limiting fruit development.
+    cdef public double nitrogen_stress_root  # nitrogen stress limiting root development.
     cdef public double number_of_open_bolls
     cdef public double number_of_green_bolls  # average number of retained green bolls, per plant.
     cdef public double open_bolls_burr_weight
@@ -941,38 +945,6 @@ cdef class State:
     @leaf_nitrogen_concentration.setter
     def leaf_nitrogen_concentration(self, value):
         self._[0].leaf_nitrogen_concentration = value
-
-    @property
-    def nitrogen_stress(self):
-        return self._[0].nitrogen_stress
-
-    @nitrogen_stress.setter
-    def nitrogen_stress(self, value):
-        self._[0].nitrogen_stress = value
-
-    @property
-    def nitrogen_stress_vegetative(self):
-        return self._[0].nitrogen_stress_vegetative
-
-    @nitrogen_stress_vegetative.setter
-    def nitrogen_stress_vegetative(self, value):
-        self._[0].nitrogen_stress_vegetative = value
-
-    @property
-    def nitrogen_stress_fruiting(self):
-        return self._[0].nitrogen_stress_fruiting
-
-    @nitrogen_stress_fruiting.setter
-    def nitrogen_stress_fruiting(self, value):
-        self._[0].nitrogen_stress_fruiting = value
-
-    @property
-    def nitrogen_stress_root(self):
-        return self._[0].nitrogen_stress_root
-
-    @nitrogen_stress_root.setter
-    def nitrogen_stress_root(self, value):
-        self._[0].nitrogen_stress_root = value
 
     @property
     def total_required_nitrogen(self):

@@ -26,10 +26,6 @@ cdef extern from "State.hpp":
         double day_length
         double runoff
         double solar_noon
-        double nitrogen_stress
-        double nitrogen_stress_vegetative
-        double nitrogen_stress_fruiting
-        double nitrogen_stress_root
         double total_required_nitrogen
         double leaf_area
         double leaf_weight_pre_fruiting[9]

@@ -30,10 +30,6 @@ typedef struct State
     double day_length;               // day length, in hours
     double runoff;
     double solar_noon;
-    double nitrogen_stress;                     // the average nitrogen stress coefficient for vegetative and reproductive organs
-    double nitrogen_stress_vegetative;          // nitrogen stress limiting vegetative development.
-    double nitrogen_stress_fruiting;            // nitrogen stress limiting fruit development.
-    double nitrogen_stress_root;                // nitrogen stress limiting root development.
     double total_required_nitrogen;             // total nitrogen required for plant growth, g per plant.
     double leaf_area;
     double leaf_weight_pre_fruiting[9];         // weight of prefruiting node leaves, g.
