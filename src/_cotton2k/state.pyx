@@ -62,14 +62,6 @@ cdef class StateBase:
         self._[0].day_length = value
 
     @property
-    def leaf_area_index(self):
-        return self._[0].leaf_area_index
-
-    @leaf_area_index.setter
-    def leaf_area_index(self, value):
-        self._[0].leaf_area_index = value
-
-    @property
     def leaf_area(self):
         return self._[0].leaf_area
 

@@ -34,7 +34,6 @@ cdef extern from "State.hpp":
         double nitrogen_stress_fruiting
         double nitrogen_stress_root
         double total_required_nitrogen
-        double leaf_area_index
         double leaf_area
         double leaf_weight_pre_fruiting[9]
         double leaf_weight_area_ratio
@@ -97,6 +96,7 @@ cdef class StateBase:
     cdef public double green_bolls_burr_weight  # total weight of burrs in green bolls, g plant-1.
     cdef public double green_bolls_weight  # total weight of seedcotton in green bolls, g plant-1.
     cdef public double hypocotyl_length  # length of hypocotyl, cm.
+    cdef public double leaf_area_index
     cdef public double leaf_potential_growth  # sum of potential growth rates of all leaves, g plant-1 day-1.
     cdef public double leaf_weight
     cdef public double light_interception  # ratio of light interception by plant canopy.
