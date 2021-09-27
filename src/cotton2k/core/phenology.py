@@ -719,7 +719,7 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
         """
         # The leaf on this main stem node is abscised if its age has reached droplf,
         # and if there is a leaf here, and if LeafAreaIndex is not too small:
-        # Update self.leaf_area, AbscisedLeafWeight, self.leaf_weight,
+        # Update AbscisedLeafWeight, self.leaf_weight,
         # self.petiole_weight, state.leaf_nitrogen, CumPlantNLoss.
         # Assign zero to LeafAreaMainStem, PetioleWeightMainStem and LeafWeightMainStem
         # of this leaf.
@@ -738,7 +738,6 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
             self.petiole_nitrogen -= (
                 main_stem_leaf.petiole_weight * self.petiole_nitrogen_concentration
             )
-            self.leaf_area -= main_stem_leaf.area
             main_stem_leaf.area = 0
             main_stem_leaf.weight = 0
             main_stem_leaf.petiole_weight = 0
@@ -765,7 +764,7 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
         # The leaf on this fruiting node is abscised if its age has reached droplf, and
         # if there is a leaf here, and if LeafAreaIndex is not too small:
 
-        # Update state.leaf_area, AbscisedLeafWeight, self.leaf_weight,
+        # Update AbscisedLeafWeight, self.leaf_weight,
         # self.petiole_weight, state.leaf_nitrogen, CumPlantNLoss,
         # Assign zero to LeafAreaNodes, PetioleWeightNodes and LeafWeightNodes of this
         # leaf.
@@ -782,7 +781,6 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
             self.petiole_nitrogen -= (
                 site.petiole.weight * self.petiole_nitrogen_concentration
             )
-            self.leaf_area -= site.leaf.area
             site.leaf.area = 0
             site.leaf.weight = 0
             site.petiole.weight = 0

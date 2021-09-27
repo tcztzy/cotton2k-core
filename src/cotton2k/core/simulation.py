@@ -433,14 +433,12 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
         ):
             state.actual_fruit_growth()
         # Initialize state.leaf_weight.It is assumed that cotyledons fall off at time
-        # of first square. Also initialize state.leaf_area and state.petiole_weight.
+        # of first square. Also initialize state.petiole_weight.
         if self.first_square_date is not None:
             state.leaf_weight = 0
-            state.leaf_area = 0
         else:
             cotylwt = 0.20  # weight of cotyledons dry matter.
             state.leaf_weight = cotylwt
-            state.leaf_area = 0.6 * cotylwt
         state.petiole_weight = 0
         # Call actual_leaf_growth to compute actual growth rate of leaves and compute
         # leaf area index.
