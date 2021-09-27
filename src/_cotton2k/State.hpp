@@ -31,7 +31,6 @@ typedef struct State
     double runoff;
     double solar_noon;
     double total_required_nitrogen;             // total nitrogen required for plant growth, g per plant.
-    double leaf_area;
     double leaf_weight_pre_fruiting[9];         // weight of prefruiting node leaves, g.
     double leaf_weight_area_ratio;              // temperature dependent factor for converting leaf area to leaf weight during the day, g dm-1
     double leaf_nitrogen_concentration;         // average nitrogen concentration in leaves.

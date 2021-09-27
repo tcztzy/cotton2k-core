@@ -811,6 +811,7 @@ cdef class State:
     cdef public double green_bolls_burr_weight  # total weight of burrs in green bolls, g plant-1.
     cdef public double green_bolls_weight  # total weight of seedcotton in green bolls, g plant-1.
     cdef public double hypocotyl_length  # length of hypocotyl, cm.
+    cdef public double leaf_area
     cdef public double leaf_area_index
     cdef public double leaf_potential_growth  # sum of potential growth rates of all leaves, g plant-1 day-1.
     cdef public double leaf_weight
@@ -913,14 +914,6 @@ cdef class State:
     @day_length.setter
     def day_length(self, value):
         self._[0].day_length = value
-
-    @property
-    def leaf_area(self):
-        return self._[0].leaf_area
-
-    @leaf_area.setter
-    def leaf_area(self, value):
-        self._[0].leaf_area = value
 
     @property
     def leaf_weight_area_ratio(self):
