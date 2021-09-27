@@ -883,6 +883,16 @@ cdef class State:
         self._ordinal = value.toordinal()
 
     @property
+    def number_of_squares(self):
+        def g():
+            for k in range(self.number_of_vegetative_branches):
+                for l in range(self.vegetative_branches[k].number_of_fruiting_branches):
+                    for m in range(self.vegetative_branches[k].fruiting_branches[l].number_of_fruiting_nodes):
+                        if self.vegetative_branches[k].fruiting_branches[l].nodes[m].stage == Stage.Square:
+                            yield self.vegetative_branches[k].fruiting_branches[l].nodes[m].fraction
+        return sum(g())
+
+    @property
     def solar_noon(self):
         return self._[0].solar_noon
 
@@ -929,14 +939,6 @@ cdef class State:
     @leaf_nitrogen_concentration.setter
     def leaf_nitrogen_concentration(self, value):
         self._[0].leaf_nitrogen_concentration = value
-
-    @property
-    def number_of_squares(self):
-        return self._[0].number_of_squares
-
-    @number_of_squares.setter
-    def number_of_squares(self, value):
-        self._[0].number_of_squares = value
 
     @property
     def number_of_green_bolls(self):
@@ -2326,15 +2328,12 @@ cdef class State:
 
     def compute_site_numbers(self):
         """Calculates square, green boll, open boll, and abscised site numbers (NumSquares, NumGreenBolls, NumOpenBolls, and AbscisedFruitSites, respectively), as the sums of FruitFraction in all sites with appropriate FruitingCode."""
-        self.number_of_squares = 0
         self.number_of_green_bolls = 0
         self.number_of_open_bolls = 0
         for k in range(self.number_of_vegetative_branches):
             for l in range(self.vegetative_branches[k].number_of_fruiting_branches):
                 for m in range(self.vegetative_branches[k].fruiting_branches[l].number_of_fruiting_nodes):
                     site = self.vegetative_branches[k].fruiting_branches[l].nodes[m]
-                    if site.stage == Stage.Square:
-                        self.number_of_squares += site.fraction
                     elif site.stage == Stage.YoungGreenBoll or site.stage == Stage.GreenBoll:
                         self.number_of_green_bolls += site.fraction
                     elif site.stage == Stage.MatureBoll:
@@ -3193,7 +3192,6 @@ cdef class Simulation:
         state0.leaf_weight = 0.20
         state0.leaf_nitrogen = 0.0112
         state0.number_of_vegetative_branches = 1
-        state0.number_of_squares = 0
         state0.number_of_green_bolls = 0
         state0.number_of_open_bolls = 0
         state0.fiber_length = 0

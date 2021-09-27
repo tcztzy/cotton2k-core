@@ -26,7 +26,6 @@ cdef extern from "State.hpp":
         double day_length
         double runoff
         double solar_noon
-        double number_of_squares
         double number_of_green_bolls
         double number_of_open_bolls
         double nitrogen_stress

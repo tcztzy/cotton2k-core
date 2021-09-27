@@ -21,4 +21,5 @@ def test_write_output(sim: Simulation):
     assert (state.root_weight - 57.962083610964996) < 1e-9
     assert (state.stem_weight - 28.14266502833103) < 1e-9
     assert (state.plant_weight - 174.06201458313524) < 1e-9
+    assert (state.number_of_squares - 1) < 1e-9
     assert "date" in state.keys()
