@@ -2334,7 +2334,7 @@ cdef class State:
             for l in range(self.vegetative_branches[k].number_of_fruiting_branches):
                 for m in range(self.vegetative_branches[k].fruiting_branches[l].number_of_fruiting_nodes):
                     site = self.vegetative_branches[k].fruiting_branches[l].nodes[m]
-                    elif site.stage == Stage.YoungGreenBoll or site.stage == Stage.GreenBoll:
+                    if site.stage == Stage.YoungGreenBoll or site.stage == Stage.GreenBoll:
                         self.number_of_green_bolls += site.fraction
                     elif site.stage == Stage.MatureBoll:
                         self.number_of_open_bolls += site.fraction
