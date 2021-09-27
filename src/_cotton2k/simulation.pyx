@@ -821,6 +821,8 @@ cdef class State:
     cdef public double net_photosynthesis  # net photosynthetic rate, g per plant per day.
     cdef public double net_radiation  # daily total net radiation, W m-2.
     cdef public double nighttime_temperature  # average night-time temperature, C.
+    cdef public double number_of_open_bolls
+    cdef public double number_of_green_bolls  # average number of retained green bolls, per plant.
     cdef public double open_bolls_burr_weight
     cdef public double open_bolls_weight  # total weight of seedcotton in open bolls, g per plant.
     cdef public double pavail  # residual available carbon for root growth from previous day.
@@ -939,22 +941,6 @@ cdef class State:
     @leaf_nitrogen_concentration.setter
     def leaf_nitrogen_concentration(self, value):
         self._[0].leaf_nitrogen_concentration = value
-
-    @property
-    def number_of_green_bolls(self):
-        return self._[0].number_of_green_bolls
-
-    @number_of_green_bolls.setter
-    def number_of_green_bolls(self, value):
-        self._[0].number_of_green_bolls = value
-
-    @property
-    def number_of_open_bolls(self):
-        return self._[0].number_of_open_bolls
-
-    @number_of_open_bolls.setter
-    def number_of_open_bolls(self, value):
-        self._[0].number_of_open_bolls = value
 
     @property
     def nitrogen_stress(self):
