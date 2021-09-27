@@ -935,20 +935,16 @@ cdef class State:
         return area
 
     @property
+    def leaf_nitrogen_concentration(self):
+        return self.leaf_nitrogen / self.leaf_weight
+
+    @property
     def leaf_weight_area_ratio(self):
         return self._[0].leaf_weight_area_ratio
 
     @leaf_weight_area_ratio.setter
     def leaf_weight_area_ratio(self, value):
         self._[0].leaf_weight_area_ratio = value
-
-    @property
-    def leaf_nitrogen_concentration(self):
-        return self._[0].leaf_nitrogen_concentration
-
-    @leaf_nitrogen_concentration.setter
-    def leaf_nitrogen_concentration(self, value):
-        self._[0].leaf_nitrogen_concentration = value
 
     @property
     def petiole_nitrogen_concentration(self):
@@ -2039,10 +2035,10 @@ cdef class State:
             # Assign zero to state.leaf_area_pre_fruiting, PetioleWeightPreFru and state.leaf_weight_pre_fruiting of this leaf.
             # If a defoliation was applied.
             if self.age_of_pre_fruiting_nodes[j] >= droplf and self.leaf_area_pre_fruiting[j] > 0 and self.leaf_area_index > 0.1:
-                self.leaf_weight -= self.leaf_weight_pre_fruiting[j]
-                self.petiole_weight -= PetioleWeightPreFru[j]
                 self.leaf_nitrogen -= self.leaf_weight_pre_fruiting[j] * self.leaf_nitrogen_concentration
+                self.leaf_weight -= self.leaf_weight_pre_fruiting[j]
                 self.petiole_nitrogen -= PetioleWeightPreFru[j] * self.petiole_nitrogen_concentration
+                self.petiole_weight -= PetioleWeightPreFru[j]
                 self._[0].leaf_area_pre_fruiting[j] = 0
                 self.leaf_weight_pre_fruiting[j] = 0
                 PetioleWeightPreFru[j] = 0
@@ -2054,10 +2050,10 @@ cdef class State:
             for j in range(self.number_of_pre_fruiting_nodes):
                 if self.leaf_area_pre_fruiting[j] > 0:
                     self.leaf_area_pre_fruiting[j] = 0
-                    self.leaf_weight -= self.leaf_weight_pre_fruiting[j]
-                    self.petiole_weight -= PetioleWeightPreFru[j]
                     self.leaf_nitrogen -= self.leaf_weight_pre_fruiting[j] * self.leaf_nitrogen_concentration
+                    self.leaf_weight -= self.leaf_weight_pre_fruiting[j]
                     self.petiole_nitrogen -= PetioleWeightPreFru[j] * self.petiole_nitrogen_concentration
+                    self.petiole_weight -= PetioleWeightPreFru[j]
                     self.leaf_weight_pre_fruiting[j] = 0
                     PetioleWeightPreFru[j] = 0
         # When this is after the first day of defoliation - count the number of existing leaves and sort them by age
@@ -2082,19 +2078,19 @@ cdef class State:
                 k, l, m = leaf[1:]
                 if m == 66:  # main stem leaves
                     main_stem_leaf = self.vegetative_branches[k].fruiting_branches[l].main_stem_leaf
-                    self.leaf_weight -= main_stem_leaf.weight
-                    self.petiole_weight -= main_stem_leaf.petiole_weight
                     self.leaf_nitrogen -= main_stem_leaf.weight * self.leaf_nitrogen_concentration
+                    self.leaf_weight -= main_stem_leaf.weight
                     self.petiole_nitrogen -= main_stem_leaf.petiole_weight * self.petiole_nitrogen_concentration
+                    self.petiole_weight -= main_stem_leaf.petiole_weight
                     main_stem_leaf.area = 0
                     main_stem_leaf.weight = 0
                     main_stem_leaf.petiole_weight = 0
                 else:  # leaves on fruit nodes
                     site = self.vegetative_branches[k].fruiting_branches[l].nodes[m]
-                    self.leaf_weight -= site.leaf.weight
-                    self.petiole_weight -= site.petiole.weight
                     self.leaf_nitrogen -= site.leaf.weight * self.leaf_nitrogen_concentration
+                    self.leaf_weight -= site.leaf.weight
                     self.petiole_nitrogen -= site.petiole.weight * self.petiole_nitrogen_concentration
+                    self.petiole_weight -= site.petiole.weight
                     site.leaf.area = 0
                     site.leaf.weight = 0
                     site.petiole.weight = 0
@@ -3143,7 +3139,6 @@ cdef class Simulation:
         state0.nitrogen_stress_fruiting = 1
         state0.nitrogen_stress_root = 1
         state0.total_required_nitrogen = 0
-        state0.leaf_nitrogen_concentration = .056
         state0.petiole_nitrogen_concentration = 0
         state0.seed_nitrogen_concentration = 0
         state0.burr_nitrogen_concentration = 0

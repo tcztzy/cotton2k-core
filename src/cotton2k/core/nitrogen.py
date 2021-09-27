@@ -311,10 +311,6 @@ class PlantNitrogen:  # pylint: disable=too-few-public-methods,no-member,attribu
         the plant parts."""
         # The following constant parameter is used:
         seedratio = 0.64
-        # Compute N concentration in plant organs as the ratio of N content to weight
-        # of dry matter.
-        if self.leaf_weight > 0.00001:
-            self.leaf_nitrogen_concentration = self.leaf_nitrogen / self.leaf_weight
         if self.petiole_weight > 0.00001:
             self.petiole_nitrogen_concentration = (
                 self.petiole_nitrogen / self.petiole_weight

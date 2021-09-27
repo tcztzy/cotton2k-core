@@ -730,14 +730,14 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
             and main_stem_leaf.area > 0
             and self.leaf_area_index > 0.1
         ):
-            self.leaf_weight -= main_stem_leaf.weight
-            self.petiole_weight -= main_stem_leaf.petiole_weight
             self.leaf_nitrogen -= (
                 main_stem_leaf.weight * self.leaf_nitrogen_concentration
             )
+            self.leaf_weight -= main_stem_leaf.weight
             self.petiole_nitrogen -= (
                 main_stem_leaf.petiole_weight * self.petiole_nitrogen_concentration
             )
+            self.petiole_weight -= main_stem_leaf.petiole_weight
             main_stem_leaf.area = 0
             main_stem_leaf.weight = 0
             main_stem_leaf.petiole_weight = 0

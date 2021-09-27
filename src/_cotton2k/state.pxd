@@ -27,7 +27,6 @@ cdef extern from "State.hpp":
         double runoff
         double solar_noon
         double leaf_weight_area_ratio
-        double leaf_nitrogen_concentration
         double petiole_nitrogen_concentration
         double seed_nitrogen_concentration
         double seed_nitrogen

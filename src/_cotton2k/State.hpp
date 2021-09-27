@@ -31,7 +31,6 @@ typedef struct State
     double runoff;
     double solar_noon;
     double leaf_weight_area_ratio;              // temperature dependent factor for converting leaf area to leaf weight during the day, g dm-1
-    double leaf_nitrogen_concentration;         // average nitrogen concentration in leaves.
     double leaf_nitrogen;                       // total leaf nitrogen, g per plant.
     double petiole_nitrogen_concentration;      // average nitrogen concentration in petioles.
     double seed_nitrogen_concentration;         // average nitrogen concentration in seeds.
