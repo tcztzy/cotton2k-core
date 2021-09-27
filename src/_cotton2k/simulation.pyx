@@ -812,6 +812,7 @@ cdef class State:
     cdef public double green_bolls_weight  # total weight of seedcotton in green bolls, g plant-1.
     cdef public double hypocotyl_length  # length of hypocotyl, cm.
     cdef public double leaf_area_index
+    cdef public double leaf_nitrogen
     cdef public double leaf_potential_growth  # sum of potential growth rates of all leaves, g plant-1 day-1.
     cdef public double leaf_weight
     cdef public double leaf_weight_pre_fruiting[9]  # weight of prefruiting node leaves, g.
@@ -940,14 +941,6 @@ cdef class State:
     @leaf_weight_area_ratio.setter
     def leaf_weight_area_ratio(self, value):
         self._[0].leaf_weight_area_ratio = value
-
-    @property
-    def leaf_nitrogen(self):
-        return self._[0].leaf_nitrogen
-
-    @leaf_nitrogen.setter
-    def leaf_nitrogen(self, value):
-        self._[0].leaf_nitrogen = value
 
     @property
     def leaf_nitrogen_concentration(self):

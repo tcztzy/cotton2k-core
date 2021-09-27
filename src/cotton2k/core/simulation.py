@@ -196,6 +196,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             "ginning_percent",
             "hypocotyl_length",
             "leaf_area_index",
+            "leaf_nitrogen",
             "leaf_weight",
             "leaf_weight_pre_fruiting",
             "lint_yield",
