@@ -212,6 +212,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             "stem_weight",
             "taproot_layer_number",
             "taproot_length",
+            "total_required_nitrogen",
         ):
             setattr(post, attr, getattr(pre, attr))
         root_weights = np.zeros((40, 20, 3), dtype=np.float64)

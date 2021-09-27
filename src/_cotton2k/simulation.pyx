@@ -840,6 +840,7 @@ cdef class State:
     cdef public double stem_potential_growth  # potential growth rate of stems, g plant-1 day-1.
     cdef public double stem_weight  # total stem weight, g per plant.
     cdef public double taproot_length  # the length of the taproot, in cm.
+    cdef public double total_required_nitrogen  # total nitrogen required for plant growth, g per plant.
     cdef public double water_stress  # general water stress index (0 to 1).
     cdef public double water_stress_stem  # water stress index for stem growth (0 to 1).
     cdef public double last_layer_with_root_depth  # the depth to the end of the last layer with roots (cm).
@@ -954,14 +955,6 @@ cdef class State:
     @leaf_nitrogen_concentration.setter
     def leaf_nitrogen_concentration(self, value):
         self._[0].leaf_nitrogen_concentration = value
-
-    @property
-    def total_required_nitrogen(self):
-        return self._[0].total_required_nitrogen
-
-    @total_required_nitrogen.setter
-    def total_required_nitrogen(self, value):
-        self._[0].total_required_nitrogen = value
 
     @property
     def petiole_nitrogen_concentration(self):
