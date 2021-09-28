@@ -423,17 +423,17 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
             return
         # Increment NumFruitBranches, define newbr, and assign 1 to NumNodes,
         # FruitFraction and FruitingCode.
-        vb.number_of_fruiting_branches += 1
-        if vb.number_of_fruiting_branches > 30:
-            vb.number_of_fruiting_branches = 30
+        if vb.number_of_fruiting_branches >= 30:
             return
+        vb.number_of_fruiting_branches += 1
         if self.version >= 0x500:
-            leaf_weight = min(
-                new_node_initial_leaf_area * self.leaf_weight_area_ratio,
-                self.stem_weight - 0.2,
+            leaf_weight = max(
+                min(
+                    new_node_initial_leaf_area * self.leaf_weight_area_ratio,
+                    self.stem_weight - 0.2,
+                ),
+                0,
             )
-            if leaf_weight <= 0:
-                return
             leaf_area = leaf_weight / self.leaf_weight_area_ratio
         else:
             leaf_area = new_node_initial_leaf_area
