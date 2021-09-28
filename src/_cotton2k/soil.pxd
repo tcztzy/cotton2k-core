@@ -1,6 +1,5 @@
 cdef extern from "Soil.h":
     ctypedef struct cRoot "Root":
-        double growth_factor
         double weight_capable_uptake
 
     ctypedef struct cSoilCell "SoilCell":

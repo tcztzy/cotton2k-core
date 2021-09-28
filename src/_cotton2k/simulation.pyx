@@ -235,10 +235,6 @@ cdef class Root:
     def weight_capable_uptake(self, value):
         self._[0].weight_capable_uptake = value
 
-    @property
-    def growth_factor(self):
-        return self._[0].growth_factor
-
     @staticmethod
     cdef Root from_ptr(cRoot *_ptr, unsigned int l, unsigned int k):
         cdef Root root = Root.__new__(Root)
@@ -727,13 +723,18 @@ cdef class Soil:
 
 cdef class State:
     cdef cState *_
+    cdef Simulation _sim
+    cdef numpy.ndarray root_impedance  # root mechanical impedance for a soil cell, kg cm-2.
+    cdef unsigned int _ordinal
+    cdef public Soil soil
+    cdef public numpy.ndarray root_growth_factor  # root growth correction factor in a soil cell (0 to 1).
+    cdef public numpy.ndarray root_weights
     cdef public unsigned int seed_layer_number  # layer number where the seeds are located.
     cdef public unsigned int taproot_layer_number  # last soil layer with taproot.
     cdef public unsigned int year
     cdef public unsigned int version
     cdef public unsigned int kday
     cdef public unsigned int number_of_vegetative_branches  # number of vegetative branches (including the main branch), per plant.
-    cdef unsigned int _ordinal
     cdef public double actual_soil_evaporation  # actual evaporation from soil surface, mm day-1.
     cdef public double actual_transpiration  # actual transpiration from plants, mm day-1.
     cdef public double average_min_leaf_water_potential  #running average of min_leaf_water_potential for the last 3 days.
@@ -742,6 +743,7 @@ cdef class State:
     cdef public double carbon_stress  # carbohydrate stress factor.
     cdef public double daytime_temperature  # average day-time temperature, C.
     cdef public double delay_of_emergence  # effect of negative values of xt on germination rate.
+    cdef public double delay_of_new_fruiting_branch[3]  # cumulative effect of stresses on delaying the formation of a new fruiting branch.
     cdef public double evapotranspiration  # daily sum of hourly reference evapotranspiration, mm per day.
     cdef public double extra_carbon  # Extra carbon, not used for plant potential growth requirements, assumed to accumulate in taproot.
     cdef public double fiber_length
@@ -792,11 +794,6 @@ cdef class State:
     soil_temperature = np.zeros((40, 20), dtype=np.float64)  # daily average soil temperature, oK.
     hours = np.empty(24, dtype=object)
     cells = np.empty((40, 20), dtype=object)
-    cdef numpy.ndarray root_impedance  # root mechanical impedance for a soil cell, kg cm-2.
-    cdef Simulation _sim
-    cdef public Soil soil
-    cdef public numpy.ndarray root_weights
-    cdef public double delay_of_new_fruiting_branch[3]  # cumulative effect of stresses on delaying the formation of a new fruiting branch.
     pre_fruiting_nodes = []
 
     @property
@@ -1600,10 +1597,10 @@ cdef class State:
         return vratio
 
     def init_root_data(self, uint32_t plant_row_column, double mul):
+        self.root_growth_factor = np.ones((40, 20), dtype=np.double)
         for l in range(40):
             for k in range(20):
                 self._[0].soil.cells[l][k].root = {
-                    "growth_factor": 1,
                     "weight_capable_uptake": 0,
                 }
         # FIXME: I consider the value is incorrect
@@ -1683,7 +1680,7 @@ cdef class State:
             return
         # Average soil resistance (avres) is computed at the root tip.
         # avres = average value of RootGroFactor for the two soil cells at the tip of the taproot.
-        cdef double avres = 0.5 * (self._[0].soil.cells[self.taproot_layer_number][plant_row_column].root.growth_factor + self._[0].soil.cells[self.taproot_layer_number][klocp1].root.growth_factor)
+        cdef double avres = 0.5 * (self.root_growth_factor[self.taproot_layer_number, plant_row_column] + self.root_growth_factor[self.taproot_layer_number, klocp1])
         # It is assumed that a linear empirical function of avres controls the rate of taproot elongation. The potential elongation rate of the taproot is also modified by soil temperature (SoilTemOnRootGrowth function), soil resistance, and soil moisture near the root tip.
         # Actual growth is added to the taproot_length.
         cdef double stday  # daily average soil temperature (C) at root tip.
@@ -1781,7 +1778,7 @@ cdef class State:
         # and the linearly modified effect of soil resistance (RootGroFactor).
         # Lateral root elongation does not occur in water logged soil.
         if self._[0].soil.cells[l][ktip].water_content < PoreSpace[l]:
-            self.rlat1[l] += rlatr * temprg * (1 - p1 + self._[0].soil.cells[l][ktip].root.growth_factor * p1)
+            self.rlat1[l] += rlatr * temprg * (1 - p1 + self.root_growth_factor[l, ktip] * p1)
             # If the lateral reaches a new soil soil cell: a proportion (tran) of mass of roots is transferred to the new soil cell.
             if self.rlat1[l] > sumwk and ktip > 0:
                 # column into which the tip of the lateral grows to left.
@@ -1822,7 +1819,7 @@ cdef class State:
         # Compute growth of the lateral root to the right. Potential growth rate is modified by the soil temperature function, and the linearly modified effect of soil resistance (RootGroFactor).
         # Lateral root elongation does not occur in water logged soil.
         if self._[0].soil.cells[l][ktip].water_content < PoreSpace[l]:
-            self.rlat2[l] += rlatr * temprg * (1 - p1 + self._[0].soil.cells[l][ktip].root.growth_factor * p1)
+            self.rlat2[l] += rlatr * temprg * (1 - p1 + self.root_growth_factor[l, ktip] * p1)
             # If the lateral reaches a new soil soil cell: a proportion (tran) of mass of roots is transferred to the new soil cell.
             if self.rlat2[l] > sumwk and ktip < nk - 1:
                 # column into which the tip of the lateral grows to left.
@@ -1885,8 +1882,8 @@ cdef class State:
                     rtrdn = SoilNitrateOnRootGrowth(self._[0].soil.cells[l][k].nitrate_nitrogen_content)
                     # The root growth resistance factor RootGroFactor(l,k), which can take a value between 0 and 1, is computed as the minimum of these resistance factors. It is further modified by multiplying it by the soil moisture function root_psi().
                     # Potential root growth PotGroRoots(l,k) in each cell is computed as a product of rtwtcg, rgfac, the temperature function temprg, and RootGroFactor(l,k). It is also multiplied by per_plant_area / 19.6, for the effect of plant population density on root growth: it is made comparable to a population of 5 plants per m in 38" rows.
-                    self._[0].soil.cells[l][k].root.growth_factor = root_psi(SoilPsi[l][k]) * min(rtrdo, rtpct, rtrdn)
-                    self._root_potential_growth[l][k] = rtwtcg * rgfac * temprg * self._[0].soil.cells[l][k].root.growth_factor * per_plant_area / 19.6
+                    self.root_growth_factor[l, k] = root_psi(SoilPsi[l][k]) * min(rtrdo, rtpct, rtrdn)
+                    self._root_potential_growth[l][k] = rtwtcg * rgfac * temprg * self.root_growth_factor[l, k] * per_plant_area / 19.6
         return self._root_potential_growth.sum()
 
     def redist_root_new_growth(self, int l, int k, double addwt, double column_width, unsigned int plant_row_column):
@@ -1917,11 +1914,11 @@ cdef class State:
         cdef double efacr  # as efac1 for the cell to the right of this cell.
         cdef double efacu  # as efac1 for the cell above this cell.
         cdef double srwp  # sum of all efac values.
-        efac1 = SIMULATED_LAYER_DEPTH[l] * column_width * self.cells[l][k].root.growth_factor
-        efacl = rgfsd * self.cells[l][km1].root.growth_factor
-        efacr = rgfsd * self.cells[l][kp1].root.growth_factor
-        efacu = rgfup * self.cells[lm1][k].root.growth_factor
-        efacd = rgfdn * self.cells[lp1][k].root.growth_factor
+        efac1 = SIMULATED_LAYER_DEPTH[l] * column_width * self.root_growth_factor[l, k]
+        efacl = rgfsd * self.root_growth_factor[l, km1]
+        efacr = rgfsd * self.root_growth_factor[l, kp1]
+        efacu = rgfup * self.root_growth_factor[lm1, k]
+        efacd = rgfdn * self.root_growth_factor[lp1, k]
         srwp = efac1 + efacl + efacr + efacu + efacd
         # If srwp is very small, all the added weight will be in the same soil soil cell, and execution of this function is ended.
         if srwp < 1e-10:

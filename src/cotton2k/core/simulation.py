@@ -209,9 +209,8 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             "total_required_nitrogen",
         ):
             setattr(post, attr, getattr(pre, attr))
-        root_weights = np.zeros((40, 20, 3), dtype=np.float64)
-        np.copyto(root_weights, pre.root_weights)
-        post.root_weights = root_weights
+        post.root_weights = pre.root_weights.copy()
+        post.root_growth_factor = pre.root_growth_factor.copy()
         self.states.append(State(post, self, self.state(i).open_bolls_weight))
         self._current_state = post  # pylint: disable=attribute-defined-outside-init
 
