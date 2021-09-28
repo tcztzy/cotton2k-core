@@ -769,7 +769,6 @@ cdef class State:
     cdef public double number_of_open_bolls
     cdef public double number_of_green_bolls  # average number of retained green bolls, per plant.
     cdef public double open_bolls_burr_weight
-    cdef public double open_bolls_weight  # total weight of seedcotton in open bolls, g per plant.
     cdef public double pavail  # residual available carbon for root growth from previous day.
     cdef public double petiole_potential_growth  # sum of potential growth rates of all petioles, g plant-1 day-1.
     cdef public double petiole_weight  # total petiole weight, g per plant.
@@ -3082,7 +3081,6 @@ cdef class Simulation:
         state0.square_weight = 0
         state0.green_bolls_weight = 0
         state0.green_bolls_burr_weight = 0
-        state0.open_bolls_weight = 0
         state0.open_bolls_burr_weight = 0
         state0.reserve_carbohydrate = 0.06
         state0.water_stress = 1

@@ -1,4 +1,6 @@
 # pylint: disable=no-name-in-module, import-error
+from __future__ import annotations
+
 import datetime
 import json
 from pathlib import Path
@@ -22,10 +24,13 @@ class State(
     Photosynthesis, Phenology, PlantNitrogen, RootGrowth, StemGrowth
 ):  # pylint: disable=too-many-instance-attributes
     _: CyState
+    sim: "Simulation"
+    open_bolls_weight: float = 0
 
-    def __init__(self, state: CyState, sim) -> None:
+    def __init__(self, state: CyState, sim, open_bolls_weight=0) -> None:
         self._ = state
         self._sim = sim
+        self.open_bolls_weight = open_bolls_weight
 
     def __getattr__(self, name: str) -> Any:
         try:
@@ -207,6 +212,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
         root_weights = np.zeros((40, 20, 3), dtype=np.float64)
         np.copyto(root_weights, pre.root_weights)
         post.root_weights = root_weights
+        self.states.append(State(post, self, self.state(i).open_bolls_weight))
         self._current_state = post  # pylint: disable=attribute-defined-outside-init
 
     def _initialize_switch(self):
@@ -292,7 +298,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
         return self
 
     def _simulate(self):
-        self.states = []
+        self.states = [State(self._current_state, self)]
         days = (self.stop_date - self.start_date).days
         for i in range(days):
             self._simulate_this_day(i)
@@ -301,8 +307,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
 
     # pylint: disable=attribute-defined-outside-init,no-member
     def _simulate_this_day(self, u):
-        state = State(self._current_state, self)
-        self.states.append(state)
+        state = self.states[-1]
         if state.date >= self.emerge_date:
             state.kday = (state.date - self.emerge_date).days + 1
             # pylint: disable=access-member-before-definition
