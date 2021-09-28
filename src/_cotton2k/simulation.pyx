@@ -55,7 +55,6 @@ from .rs cimport (
     qpsi,
     form,
 )
-from .soil cimport cRoot
 from .state cimport cState, cVegetativeBranch, cFruitingBranch, cMainStemLeaf
 from .fruiting_site cimport FruitingSite, Leaf, cBoll, cBurr, SquareStruct, cPetiole
 
@@ -222,33 +221,10 @@ cdef class Climate:
             }
 
 
-cdef class Root:
-    cdef cRoot *_
-    cdef unsigned int l
-    cdef unsigned int k
-
-    @property
-    def weight_capable_uptake(self):
-        return self._[0].weight_capable_uptake
-
-    @weight_capable_uptake.setter
-    def weight_capable_uptake(self, value):
-        self._[0].weight_capable_uptake = value
-
-    @staticmethod
-    cdef Root from_ptr(cRoot *_ptr, unsigned int l, unsigned int k):
-        cdef Root root = Root.__new__(Root)
-        root._ = _ptr
-        root.l = l
-        root.k = k
-        return root
-
-
 cdef class SoilCell:
     cdef cSoilCell *_
     cdef unsigned int l
     cdef unsigned int k
-    cdef public Root root
 
     @staticmethod
     cdef SoilCell from_ptr(cSoilCell *_ptr, unsigned int l, unsigned int k):
@@ -256,7 +232,6 @@ cdef class SoilCell:
         cell._ = _ptr
         cell.l = l
         cell.k = k
-        cell.root = Root.from_ptr(&_ptr[0].root, l, k)
         return cell
 
     @property
@@ -729,6 +704,7 @@ cdef class State:
     cdef public Soil soil
     cdef public numpy.ndarray root_growth_factor  # root growth correction factor in a soil cell (0 to 1).
     cdef public numpy.ndarray root_weights
+    cdef public numpy.ndarray root_weight_capable_uptake  # root weight capable of uptake, in g per soil cell.
     cdef public unsigned int seed_layer_number  # layer number where the seeds are located.
     cdef public unsigned int taproot_layer_number  # last soil layer with taproot.
     cdef public unsigned int year
@@ -1187,15 +1163,13 @@ cdef class State:
     def roots_capable_of_uptake(self):
         """This function computes the weight of roots capable of uptake for all soil cells."""
         cuind = [1, 0.5, 0]  # the indices for the relative capability of uptake (between 0 and 1) of water and nutrients by root age classes.
-        for l in range(40):
-            for k in range(20):
-                self.cells[l][k].root.weight_capable_uptake = 0
+        self.root_weight_capable_uptake[:] = 0
         # Loop for all soil soil cells with roots. compute for each soil cell root-weight capable of uptake (RootWtCapblUptake) as the sum of products of root weight and capability of uptake index (cuind) for each root class in it.
         for l in range(self.soil.number_of_layers_with_root):
             for k in range(self.soil._[0].layers[l].number_of_left_columns_with_root, self.soil._[0].layers[l].number_of_right_columns_with_root + 1):
                 for i in range(3):
-                    if self.root_weights[l][k][i] > 1.e-15:
-                        self.cells[l][k].root.weight_capable_uptake += self.root_weights[l][k][i] * cuind[i]
+                    if self.root_weights[l, k, i] > 1e-15:
+                        self.root_weight_capable_uptake[l, k] += self.root_weights[l, k, i] * cuind[i]
 
     def predict_emergence(self, plant_date, hour, plant_row_column):
         """This function predicts date of emergence."""
@@ -1345,16 +1319,16 @@ cdef class State:
         cdef double rrl  # root resistance per g of active roots.
         for l in range(self.soil.number_of_layers_with_root):
             for k in range(self._[0].soil.layers[l].number_of_left_columns_with_root, self._[0].soil.layers[l].number_of_right_columns_with_root):
-                if self.cells[l][k].root.weight_capable_uptake >= vpsil[10]:
-                    psinum += min(self.cells[l][k].root.weight_capable_uptake, vpsil[11])
-                    sumlv += min(self.cells[l][k].root.weight_capable_uptake, vpsil[11]) * cmg
+                if self.root_weight_capable_uptake[l, k] >= vpsil[10]:
+                    psinum += min(self.root_weight_capable_uptake[l, k], vpsil[11])
+                    sumlv += min(self.root_weight_capable_uptake[l, k], vpsil[11]) * cmg
                     rootvol += SIMULATED_LAYER_DEPTH[l] * wk(k, row_space)
                     if SoilPsi[l][k] <= vpsil[1]:
                         rrl = vpsil[2] / cmg
                     else:
                         rrl = (vpsil[3] - SoilPsi[l][k] * (vpsil[4] + vpsil[5] * SoilPsi[l][k])) / cmg
-                    rrlsum += min(self.cells[l][k].root.weight_capable_uptake, vpsil[11]) / rrl
-                    vh2sum += self.cells[l][k].water_content * min(self.cells[l][k].root.weight_capable_uptake, vpsil[11])
+                    rrlsum += min(self.root_weight_capable_uptake[l, k], vpsil[11]) / rrl
+                    vh2sum += self.cells[l][k].water_content * min(self.root_weight_capable_uptake[l, k], vpsil[11])
         # Compute average root resistance (rroot) and average soil water content (vh2).
         cdef double dumyrs  # intermediate variable for computing cond.
         cdef double vh2  # average of soil water content, for all soil soil cells with roots.
@@ -1598,11 +1572,7 @@ cdef class State:
 
     def init_root_data(self, uint32_t plant_row_column, double mul):
         self.root_growth_factor = np.ones((40, 20), dtype=np.double)
-        for l in range(40):
-            for k in range(20):
-                self._[0].soil.cells[l][k].root = {
-                    "weight_capable_uptake": 0,
-                }
+        self.root_weight_capable_uptake = np.ones((40, 20), dtype=np.double)
         # FIXME: I consider the value is incorrect
         self.root_weights = np.zeros((40, 20, 3), dtype=np.float64)
         self.root_weights[0,(plant_row_column - 1, plant_row_column + 2),0] = 0.0020
@@ -2376,7 +2346,7 @@ cdef class State:
                     # reduction factor for water uptake, caused by low levels of soil water, as a linear function of cell.water_content, between vh2lo and vh2hi.
                     redfac = min(max((self.cells[l][k].water_content - vh2lo) / (vh2hi - vh2lo), 0), 1)
                     # The computed 'uptake factor' (upf) for each soil cell is the product of 'root weight capable of uptake' and redfac.
-                    upf[l][k] = self.cells[l][k].root.weight_capable_uptake * redfac
+                    upf[l][k] = self.root_weight_capable_uptake[l, k] * redfac
 
             difupt = 0  # the cumulative difference between computed transpiration and actual transpiration, in cm3, due to limitation of PWP.
             for l in range(self.soil.number_of_layers_with_root):
@@ -2447,10 +2417,10 @@ cdef class State:
             sumdl[j] += SIMULATED_LAYER_DEPTH[l]
             for k in range(self.soil._[0].layers[l].number_of_left_columns_with_root, self.soil._[0].layers[l].number_of_right_columns_with_root + 1):
                 # Check that RootWtCapblUptake in any cell is more than a minimum value vrcumin.
-                if self.cells[l][k].root.weight_capable_uptake >= vrcumin:
+                if self.root_weight_capable_uptake[l, k] >= vrcumin:
                     # Compute sumwat as the weighted sum of the water content, and psinum as the sum of these weights. Weighting is by root weight capable of uptake, or if it exceeds a maximum value (vrcumax) this maximum value is used for weighting.
-                    sumwat[j] += self.cells[l][k].water_content * SIMULATED_LAYER_DEPTH[l] * wk(k, row_space) * min(self.cells[l][k].root.weight_capable_uptake, vrcumax)
-                    psinum[j] += SIMULATED_LAYER_DEPTH[l] * wk(k, row_space) * min(self.cells[l][k].root.weight_capable_uptake, vrcumax)
+                    sumwat[j] += self.cells[l][k].water_content * SIMULATED_LAYER_DEPTH[l] * wk(k, row_space) * min(self.root_weight_capable_uptake[l, k], vrcumax)
+                    psinum[j] += SIMULATED_LAYER_DEPTH[l] * wk(k, row_space) * min(self.root_weight_capable_uptake[l, k], vrcumax)
         sumpsi = 0  # weighted sum of avgpsi
         sumnum = 0  # sum of weighting coefficients for computing AverageSoilPsi.
         for j in range(9):

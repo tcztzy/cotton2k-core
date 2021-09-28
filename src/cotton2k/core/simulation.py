@@ -211,6 +211,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             setattr(post, attr, getattr(pre, attr))
         post.root_weights = pre.root_weights.copy()
         post.root_growth_factor = pre.root_growth_factor.copy()
+        post.root_weight_capable_uptake = pre.root_weight_capable_uptake.copy()
         self.states.append(State(post, self, self.state(i).open_bolls_weight))
         self._current_state = post  # pylint: disable=attribute-defined-outside-init
 
