@@ -1,5 +1,4 @@
 # pylint: disable=no-name-in-module, import-error
-import csv
 import datetime
 import json
 from pathlib import Path
@@ -7,7 +6,7 @@ from typing import Any, Union
 
 import numpy as np
 
-from _cotton2k import Climate, SoilImpedance, SoilInit  # type: ignore[import]
+from _cotton2k import Climate, SoilInit  # type: ignore[import]
 from _cotton2k.simulation import Simulation as CySimulation  # type: ignore[import]
 from _cotton2k.simulation import State as CyState
 
@@ -17,18 +16,6 @@ from .phenology import Phenology, Stage
 from .photo import Photosynthesis
 from .root import RootGrowth
 from .stem import StemGrowth
-
-SOIL_IMPEDANCE = SoilImpedance()
-with open(Path(__file__).parent / "soil_imp.csv") as csvfile:
-    reader = csv.DictReader(csvfile)
-    SOIL_IMPEDANCE.curves = list(
-        map(
-            lambda row: {
-                (k if k == "water" else float(k)): float(v) for k, v in row.items()
-            },
-            reader,
-        )
-    )
 
 
 class State(

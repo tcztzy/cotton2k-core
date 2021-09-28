@@ -1,5 +1,6 @@
 from datetime import date, timedelta
 from math import sin, cos, acos, sqrt, pi, atan
+from pathlib import Path
 
 from libc.math cimport exp, log
 from libc.stdlib cimport malloc
@@ -8,6 +9,7 @@ from libcpp cimport bool as bool_t
 
 cimport numpy
 import numpy as np
+from scipy.interpolate import interp2d
 
 from _cotton2k.climate import compute_day_length, compute_incoming_long_wave_radiation, radiation, delta, gamma, refalbed, clcor, cloudcov, sunangle, clearskyemiss, dayrh, VaporPressure, tdewest, compute_hourly_wind_speed
 from _cotton2k.fruit import TemperatureOnFruitGrowthRate
@@ -101,7 +103,6 @@ PetioleWeightPreFru = np.zeros(9, dtype=np.double)  # weight of prefruiting node
 PotGroLeafAreaPreFru = np.zeros(9, dtype=np.double)  # potentially added area of a prefruiting node leaf, dm2 day-1.
 PotGroLeafWeightPreFru = np.zeros(9, dtype=np.double)  # potentially added weight of a prefruiting node leaf, g day-1.
 PotGroPetioleWeightPreFru = np.zeros(9, dtype=np.double)  # potentially added weight of a prefruiting node petiole, g day-1.
-RootImpede = np.zeros((40, 20), dtype=np.double)  # root mechanical impedance for a soil cell, kg cm-2.
 
 SIMULATED_LAYER_DEPTH = np.ones(40) * 5
 SIMULATED_LAYER_DEPTH[:3] = 2
@@ -705,34 +706,9 @@ cdef class Hour:
 
 cdef double[3] cgind = [1, 1, 0.10]  # the index for the capability of growth of class I roots (0 to 1).
 
-cdef double gh2oc[10]  # input gravimetric soil water content, g g-1, in the soil mechanical impedance table. values have been read from the soil impedance file.
-cdef double tstbd[10][10]  # input bulk density in the impedance table, g cm-3.
-cdef double impede[10][10]  # input table of soil impedance to root growth
-cdef int inrim  # number of input bulk-density data points for the impedance curve
-cdef unsigned int ncurve  # number of input soil-moisture curves in the impedance table.
-
-
-cdef class SoilImpedance:
-    @property
-    def curves(self):
-        global gh2oc, tstbd, impede, inrim, ncurve
-        return {gh2oc[i]: {tstbd[j][i]: impede[j][i] for j in range(inrim)} for i in
-                range(ncurve)}
-
-    @curves.setter
-    def curves(self, impedance_table):
-        global gh2oc, tstbd, impede, inrim, ncurve
-        ncurve = len(impedance_table)
-        inrim = len(impedance_table[0])
-        for i, row in enumerate(impedance_table):
-            gh2oc[i] = row.pop("water")
-            for j, pair in enumerate(sorted(row.items())):
-                tstbd[j][i], impede[j][i] = pair
-
 
 cdef class Soil:
     cdef cSoil *_
-    cells = np.empty((40, 20), dtype=object)
 
     @property
     def number_of_layers_with_root(self):
@@ -746,44 +722,7 @@ cdef class Soil:
     cdef Soil from_ptr(cSoil *_ptr):
         cdef Soil soil = Soil.__new__(Soil)
         soil._ = _ptr
-        for l in range(40):
-            for k in range(20):
-                soil.cells[l][k] = SoilCell.from_ptr(&_ptr[0].cells[l][k], l, k)
         return soil
-
-    def root_impedance(self):
-        """This function calculates soil mechanical impedance to root growth, rtimpd(l,k), for all soil cells. It is called from PotentialRootGrowth(). The impedance is a function of bulk density and water content in each soil soil cell. No changes have been made in the original GOSSYM code."""
-        global gh2oc, tstbd, impede, inrim, ncurve
-        for l in range(nl):
-            j = SoilHorizonNum[l]
-            Bd = BulkDensity[j]  # bulk density for this layer
-
-            for jj in range(inrim):
-                if Bd <= tstbd[jj][0]:
-                    break
-            j1 = min(jj, inrim - 1)
-            j0 = max(0, jj - 1)
-
-            for k in range(nk):
-                Vh2o = self._[0].cells[l][k].water_content / Bd
-                for ik in range(ncurve):
-                    if Vh2o <= gh2oc[ik]:
-                        break
-                i1 = min(ncurve - 1, ik)
-                i0 = max(0, ik - 1)
-
-                if j1 == 0:
-                    if i1 == 0 or Vh2o <= gh2oc[i1]:
-                        RootImpede[l][k] = impede[j1][i1]
-                    else:
-                        RootImpede[l][k] = impede[j1][i0] - (impede[j1][i0] - impede[j1][i1]) * (Vh2o - gh2oc[i0]) / (gh2oc[i1] - gh2oc[i0])
-                else:
-                    if i1 == 0 or Vh2o <= gh2oc[i1]:
-                        RootImpede[l][k] = impede[j0][i1] - (impede[j0][i1] - impede[j1][i1]) * (tstbd[j0][i1] - Bd) / (tstbd[j0][i1] - tstbd[j1][i1])
-                    else:
-                        temp1 = impede[j0][i1] - (impede[j0][i1] - impede[j1][i1]) * (tstbd[j0][i1] - Bd) / (tstbd[j0][i1] - tstbd[j1][i1])
-                        temp2 = impede[j0][i0] - (impede[j0][i0] - impede[j1][i1]) * (tstbd[j0][i0] - Bd) / (tstbd[j0][i0] - tstbd[j1][i0])
-                        RootImpede[l][k] = temp2 + (temp1 - temp2) * (Vh2o - gh2oc[i0]) / (gh2oc[i1] - gh2oc[i0])
 
 
 cdef class State:
@@ -853,6 +792,8 @@ cdef class State:
     root_age = np.zeros((40, 20), dtype=np.float64)
     soil_temperature = np.zeros((40, 20), dtype=np.float64)  # daily average soil temperature, oK.
     hours = np.empty(24, dtype=object)
+    cells = np.empty((40, 20), dtype=object)
+    cdef numpy.ndarray root_impedance  # root mechanical impedance for a soil cell, kg cm-2.
     cdef Simulation _sim
     cdef public Soil soil
     cdef public numpy.ndarray root_weights
@@ -1178,6 +1119,9 @@ cdef class State:
         state.soil = Soil.from_ptr(&_ptr[0].soil)
         for i in range(24):
             state.hours[i] = Hour()
+        for l in range(40):
+            for k in range(20):
+                state.cells[l][k] = SoilCell.from_ptr(&_ptr[0].soil.cells[l][k], l, k)
         for i in range(_ptr[0].number_of_pre_fruiting_nodes):
             state.pre_fruiting_nodes.append(PreFruitingNode.from_ptr(&_ptr[0].age_of_pre_fruiting_nodes[i]))
         return state
@@ -1249,13 +1193,13 @@ cdef class State:
         cuind = [1, 0.5, 0]  # the indices for the relative capability of uptake (between 0 and 1) of water and nutrients by root age classes.
         for l in range(40):
             for k in range(20):
-                self.soil.cells[l][k].root.weight_capable_uptake = 0
+                self.cells[l][k].root.weight_capable_uptake = 0
         # Loop for all soil soil cells with roots. compute for each soil cell root-weight capable of uptake (RootWtCapblUptake) as the sum of products of root weight and capability of uptake index (cuind) for each root class in it.
         for l in range(self.soil.number_of_layers_with_root):
             for k in range(self.soil._[0].layers[l].number_of_left_columns_with_root, self.soil._[0].layers[l].number_of_right_columns_with_root + 1):
                 for i in range(3):
                     if self.root_weights[l][k][i] > 1.e-15:
-                        self.soil.cells[l][k].root.weight_capable_uptake += self.root_weights[l][k][i] * cuind[i]
+                        self.cells[l][k].root.weight_capable_uptake += self.root_weights[l][k][i] * cuind[i]
 
     def predict_emergence(self, plant_date, hour, plant_row_column):
         """This function predicts date of emergence."""
@@ -1405,16 +1349,16 @@ cdef class State:
         cdef double rrl  # root resistance per g of active roots.
         for l in range(self.soil.number_of_layers_with_root):
             for k in range(self._[0].soil.layers[l].number_of_left_columns_with_root, self._[0].soil.layers[l].number_of_right_columns_with_root):
-                if self.soil.cells[l][k].root.weight_capable_uptake >= vpsil[10]:
-                    psinum += min(self.soil.cells[l][k].root.weight_capable_uptake, vpsil[11])
-                    sumlv += min(self.soil.cells[l][k].root.weight_capable_uptake, vpsil[11]) * cmg
+                if self.cells[l][k].root.weight_capable_uptake >= vpsil[10]:
+                    psinum += min(self.cells[l][k].root.weight_capable_uptake, vpsil[11])
+                    sumlv += min(self.cells[l][k].root.weight_capable_uptake, vpsil[11]) * cmg
                     rootvol += SIMULATED_LAYER_DEPTH[l] * wk(k, row_space)
                     if SoilPsi[l][k] <= vpsil[1]:
                         rrl = vpsil[2] / cmg
                     else:
                         rrl = (vpsil[3] - SoilPsi[l][k] * (vpsil[4] + vpsil[5] * SoilPsi[l][k])) / cmg
-                    rrlsum += min(self.soil.cells[l][k].root.weight_capable_uptake, vpsil[11]) / rrl
-                    vh2sum += self.soil.cells[l][k].water_content * min(self.soil.cells[l][k].root.weight_capable_uptake, vpsil[11])
+                    rrlsum += min(self.cells[l][k].root.weight_capable_uptake, vpsil[11]) / rrl
+                    vh2sum += self.cells[l][k].water_content * min(self.cells[l][k].root.weight_capable_uptake, vpsil[11])
         # Compute average root resistance (rroot) and average soil water content (vh2).
         cdef double dumyrs  # intermediate variable for computing cond.
         cdef double vh2  # average of soil water content, for all soil soil cells with roots.
@@ -1677,6 +1621,22 @@ cdef class State:
         self.root_age[:3,plant_row_column - 1:plant_row_column + 3] = 0.01
         self.root_age[3:7,plant_row_column:plant_row_column + 2] = 0.01
 
+    def compute_root_impedance(self, bulk_density):
+        """Calculates soil mechanical impedance to root growth, rtimpd(l,k), for all
+        soil cells.
+        The impedance is a function of bulk density and water content in each soil soil
+        cell. No changes have been made in the original GOSSYM code."""
+        water_content = np.array([
+            [self.cells[l][k].water_content for k in range(20)]
+            for l in range(40)
+        ], dtype=np.double) / bulk_density[:, None]
+        soil_imp = np.genfromtxt(Path(__file__).parent.parent / "cotton2k" / "core" / "soil_imp.csv", delimiter=",")
+        f = interp2d(soil_imp[0, 1:], soil_imp[1:, 0], soil_imp[1:, 1:])
+        self.root_impedance = np.array([
+            [f(bulk_density[l], water_content[l][k]) for k in range(20)]
+            for l in range(40)
+        ], dtype=np.double)
+
     def root_death(self, l, k):
         """This function computes the death of root tissue in each soil cell containing roots.
 
@@ -1890,7 +1850,10 @@ cdef class State:
         cdef double rgfac = 0.36  # potential relative growth rate of the roots (g/g/day).
         # Initialize to zero the PotGroRoots array.
         self._root_potential_growth[:] = 0
-        self.soil.root_impedance()
+        self.compute_root_impedance(np.array([
+            BulkDensity[SoilHorizonNum[l]]
+            for l in range(40)
+        ], dtype=np.double))
         for l in range(self.soil.number_of_layers_with_root):
             for k in range(nk):
                 # Check if this soil cell contains roots (if RootAge is greater than 0), and execute the following if this is true.
@@ -1911,10 +1874,10 @@ cdef class State:
                     kp1 = min(k + 1, nk - 1)
                     km1 = max(k - 1, 0)
 
-                    rtimpd0 = RootImpede[l][k]
-                    rtimpdkm1 = RootImpede[l][km1]
-                    rtimpdkp1 = RootImpede[l][kp1]
-                    rtimpdlp1 = RootImpede[lp1][k]
+                    rtimpd0 = self.root_impedance[l][k]
+                    rtimpdkm1 = self.root_impedance[l][km1]
+                    rtimpdkp1 = self.root_impedance[l][kp1]
+                    rtimpdlp1 = self.root_impedance[lp1][k]
                     rtimpdmin = min(rtimpd0, rtimpdkm1, rtimpdkp1, rtimpdlp1)  # minimum value of rtimpd
                     rtpct = SoilMechanicResistance(rtimpdmin)
                     # effect of oxygen deficiency on root growth (returned from SoilAirOnRootGrowth).
@@ -1955,11 +1918,11 @@ cdef class State:
         cdef double efacr  # as efac1 for the cell to the right of this cell.
         cdef double efacu  # as efac1 for the cell above this cell.
         cdef double srwp  # sum of all efac values.
-        efac1 = SIMULATED_LAYER_DEPTH[l] * column_width * self.soil.cells[l][k].root.growth_factor
-        efacl = rgfsd * self.soil.cells[l][km1].root.growth_factor
-        efacr = rgfsd * self.soil.cells[l][kp1].root.growth_factor
-        efacu = rgfup * self.soil.cells[lm1][k].root.growth_factor
-        efacd = rgfdn * self.soil.cells[lp1][k].root.growth_factor
+        efac1 = SIMULATED_LAYER_DEPTH[l] * column_width * self.cells[l][k].root.growth_factor
+        efacl = rgfsd * self.cells[l][km1].root.growth_factor
+        efacr = rgfsd * self.cells[l][kp1].root.growth_factor
+        efacu = rgfup * self.cells[lm1][k].root.growth_factor
+        efacd = rgfdn * self.cells[lp1][k].root.growth_factor
         srwp = efac1 + efacl + efacr + efacu + efacd
         # If srwp is very small, all the added weight will be in the same soil soil cell, and execution of this function is ended.
         if srwp < 1e-10:
@@ -2330,7 +2293,7 @@ cdef class State:
                     for l in range(lplow):
                         for k in range(20):
                             VolNh4NContent[l][k] += NFertilizer[i].amtamm * ferc / fertdp
-                            self.soil.cells[l][k].nitrate_nitrogen_content += NFertilizer[i].amtnit * ferc / fertdp
+                            self.cells[l][k].nitrate_nitrogen_content += NFertilizer[i].amtnit * ferc / fertdp
                             VolUreaNContent[l][k] += NFertilizer[i].amtura * ferc / fertdp
                 # If this is a FOLIAR fertilizer application:
                 elif NFertilizer[i].mthfrt == 2:
@@ -2340,7 +2303,7 @@ cdef class State:
                     # Update nitrogen contents of the upper layer.
                     for k in range(20):
                         VolNh4NContent[0][k] += NFertilizer[i].amtamm * (1 - 0.70 * self.light_interception) * ferc / SIMULATED_LAYER_DEPTH[0]
-                        self.soil.cells[0][k].nitrate_nitrogen_content += NFertilizer[i].amtnit * ferc / SIMULATED_LAYER_DEPTH[0]
+                        self.cells[0][k].nitrate_nitrogen_content += NFertilizer[i].amtnit * ferc / SIMULATED_LAYER_DEPTH[0]
                         VolUreaNContent[0][k] += NFertilizer[i].amtura * (1 - 0.70 * self.light_interception) * ferc / SIMULATED_LAYER_DEPTH[0]
                 # If this is a SIDE-DRESSING of N fertilizer:
                 elif NFertilizer[i].mthfrt == 1:
@@ -2364,24 +2327,24 @@ cdef class State:
                     # amount of urea N added to the soil by sidedressing (mg per cell)
                     addnur = NFertilizer[i].amtura * ferc * row_space / n00
                     # Update the nitrogen contents of these soil cells.
-                    self.soil.cells[lsdr][ksdr].nitrate_nitrogen_content += addnit / (side_dressed_layer_depth * wk(ksdr, row_space))
+                    self.cells[lsdr][ksdr].nitrate_nitrogen_content += addnit / (side_dressed_layer_depth * wk(ksdr, row_space))
                     VolNh4NContent[lsdr][ksdr] += addamm / (side_dressed_layer_depth * wk(ksdr, row_space))
                     VolUreaNContent[lsdr][ksdr] += addnur / (side_dressed_layer_depth * wk(ksdr, row_space))
                     if side_dressed_layer_depth * wk(ksdr, row_space) < 100:
                         if ksdr < nk - 1:
                             kp1 = ksdr + 1  # column to the right of ksdr.
-                            self.soil.cells[lsdr][kp1].nitrate_nitrogen_content += addnit / (side_dressed_layer_depth * wk(kp1, row_space))
+                            self.cells[lsdr][kp1].nitrate_nitrogen_content += addnit / (side_dressed_layer_depth * wk(kp1, row_space))
                             VolNh4NContent[lsdr][kp1] += addamm / (side_dressed_layer_depth * wk(kp1, row_space))
                             VolUreaNContent[lsdr][kp1] += addnur / (side_dressed_layer_depth * wk(kp1, row_space))
                         if ksdr > 0:
                             km1 = ksdr - 1  # column to the left of ksdr.
-                            self.soil.cells[lsdr][km1].nitrate_nitrogen_content += addnit / (side_dressed_layer_depth * wk(km1, row_space))
+                            self.cells[lsdr][km1].nitrate_nitrogen_content += addnit / (side_dressed_layer_depth * wk(km1, row_space))
                             VolNh4NContent[lsdr][km1] += addamm / (side_dressed_layer_depth * wk(km1, row_space))
                             VolUreaNContent[lsdr][km1] += addnur / (side_dressed_layer_depth * wk(km1, row_space))
                         if lsdr < nl - 1:
                             lp1 = lsdr + 1
                             depth = SIMULATED_LAYER_DEPTH[lp1]
-                            self.soil.cells[lp1][ksdr].nitrate_nitrogen_content += addnit / (depth * wk(ksdr, row_space))
+                            self.cells[lp1][ksdr].nitrate_nitrogen_content += addnit / (depth * wk(ksdr, row_space))
                             VolNh4NContent[lp1][ksdr] += addamm / (depth * wk(ksdr, row_space))
                             VolUreaNContent[lp1][ksdr] += addnur / (depth * wk(ksdr, row_space))
                 # If this is FERTIGATION (N fertilizer applied in drip irrigation):
@@ -2389,7 +2352,7 @@ cdef class State:
                     # Convert amounts added to mg cm-3, and update the nitrogen content of the soil cell in which the drip outlet is situated.
                     depth = SIMULATED_LAYER_DEPTH[LocationLayerDrip]
                     VolNh4NContent[LocationLayerDrip][LocationColumnDrip] += NFertilizer[i].amtamm * ferc * row_space / (depth * wk(LocationColumnDrip, row_space))
-                    self.soil.cells[LocationLayerDrip][LocationColumnDrip].nitrate_nitrogen_content += NFertilizer[i].amtnit * ferc * row_space / (depth * wk(LocationColumnDrip, row_space))
+                    self.cells[LocationLayerDrip][LocationColumnDrip].nitrate_nitrogen_content += NFertilizer[i].amtnit * ferc * row_space / (depth * wk(LocationColumnDrip, row_space))
                     VolUreaNContent[LocationLayerDrip][LocationColumnDrip] += NFertilizer[i].amtura * ferc * row_space / (depth * wk(LocationColumnDrip, row_space))
 
     def water_uptake(self, row_space, per_plant_area):
@@ -2415,22 +2378,22 @@ cdef class State:
                 vh2hi = qpsi(-1, thad[l], thts[l], alpha[j], vanGenuchtenBeta[j])  # upper limit of water content for the transpiration function
                 for k in range(self.soil._[0].layers[l].number_of_left_columns_with_root, self.soil._[0].layers[l].number_of_right_columns_with_root + 1):
                     # reduction factor for water uptake, caused by low levels of soil water, as a linear function of cell.water_content, between vh2lo and vh2hi.
-                    redfac = min(max((self.soil.cells[l][k].water_content - vh2lo) / (vh2hi - vh2lo), 0), 1)
+                    redfac = min(max((self.cells[l][k].water_content - vh2lo) / (vh2hi - vh2lo), 0), 1)
                     # The computed 'uptake factor' (upf) for each soil cell is the product of 'root weight capable of uptake' and redfac.
-                    upf[l][k] = self.soil.cells[l][k].root.weight_capable_uptake * redfac
+                    upf[l][k] = self.cells[l][k].root.weight_capable_uptake * redfac
 
             difupt = 0  # the cumulative difference between computed transpiration and actual transpiration, in cm3, due to limitation of PWP.
             for l in range(self.soil.number_of_layers_with_root):
                 for k in range(self.soil._[0].layers[l].number_of_left_columns_with_root, self.soil._[0].layers[l].number_of_right_columns_with_root + 1):
-                    if upf[l][k] > 0 and self.soil.cells[l][k].water_content > thetar[l]:
+                    if upf[l][k] > 0 and self.cells[l][k].water_content > thetar[l]:
                         # The amount of water extracted from each cell is proportional to its 'uptake factor'.
                         upth2o = Transp * upf[l][k] / upf.sum()  # transpiration from a soil cell, cm3 per day
                         # Update cell.water_content, storing its previous value as vh2ocx.
-                        vh2ocx = self.soil.cells[l][k].water_content  # previous value of water_content of this cell
-                        self.soil.cells[l][k].water_content -= upth2o / (SIMULATED_LAYER_DEPTH[l] * wk(k, row_space))
+                        vh2ocx = self.cells[l][k].water_content  # previous value of water_content of this cell
+                        self.cells[l][k].water_content -= upth2o / (SIMULATED_LAYER_DEPTH[l] * wk(k, row_space))
                         # If the new value of cell.water_content is less than the permanent wilting point, modify the value of upth2o so that water_content will be equal to it.
-                        if self.soil.cells[l][k].water_content < thetar[l]:
-                            self.soil.cells[l][k].water_content = thetar[l]
+                        if self.cells[l][k].water_content < thetar[l]:
+                            self.cells[l][k].water_content = thetar[l]
 
                             # Compute the difference due to this correction and add it to difupt.
                             xupt = (vh2ocx - thetar[l]) * SIMULATED_LAYER_DEPTH[l] * wk(k, row_space)  # intermediate computation of upth2o
@@ -2453,8 +2416,8 @@ cdef class State:
             j = SoilHorizonNum[l]
             for k in range(self.soil._[0].layers[l].number_of_left_columns_with_root, self.soil._[0].layers[l].number_of_right_columns_with_root + 1):
                 SoilPsi[l][k] = (
-                    psiq(self.soil.cells[l][k].water_content, thad[l], thts[l], alpha[j], vanGenuchtenBeta[j])
-                    - PsiOsmotic(self.soil.cells[l][k].water_content, thts[l], ElCondSatSoilToday)
+                    psiq(self.cells[l][k].water_content, thad[l], thts[l], alpha[j], vanGenuchtenBeta[j])
+                    - PsiOsmotic(self.cells[l][k].water_content, thts[l], ElCondSatSoilToday)
                 )
 
         # compute ActualTranspiration as actual water transpired, in mm.
@@ -2488,10 +2451,10 @@ cdef class State:
             sumdl[j] += SIMULATED_LAYER_DEPTH[l]
             for k in range(self.soil._[0].layers[l].number_of_left_columns_with_root, self.soil._[0].layers[l].number_of_right_columns_with_root + 1):
                 # Check that RootWtCapblUptake in any cell is more than a minimum value vrcumin.
-                if self.soil.cells[l][k].root.weight_capable_uptake >= vrcumin:
+                if self.cells[l][k].root.weight_capable_uptake >= vrcumin:
                     # Compute sumwat as the weighted sum of the water content, and psinum as the sum of these weights. Weighting is by root weight capable of uptake, or if it exceeds a maximum value (vrcumax) this maximum value is used for weighting.
-                    sumwat[j] += self.soil.cells[l][k].water_content * SIMULATED_LAYER_DEPTH[l] * wk(k, row_space) * min(self.soil.cells[l][k].root.weight_capable_uptake, vrcumax)
-                    psinum[j] += SIMULATED_LAYER_DEPTH[l] * wk(k, row_space) * min(self.soil.cells[l][k].root.weight_capable_uptake, vrcumax)
+                    sumwat[j] += self.cells[l][k].water_content * SIMULATED_LAYER_DEPTH[l] * wk(k, row_space) * min(self.cells[l][k].root.weight_capable_uptake, vrcumax)
+                    psinum[j] += SIMULATED_LAYER_DEPTH[l] * wk(k, row_space) * min(self.cells[l][k].root.weight_capable_uptake, vrcumax)
         sumpsi = 0  # weighted sum of avgpsi
         sumnum = 0  # sum of weighting coefficients for computing AverageSoilPsi.
         for j in range(9):
@@ -2793,27 +2756,27 @@ cdef class State:
             # Compute the initial volumetric water content (cell.water_content) of each layer, and check that it will not be less than the air-dry value or more than pore space volume.
             j = min(int((sumdl - 1) / LayerDepth), 13)
             n = SoilHorizonNum[l]
-            self.soil.cells[l][0].water_content = min(max(FieldCapacity[l] * h2oint[j] / 100, airdr[n]), PoreSpace[l])
+            self.cells[l][0].water_content = min(max(FieldCapacity[l] * h2oint[j] / 100, airdr[n]), PoreSpace[l])
             # Initial values of ammonium N (rnnh4, VolNh4NContent) and nitrate N (rnno3, VolNo3NContent) are converted from kgs per ha to mg / cm3 for each soil layer, after checking for minimal amounts.
             rnno3[j] = max(rnno3[j], 2.0)
             rnnh4[j] = max(rnnh4[j], 0.2)
-            self.soil.cells[l][0].nitrate_nitrogen_content = rnno3[j] / LayerDepth * 0.01
+            self.cells[l][0].nitrate_nitrogen_content = rnno3[j] / LayerDepth * 0.01
             VolNh4NContent[l][0] = rnnh4[j] / LayerDepth * 0.01
             # organic matter in mg / cm3 units.
             om = (oma[j] / 100) * bdl[l] * 1000
             # potom is the proportion of readily mineralizable om. it is a function of soil depth (sumdl, in cm), modified from GOSSYM (where it probably includes the 0.4 factor for organic C in om).
             potom = max(0.0, 0.15125 - 0.02878 * log(sumdl))
             # FreshOrganicMatter is the readily mineralizable organic matter (= "fresh organic matter" in CERES models). HumusOrganicMatter is the remaining organic matter, which is mineralized very slowly.
-            self.soil.cells[l][0].fresh_organic_matter = om * potom
+            self.cells[l][0].fresh_organic_matter = om * potom
             HumusOrganicMatter[l][0] = om * (1 - potom)
         # Since the initial value has been set for the first column only in each layer, these values are now assigned to all the other columns.
         for l in range(40):
             VolUreaNContent[l][0] = 0
             for k in range(1, 20):
-                self.soil.cells[l][k].water_content = self.soil.cells[l][0].water_content
-                self.soil.cells[l][k].nitrate_nitrogen_content = self.soil.cells[l][0].nitrate_nitrogen_content
+                self.cells[l][k].water_content = self.cells[l][0].water_content
+                self.cells[l][k].nitrate_nitrogen_content = self.cells[l][0].nitrate_nitrogen_content
                 VolNh4NContent[l][k] = VolNh4NContent[l][0]
-                self.soil.cells[l][k].fresh_organic_matter = self.soil.cells[l][0].fresh_organic_matter
+                self.cells[l][k].fresh_organic_matter = self.cells[l][0].fresh_organic_matter
                 HumusOrganicMatter[l][k] = HumusOrganicMatter[l][0]
                 VolUreaNContent[l][k] = 0
         self.initialize_soil_temperature()
@@ -3277,7 +3240,7 @@ cdef class Simulation:
         cdef double so2 = SoilTemp[1][k]  # 2nd soil layer temperature, K
         cdef double so3 = SoilTemp[2][k]  # 3rd soil layer temperature, K
         # Compute soil surface albedo (based on Horton and Chung, 1991):
-        ag = compute_soil_surface_albedo(state.soil.cells[0][k].water_content, FieldCapacity[0], thad[0], self.site_parameters[15], self.site_parameters[16])
+        ag = compute_soil_surface_albedo(state.cells[0][k].water_content, FieldCapacity[0], thad[0], self.site_parameters[15], self.site_parameters[16])
 
         rzero, rss, rsup = compute_incoming_short_wave_radiation(hour.radiation, sf * cswint, ag)
         rlzero = compute_incoming_long_wave_radiation(hour.humidity, hour.temperature, hour.cloud_cov, hour.cloud_cor)
