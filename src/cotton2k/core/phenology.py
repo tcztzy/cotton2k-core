@@ -202,7 +202,7 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
             .fruiting_branches[l]
             .nodes[m]
         )
-        if site.stage == Stage.NotYetFormed:
+        if self.fruiting_nodes_stage[k, l, m] == Stage.NotYetFormed:  # type: ignore
             site.boll.cumulative_temperature = 0
             return None
         # LeafAge(k,l,m) is the age of the leaf at this site.
@@ -220,7 +220,7 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
             site.leaf.age += var38
         # FruitingCode = 3, 4, 5 or 6 indicates that this node has an open boll,
         # or has been completely abscised. Return in this case.
-        if site.stage in (
+        if self.fruiting_nodes_stage[k, l, m] in (  # type: ignore
             Stage.MatureBoll,
             Stage.AbscisedAsBoll,
             Stage.AbscisedAsSquare,
@@ -248,13 +248,15 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
         # If square is old enough, make it a green boll: initialize the computations of
         # average boll temperature (boltmp) and boll age (AgeOfBoll). Stage will now be
         # Stage.YoungGreenBoll.
-        if site.stage == Stage.Square:
+        if self.fruiting_nodes_stage[k, l, m] == Stage.Square:  # type: ignore
             if site.age >= vfrsite[8]:  # type: ignore[attr-defined]
                 (
                     site.boll.cumulative_temperature
                 ) = self.average_temperature  # type: ignore[attr-defined]
                 site.boll.age = self.day_inc  # type: ignore[attr-defined]
-                site.stage = Stage.YoungGreenBoll  # type: ignore[attr-defined]
+                self.fruiting_nodes_stage[  # type: ignore[attr-defined]
+                    k, l, m
+                ] = Stage.YoungGreenBoll
                 self.new_boll_formation(site)  # type: ignore[attr-defined]
                 # If this is the first flower, define FirstBloom.
                 if (
@@ -296,11 +298,11 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
         # if this node is a young green boll (Stage.YoungGreenBoll):
         # Check boll age and after a fixed age convert it to an "old" green boll
         # (Stage.GreenBoll).
-        if site.stage == Stage.YoungGreenBoll:
+        if self.fruiting_nodes_stage[k, l, m] == Stage.YoungGreenBoll:  # type: ignore
             if site.boll.age >= vfrsite[9]:
-                site.stage = Stage.GreenBoll
+                self.fruiting_nodes_stage[k, l, m] = Stage.GreenBoll  # type: ignore
             return None
-        if site.stage == Stage.GreenBoll:
+        if self.fruiting_nodes_stage[k, l, m] == Stage.GreenBoll:  # type: ignore
             self.boll_opening(  # type: ignore[attr-defined]
                 site,
                 defoliate_date,
@@ -337,7 +339,9 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
         vb = self._new_vegetative_branch
         # Assign 1 to FruitFraction and FruitingCode of the first site of this branch.
         vb.fruiting_branches[0].nodes[0].fraction = 1
-        vb.fruiting_branches[0].nodes[0].stage = Stage.Square
+        self.fruiting_nodes_stage[
+            self.number_of_vegetative_branches, 0, 0
+        ] = Stage.Square
         # Add a new leaf to the first site of this branch.
         vb.fruiting_branches[0].nodes[0].leaf.area = initial_leaf_area
         vb.fruiting_branches[0].nodes[0].leaf.weight = (
@@ -444,7 +448,9 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
         new_branch.number_of_fruiting_nodes = 1
         new_node = new_branch.nodes[0]
         new_node.fraction = 1
-        new_node.stage = Stage.Square
+        self.fruiting_nodes_stage[
+            k, vb.number_of_fruiting_branches - 1, 0
+        ] = Stage.Square
         # Initiate new leaves at the first node of the new fruiting branch, and at the
         # corresponding main stem node. The mass and nitrogen in the new leaves is
         # substacted from the stem.
@@ -522,7 +528,7 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
         fb.number_of_fruiting_nodes += 1
         node = fb.nodes[nnid + 1]
         node.fraction = 1
-        node.stage = Stage.Square
+        self.fruiting_nodes_stage[k, l, nnid + 1] = Stage.Square
         # Initiate a new leaf at the new node. The mass and nitrogen in the new leaf is
         # substacted from the stem.
         node.leaf.area = leaf_area
@@ -542,7 +548,7 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
         self.vegetative_branches[0].number_of_fruiting_branches = 1
         self.vegetative_branches[0].fruiting_branches[0].number_of_fruiting_nodes = 1
         first_node = self.vegetative_branches[0].fruiting_branches[0].nodes[0]
-        first_node.stage = Stage.Square
+        self.fruiting_nodes_stage[0, 0, 0] = Stage.Square
         first_node.fraction = 1
         # Initialize a new leaf at this position. define its initial weight and area.
         # VarPar[34] is the initial area of a new leaf. The mass and nitrogen of the
@@ -625,7 +631,9 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
             return
         # If green boll is old enough (AgeOfBoll greater than dehiss), make it an open
         # boll, set stage to MatureBoll, and update boll and burr weights.
-        site.stage = Stage.MatureBoll
+        self.fruiting_nodes_stage[  # type: ignore
+            site.k, site.l, site.m
+        ] = Stage.MatureBoll
         self.open_bolls_weight += site.boll.weight  # type: ignore[attr-defined]
         self.open_bolls_burr_weight += site.burr.weight  # type: ignore[attr-defined]
         self.green_bolls_weight -= site.boll.weight  # type: ignore[attr-defined]

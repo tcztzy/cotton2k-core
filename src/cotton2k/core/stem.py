@@ -21,7 +21,7 @@ class StemGrowth:  # pylint: disable=too-few-public-methods,no-member
         main_stem = self.vegetative_branches[0]  # type: ignore[attr-defined]
         if (
             len(main_stem.fruiting_branches) < 3
-            or main_stem.fruiting_branches[2].nodes[0].stage == Stage.NotYetFormed
+            or self.fruiting_nodes_stage[0, 2, 0] == Stage.NotYetFormed  # type: ignore
         ):
             return var12 * (var13 + var14 * self.kday)  # type: ignore
         # (2) After the appearance of a square on the third fruiting branch.

@@ -429,9 +429,9 @@ cdef class Square:
 
 cdef class FruitingNode:
     cdef FruitingSite *_
-    cdef unsigned int k
-    cdef unsigned int l
-    cdef unsigned int m
+    cdef public unsigned int k
+    cdef public unsigned int l
+    cdef public unsigned int m
     cdef public Petiole petiole
 
     @property
@@ -481,14 +481,6 @@ cdef class FruitingNode:
     @property
     def square(self):
         return Square.from_ptr(&self._[0].square, self.k, self.l, self.m)
-
-    @property
-    def stage(self):
-        return self._[0].stage
-
-    @stage.setter
-    def stage(self, value):
-        self._[0].stage = value
 
     @staticmethod
     cdef FruitingNode from_ptr(FruitingSite *_ptr, unsigned int k, unsigned int l, unsigned int m):
@@ -687,6 +679,7 @@ cdef class State:
     cdef public numpy.ndarray root_growth_factor  # root growth correction factor in a soil cell (0 to 1).
     cdef public numpy.ndarray root_weights
     cdef public numpy.ndarray root_weight_capable_uptake  # root weight capable of uptake, in g per soil cell.
+    cdef public numpy.ndarray fruiting_nodes_stage
     cdef public object pollination_switch  # pollination switch: false = no pollination, true = yes.
     cdef public unsigned int seed_layer_number  # layer number where the seeds are located.
     cdef public unsigned int taproot_layer_number  # last soil layer with taproot.
@@ -797,7 +790,7 @@ cdef class State:
             for k in range(self.number_of_vegetative_branches):
                 for l in range(self.vegetative_branches[k].number_of_fruiting_branches):
                     for m in range(self.vegetative_branches[k].fruiting_branches[l].number_of_fruiting_nodes):
-                        if self.vegetative_branches[k].fruiting_branches[l].nodes[m].stage == Stage.Square:
+                        if self.fruiting_nodes_stage[k, l, m] == Stage.Square:
                             yield self.vegetative_branches[k].fruiting_branches[l].nodes[m].fraction
         return sum(g())
 
@@ -1362,19 +1355,19 @@ cdef class State:
         self.actual_boll_growth = 0
         self.actual_burr_growth = 0
         # Begin loops over all fruiting sites.
-        for vegetative_branch in self.vegetative_branches:
-            for fruiting_branch in vegetative_branch.fruiting_branches:
-                for site in fruiting_branch.nodes:
+        for k, vegetative_branch in enumerate(self.vegetative_branches):
+            for l, fruiting_branch in enumerate(vegetative_branch.fruiting_branches):
+                for m, site in enumerate(fruiting_branch.nodes):
                     # If this site is a square, the actual dry weight added to it (dwsq) is proportional to its potential growth.
                     # Update the weight of this square (SquareWeight), sum of today's added dry weight to squares (state.actual_square_growth), and total weight of squares (self.square_weight).
-                    if site.stage == Stage.Square:
+                    if self.fruiting_nodes_stage[k, l, m] == Stage.Square:
                         dwsq = site.square.potential_growth * self.fruit_growth_ratio  # dry weight added to square.
 
                         site.square.weight += dwsq
                         self.actual_square_growth += dwsq
                         self.square_weight += site.square.weight
                     # If this site is a green boll, the actual dry weight added to seedcotton and burrs is proportional to their respective potential growth.
-                    if site.stage == Stage.GreenBoll or site.stage == Stage.YoungGreenBoll:
+                    if self.fruiting_nodes_stage[k, l, m] in [Stage.GreenBoll, Stage.YoungGreenBoll]:
                         # dry weight added to seedcotton in a boll.
                         dwboll = site.boll.potential_growth * self.fruit_growth_ratio
                         site.boll.weight += dwboll
@@ -2014,11 +2007,11 @@ cdef class State:
                     for l in range(self.vegetative_branches[k].number_of_fruiting_branches):
                         for m in range(self.vegetative_branches[k].fruiting_branches[l].number_of_fruiting_nodes):
                             site = self.vegetative_branches[k].fruiting_branches[l].nodes[m]
-                            if site.stage in (Stage.Square, Stage.YoungGreenBoll, Stage.GreenBoll):
+                            if self.fruiting_nodes_stage[k, l, m] in (Stage.Square, Stage.YoungGreenBoll, Stage.GreenBoll):
                                 # ratio of abscission for a fruiting site.
                                 abscissionRatio = self.site_abscission_ratio(k, l, m, lt)
                                 if abscissionRatio > 0:
-                                    if site.stage == Stage.Square:
+                                    if self.fruiting_nodes_stage[k, l, m] == Stage.Square:
                                         self.square_abscission(site, abscissionRatio)
                                     else:
                                         self.boll_abscission(site, abscissionRatio, self.ginning_percent if self.ginning_percent > 0 else site.ginning_percent)
@@ -2052,7 +2045,7 @@ cdef class State:
         pabs = 0  # probability of abscission of a fruiting site.
         shedt = 0  # total shedding ratio, caused by various stresses.
         # (1) Squares (FruitingCode = 1).
-        if site.stage == Stage.Square:
+        if self.fruiting_nodes_stage[k, l, m] == Stage.Square:
             if site.age < vabsc[3]:
                 pabs = 0  # No abscission of very young squares (AgeOfSite less than vabsc(3))
             else:
@@ -2066,7 +2059,7 @@ cdef class State:
             # Total shedding ratio (shedt) is a product of the effects of carbohydrate stress and nitrogen stress.
             shedt = 1 - (1 - ShedByCarbonStress[lt]) * (1 - ShedByNitrogenStress[lt])
         # (2) Very young bolls (FruitingCode = 7, and AgeOfBoll less than VarPar[47]).
-        elif site.stage == Stage.YoungGreenBoll and site.boll.age <= VarPar[47]:
+        elif self.fruiting_nodes_stage[k, l, m] == Stage.YoungGreenBoll and site.boll.age <= VarPar[47]:
             # There is a constant probability of shedding (VarPar[48]), and shedt is a product of the effects carbohydrate, and nitrogen stresses. Note that nitrogen stress has only a partial effect in this case, as modified by vabsc[2].
             pabs = VarPar[48]
             shedt = 1 - (1 - ShedByCarbonStress[lt]) * (1 - vabsc[2] * ShedByNitrogenStress[lt])
@@ -2105,7 +2098,7 @@ cdef class State:
             self.square_nitrogen -= site.square.weight * self.square_nitrogen_concentration
             self.square_weight -= site.square.weight
             site.square.weight = 0
-            site.stage = Stage.AbscisedAsSquare
+            self.fruiting_nodes_stage[site.k, site.l, site.m] = Stage.AbscisedAsSquare
 
     def boll_abscission(self, site, abscissionRatio, gin1):
         """This function simulates the abscission of a single green boll at site (k, l, m). It is called from function FruitingSitesAbscission() if this site is a green boll.
@@ -2129,7 +2122,7 @@ cdef class State:
         # If FruitFraction[k][l][m] is less than 0.001 make it zero, update state.seed_nitrogen, state.burr_nitrogen, CumPlantNLoss, state.green_bolls_weight, state.green_bolls_burr_weight, BollWeight[k][l][m], state.site[k][l][m].burr.weight, and assign 4 to FruitingCode.
 
         if site.fraction <= 0.001:
-            site.stage = Stage.AbscisedAsBoll
+            self.fruiting_nodes_stage[site.k, site.l, site.m] = Stage.AbscisedAsBoll
             self.seed_nitrogen -= site.boll.weight * (1 - gin1) * self.seed_nitrogen_concentration
             self.burr_nitrogen -= site.burr.weight * self.burr_nitrogen_concentration
             site.fraction = 0
@@ -2146,9 +2139,9 @@ cdef class State:
             for l in range(self.vegetative_branches[k].number_of_fruiting_branches):
                 for m in range(self.vegetative_branches[k].fruiting_branches[l].number_of_fruiting_nodes):
                     site = self.vegetative_branches[k].fruiting_branches[l].nodes[m]
-                    if site.stage == Stage.YoungGreenBoll or site.stage == Stage.GreenBoll:
+                    if self.fruiting_nodes_stage[k, l, m] in [Stage.YoungGreenBoll, Stage.GreenBoll]:
                         self.number_of_green_bolls += site.fraction
-                    elif site.stage == Stage.MatureBoll:
+                    elif self.fruiting_nodes_stage[k, l, m] == Stage.MatureBoll:
                         self.number_of_open_bolls += site.fraction
 
     def new_boll_formation(self, site):
@@ -2158,7 +2151,7 @@ cdef class State:
         cdef double[2] vnewboll = [0.31, 0.02]
         # If bPollinSwitch is false accumulate number of blooms to be dropped, and define FruitingCode as 6.
         if not self.pollination_switch:
-            site.stage = Stage.AbscisedAsFlower
+            self.fruiting_nodes_stage[site.k, site.l, site.m] = Stage.AbscisedAsFlower
             site.fraction = 0
             site.square.weight = 0
             return
@@ -3032,6 +3025,7 @@ cdef class Simulation:
         state0.supplied_nitrate_nitrogen = 0
         state0.petiole_nitrate_nitrogen_concentration = 0
         state0.delay_of_new_fruiting_branch = [0, 0, 0]
+        state0.fruiting_nodes_stage = np.zeros((3, 30, 5), dtype=np.int_)
         for i in range(9):
             state0.pre_fruiting_nodes_age[i] = 0
             state0.pre_fruiting_leaf_area[i] = 0
@@ -3056,7 +3050,6 @@ cdef class Simulation:
                         fraction=0,
                         average_temperature=0,
                         ginning_percent=0.35,
-                        stage=Stage.NotYetFormed,
                         leaf=dict(
                             age=0,
                             potential_growth=0,
@@ -3550,7 +3543,7 @@ cdef class Simulation:
                 for m in range(self._sim.states[u].vegetative_branches[k].fruiting_branches[l].number_of_fruiting_nodes):  # loop for nodes on a fruiting branch
                     # Calculate potential square growth for node (k,l,m).
                     # Sum potential growth rates of squares as PotGroAllSquares.
-                    if self._sim.states[u].vegetative_branches[k].fruiting_branches[l].nodes[m].stage == Stage.Square:
+                    if state.fruiting_nodes_stage[k, l, m] == Stage.Square:
                         # ratesqr is the rate of square growth, g per square per day.
                         # The routine for this is derived from GOSSYM, and so are the parameters used.
                         ratesqr = tfrt * vpotfrt[3] * exp(-vpotfrt[2] + vpotfrt[3] * self._sim.states[u].vegetative_branches[k].fruiting_branches[l].nodes[m].age)
@@ -3567,7 +3560,7 @@ cdef class Simulation:
                     #    wbol = wbmax / (1 + pex)
                     # and the potential boll growth rate at this age will be the derivative of this function:
                     #    ratebol = 4 * rbmax * pex / (1. + pex)**2
-                    elif self._sim.states[u].vegetative_branches[k].fruiting_branches[l].nodes[m].stage == Stage.YoungGreenBoll or self._sim.states[u].vegetative_branches[k].fruiting_branches[l].nodes[m].stage == Stage.GreenBoll:
+                    elif state.fruiting_nodes_stage[k, l, m] in [Stage.YoungGreenBoll, Stage.GreenBoll]:
                         # pex is an intermediate variable to compute boll growth.
                         pex = exp(-4 * rbmax * (self._sim.states[u].vegetative_branches[k].fruiting_branches[l].nodes[m].boll.age - agemax) / wbmax)
                         # ratebol is the rate of boll (seed and lint) growth, g per boll per day.

@@ -47,7 +47,6 @@ typedef struct FruitingSiteStruct
     double fraction;            // fraction of fruit remaining at each fruiting site (0 to 1).
     double average_temperature; // running average temperature of each node.
     double ginning_percent;
-    enum Stage stage;
     Leaf leaf;
     struct SquareStruct square;
     Boll boll;

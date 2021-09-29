@@ -212,9 +212,13 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             "total_required_nitrogen",
         ):
             setattr(post, attr, getattr(pre, attr))
-        post.root_weights = pre.root_weights.copy()
-        post.root_growth_factor = pre.root_growth_factor.copy()
-        post.root_weight_capable_uptake = pre.root_weight_capable_uptake.copy()
+        for ndarray in (
+            "fruiting_nodes_stage",
+            "root_weights",
+            "root_growth_factor",
+            "root_weight_capable_uptake",
+        ):
+            setattr(post, ndarray, getattr(pre, ndarray).copy())
         self.states.append(State(post, self, self.state(i).open_bolls_weight))
         self._current_state = post  # pylint: disable=attribute-defined-outside-init
 
@@ -385,8 +389,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
         if (
             len(state.vegetative_branches[0].fruiting_branches) > 0
             and len(state.vegetative_branches[0].fruiting_branches[0].nodes) > 0
-            and state.vegetative_branches[0].fruiting_branches[0].nodes[0].stage
-            != Stage.NotYetFormed
+            and state.fruiting_nodes_stage[0, 0, 0] != Stage.NotYetFormed
         ):
             self._potential_fruit_growth(u)
         # Call PotentialStemGrowth() to compute PotGroStem, potential growth rate of
@@ -426,8 +429,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
         if (
             len(state.vegetative_branches[0].fruiting_branches) > 0
             and len(state.vegetative_branches[0].fruiting_branches[0].nodes) > 0
-            and state.vegetative_branches[0].fruiting_branches[0].nodes[0].stage
-            != Stage.NotYetFormed
+            and state.fruiting_nodes_stage[0, 0, 0] != Stage.NotYetFormed
         ):
             state.actual_fruit_growth()
         # Initialize state.leaf_weight.It is assumed that cotyledons fall off at time
@@ -460,7 +462,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             # node numbers of top node.
 
             if len(state.vegetative_branches[0].fruiting_branches) >= 2:
-                stage = state.vegetative_branches[0].fruiting_branches[1].nodes[0].stage
+                stage = state.fruiting_nodes_stage[0, 1, 0]
             else:
                 stage = Stage.NotYetFormed
             state.plant_height += state.add_plant_height(
