@@ -693,6 +693,7 @@ cdef class State:
     cdef public unsigned int version
     cdef public unsigned int kday
     cdef public unsigned int number_of_vegetative_branches  # number of vegetative branches (including the main branch), per plant.
+    cdef public double actual_boll_growth  # total actual growth of seedcotton in bolls, g plant-1 day-1.
     cdef public double actual_soil_evaporation  # actual evaporation from soil surface, mm day-1.
     cdef public double actual_square_growth  # total actual growth of squares, g plant-1 day-1.
     cdef public double actual_stem_growth  # actual growth rate of stems, g plant-1 day-1.
@@ -966,14 +967,6 @@ cdef class State:
     @total_actual_petiole_growth.setter
     def total_actual_petiole_growth(self, value):
         self._[0].total_actual_petiole_growth = value
-
-    @property
-    def actual_boll_growth(self):
-        return self._[0].actual_boll_growth
-
-    @actual_boll_growth.setter
-    def actual_boll_growth(self, value):
-        self._[0].actual_boll_growth = value
 
     @property
     def actual_burr_growth(self):
