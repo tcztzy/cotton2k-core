@@ -1,5 +1,7 @@
 from functools import cached_property
 
+from numpy.polynomial import Polynomial
+
 
 def petno3r(age: float) -> float:
     """ratio of :math:`NO_3` to total `N` in an individual petiole.
@@ -12,11 +14,19 @@ def petno3r(age: float) -> float:
     Returns
     -------
     float
+
+    Examples
+    --------
+    >>> petno3r(1)
+    0.945
+    >>> petno3r(2)
+    0.93
+    >>> petno3r(62)
+    0.03
+    >>> petno3r(63)
+    0.02
     """
-    p1 = 0.96  # the maximum ratio (of NO3 to total N in petioles).
-    p2 = 0.015  # the rate of decline of this ratio with age.
-    p3 = 0.02  # the minimum ratio
-    return max(p1 - age * p2, p3)
+    return max(Polynomial((0.96, -0.015))(age), 0.02)
 
 
 class PlantNitrogen:  # pylint: disable=too-few-public-methods,no-member,attribute-defined-outside-init,too-many-instance-attributes
