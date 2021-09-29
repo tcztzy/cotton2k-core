@@ -700,6 +700,7 @@ cdef class State:
     cdef public double actual_stem_growth  # actual growth rate of stems, g plant-1 day-1.
     cdef public double actual_transpiration  # actual transpiration from plants, mm day-1.
     cdef public double pre_fruiting_nodes_age[9]  # age of each prefruiting node, physiological days.
+    cdef public double pre_fruiting_leaf_area[9]  # area of prefruiting node leaves, dm2.
     cdef public double average_min_leaf_water_potential  #running average of min_leaf_water_potential for the last 3 days.
     cdef public double average_temperature  # average daily temperature, C, for 24 hours.
     cdef public double carbon_allocated_for_root_growth  # available carbon allocated for root growth, g per plant.
@@ -825,7 +826,7 @@ cdef class State:
             cotylwt = 0.20  # weight of cotyledons dry matter.
             area = 0.6 * cotylwt
         for j in range(self.number_of_pre_fruiting_nodes):
-            area += self.leaf_area_pre_fruiting[j]
+            area += self.pre_fruiting_leaf_area[j]
         for k in range(self.number_of_vegetative_branches):
             for l in range(self.vegetative_branches[k].number_of_fruiting_branches):
                 area += self.vegetative_branches[k].fruiting_branches[l].main_stem_leaf.area
@@ -948,10 +949,6 @@ cdef class State:
     @number_of_pre_fruiting_nodes.setter
     def number_of_pre_fruiting_nodes(self, value):
         self._[0].number_of_pre_fruiting_nodes = value
-
-    @property
-    def leaf_area_pre_fruiting(self):
-        return self._[0].leaf_area_pre_fruiting
 
     @property
     def total_actual_leaf_growth(self):
@@ -1228,7 +1225,7 @@ cdef class State:
                 leaf_area = initial_pre_fruiting_nodes_leaf_area
                 leaf_weight = leaf_area * self.leaf_weight_area_ratio
             self.number_of_pre_fruiting_nodes += 1
-            self._[0].leaf_area_pre_fruiting[self.number_of_pre_fruiting_nodes - 1] = leaf_area
+            self.pre_fruiting_leaf_area[self.number_of_pre_fruiting_nodes - 1] = leaf_area
             self.leaf_weight_pre_fruiting[self.number_of_pre_fruiting_nodes - 1] = leaf_weight
             self.leaf_weight += leaf_weight
             self.stem_weight -= leaf_weight
@@ -1323,14 +1320,14 @@ cdef class State:
 
     def actual_leaf_growth(self, vratio):
         """This function simulates the actual growth of leaves of cotton plants. It is called from PlantGrowth()."""
-        # Loop for all prefruiting node leaves. Added dry weight to each leaf is proportional to PotGroLeafWeightPreFru. Update leaf weight (state.leaf_weight_pre_fruiting) and leaf area (state.leaf_area_pre_fruiting) for each prefruiting node leaf. added dry weight to each petiole is proportional to PotGroPetioleWeightPreFru. update petiole weight (PetioleWeightPreFru) for each prefruiting node leaf.
+        # Loop for all prefruiting node leaves. Added dry weight to each leaf is proportional to PotGroLeafWeightPreFru. Update leaf weight (state.leaf_weight_pre_fruiting) and leaf area (state.pre_fruiting_leaf_area) for each prefruiting node leaf. added dry weight to each petiole is proportional to PotGroPetioleWeightPreFru. update petiole weight (PetioleWeightPreFru) for each prefruiting node leaf.
         # Compute total leaf weight (state.leaf_weight), total petiole weight (PetioleWeightNodes).
         for j in range(self.number_of_pre_fruiting_nodes): # loop by prefruiting node.
             self.leaf_weight_pre_fruiting[j] += PotGroLeafWeightPreFru[j] * vratio
             self.leaf_weight += self.leaf_weight_pre_fruiting[j]
             PetioleWeightPreFru[j] += PotGroPetioleWeightPreFru[j] * vratio
             self.petiole_weight += PetioleWeightPreFru[j]
-            self._[0].leaf_area_pre_fruiting[j] += PotGroLeafAreaPreFru[j] * vratio
+            self.pre_fruiting_leaf_area[j] += PotGroLeafAreaPreFru[j] * vratio
         # Loop for all fruiting branches on each vegetative branch, to compute actual growth of mainstem leaves.
         # Added dry weight to each leaf is proportional to PotGroLeafWeightMainStem, added dry weight to each petiole is proportional to PotGroPetioleWeightMainStem, and added area to each leaf is proportional to PotGroLeafAreaMainStem.
         # Update leaf weight (LeafWeightMainStem), petiole weight (PetioleWeightMainStem) and leaf area(LeafAreaMainStem) for each main stem node leaf.
@@ -1908,14 +1905,14 @@ cdef class State:
                 self.pre_fruiting_nodes_age[j] += self.day_inc
             # The leaf on this node is abscised if its age has reached droplf, and if there is a leaf here, and if LeafAreaIndex is not too small:
             # Update AbscisedLeafWeight, state.leaf_weight, state.petiole_weight, CumPlantNLoss.
-            # Assign zero to state.leaf_area_pre_fruiting, PetioleWeightPreFru and state.leaf_weight_pre_fruiting of this leaf.
+            # Assign zero to state.pre_fruiting_leaf_area, PetioleWeightPreFru and state.leaf_weight_pre_fruiting of this leaf.
             # If a defoliation was applied.
-            if self.pre_fruiting_nodes_age[j] >= droplf and self.leaf_area_pre_fruiting[j] > 0 and self.leaf_area_index > 0.1:
+            if self.pre_fruiting_nodes_age[j] >= droplf and self.pre_fruiting_leaf_area[j] > 0 and self.leaf_area_index > 0.1:
                 self.leaf_nitrogen -= self.leaf_weight_pre_fruiting[j] * self.leaf_nitrogen_concentration
                 self.leaf_weight -= self.leaf_weight_pre_fruiting[j]
                 self.petiole_nitrogen -= PetioleWeightPreFru[j] * self.petiole_nitrogen_concentration
                 self.petiole_weight -= PetioleWeightPreFru[j]
-                self._[0].leaf_area_pre_fruiting[j] = 0
+                self.pre_fruiting_leaf_area[j] = 0
                 self.leaf_weight_pre_fruiting[j] = 0
                 PetioleWeightPreFru[j] = 0
 
@@ -1924,8 +1921,8 @@ cdef class State:
         # When this is the first day of defoliation - if there are any leaves left on the prefruiting nodes, they will be shed at this stage.
         if self.date == defoliate_date:
             for j in range(self.number_of_pre_fruiting_nodes):
-                if self.leaf_area_pre_fruiting[j] > 0:
-                    self.leaf_area_pre_fruiting[j] = 0
+                if self.pre_fruiting_leaf_area[j] > 0:
+                    self.pre_fruiting_leaf_area[j] = 0
                     self.leaf_nitrogen -= self.leaf_weight_pre_fruiting[j] * self.leaf_nitrogen_concentration
                     self.leaf_weight -= self.leaf_weight_pre_fruiting[j]
                     self.petiole_nitrogen -= PetioleWeightPreFru[j] * self.petiole_nitrogen_concentration
@@ -3037,7 +3034,7 @@ cdef class Simulation:
         state0.delay_of_new_fruiting_branch = [0, 0, 0]
         for i in range(9):
             state0.pre_fruiting_nodes_age[i] = 0
-            state0.leaf_area_pre_fruiting[i] = 0
+            state0.pre_fruiting_leaf_area[i] = 0
             state0.leaf_weight_pre_fruiting[i] = 0
         for k in range(3):
             state0._[0].vegetative_branches[k].number_of_fruiting_branches = 0
@@ -3631,7 +3628,7 @@ cdef class Simulation:
         rate = 0  # growth rate of area of a leaf.
         # Compute the potential growth rate of prefruiting leaves. smax and c are functions of prefruiting node number.
         for j in range(state.number_of_pre_fruiting_nodes):
-            if state.leaf_area_pre_fruiting[j] <= 0:
+            if state.pre_fruiting_leaf_area[j] <= 0:
                 PotGroLeafAreaPreFru[j] = 0
                 PotGroLeafWeightPreFru[j] = 0
                 PotGroPetioleWeightPreFru[j] = 0

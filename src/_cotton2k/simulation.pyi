@@ -33,7 +33,6 @@ class State:
     kday: int
     hours: N.ndarray
     leaf_area_index: float
-    leaf_area_pre_fruiting: list[float]
     light_interception: float
     max_leaf_water_potential: float
     min_leaf_water_potential: float
@@ -43,6 +42,7 @@ class State:
     number_of_vegetative_branches: int
     number_of_pre_fruiting_nodes: int
     plant_height: float
+    pre_fruiting_leaf_area: list[float]
     pre_fruiting_nodes_age: list[float]
     soil_temperature: N.ndarray
     vegetative_branches: list[VegetativeBranch]

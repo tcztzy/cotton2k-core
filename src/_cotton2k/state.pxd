@@ -47,7 +47,6 @@ cdef extern from "State.hpp":
         double petiole_nitrogen
         double petiole_nitrate_nitrogen_concentration
         int number_of_pre_fruiting_nodes
-        double leaf_area_pre_fruiting[9]
         double delay_for_new_branch[3]
         cVegetativeBranch vegetative_branches[3]
         cSoil soil

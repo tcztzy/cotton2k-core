@@ -202,6 +202,8 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             "number_of_vegetative_branches",
             "pavail",
             "plant_height",
+            "pre_fruiting_nodes_age",
+            "pre_fruiting_leaf_area",
             "seed_layer_number",
             "seed_moisture",
             "stem_weight",
