@@ -1808,7 +1808,6 @@ cdef class State:
                     stday = self.soil_temperature[l][k] - 273.161  # soil temperature, C, this day's average for this cell.
                     temprg = SoilTemOnRootGrowth(stday)  # effect of soil temperature on root growth.
                     # Compute soil mechanical resistance for each soil cell by calling SoilMechanicResistance{}, the effect of soil aeration on root growth by calling SoilAirOnRootGrowth(), and the effect of soil nitrate on root growth by calling SoilNitrateOnRootGrowth().
-                    rtpct # effect of soil mechanical resistance on root growth (returned from SoilMechanicResistance).
 
                     lp1 = l if l == nl - 1 else l + 1  # layer below l.
 
@@ -1821,7 +1820,7 @@ cdef class State:
                     rtimpdkp1 = self.root_impedance[l][kp1]
                     rtimpdlp1 = self.root_impedance[lp1][k]
                     rtimpdmin = min(rtimpd0, rtimpdkm1, rtimpdkp1, rtimpdlp1)  # minimum value of rtimpd
-                    rtpct = SoilMechanicResistance(rtimpdmin)
+                    rtpct = SoilMechanicResistance(rtimpdmin)  # effect of soil mechanical resistance on root growth (returned from SoilMechanicResistance).
                     # effect of oxygen deficiency on root growth (returned from SoilAirOnRootGrowth).
                     rtrdo = SoilAirOnRootGrowth(SoilPsi[l][k], PoreSpace[l], self._[0].soil.cells[l][k].water_content)
                     # effect of nitrate deficiency on root growth (returned from SoilNitrateOnRootGrowth).
@@ -2103,12 +2102,12 @@ cdef class State:
             pabs = VarPar[48]
             shedt = 1 - (1 - ShedByCarbonStress[lt]) * (1 - vabsc[2] * ShedByNitrogenStress[lt])
         # (3) Medium age bolls (AgeOfBoll between VarPar[47] and VarPar[47] + VarPar[49]).
-        elif site.boll.age > VarPar[47] and site.boll.age <= (VarPar[47] + VarPar[49]):
+        elif VarPar[47] < site.boll.age <= (VarPar[47] + VarPar[49]):
             # pabs is linearly decreasing with age, and shedt is a product of the effects carbohydrate, nitrogen and water stresses.  Note that nitrogen stress has only a partial effect in this case, as modified by vabsc[4].
             pabs = VarPar[48] - (VarPar[48] - VarPar[50]) * (site.boll.age - VarPar[47]) / VarPar[49]
             shedt = 1 - (1 - ShedByCarbonStress[lt]) * (1 - vabsc[4] * ShedByNitrogenStress[lt]) * (1 - ShedByWaterStress[lt])
         # (4) Older bolls (AgeOfBoll between VarPar[47] + VarPar[49] and VarPar[47] + 2*VarPar[49]).
-        elif site.boll.age > (VarPar[47] + VarPar[49]) and site.boll.age <= (VarPar[47] + 2 * VarPar[49]):
+        elif (VarPar[47] + VarPar[49]) < site.boll.age <= (VarPar[47] + 2 * VarPar[49]):
             # pabs is linearly decreasing with age, and shedt is affected only by water stress.
             pabs = VarPar[50] / VarPar[49] * (VarPar[47] + 2 * VarPar[49] - site.boll.age)
             shedt = ShedByWaterStress[lt]
@@ -3760,7 +3759,7 @@ cdef class Simulation:
                 if i == 0 and not self.idsw:
                     # If this is first defoliation - check the percentage of boll opening.
                     # If it is after the defined date, or the percent boll opening is greater than the defined threshold - set defoliation date as this day and set a second prediction.
-                    if (state.date.timetuple().tm_yday >= DefoliationDate[0] and DefoliationDate[0] > 0) or OpenRatio > DefoliationMethod[i]:
+                    if (state.date.timetuple().tm_yday >= DefoliationDate[0] > 0) or OpenRatio > DefoliationMethod[i]:
                         self.idsw = True
                         DefoliationDate[0] = state.date.timetuple().tm_yday
                         DefoliantAppRate[1] = -99.9
