@@ -687,6 +687,7 @@ cdef class State:
     cdef public numpy.ndarray root_growth_factor  # root growth correction factor in a soil cell (0 to 1).
     cdef public numpy.ndarray root_weights
     cdef public numpy.ndarray root_weight_capable_uptake  # root weight capable of uptake, in g per soil cell.
+    cdef public object pollination_switch  # pollination switch: false = no pollination, true = yes.
     cdef public unsigned int seed_layer_number  # layer number where the seeds are located.
     cdef public unsigned int taproot_layer_number  # last soil layer with taproot.
     cdef public unsigned int year
@@ -1015,14 +1016,6 @@ cdef class State:
     @petiole_nitrate_nitrogen_concentration.setter
     def petiole_nitrate_nitrogen_concentration(self, value):
         self._[0].petiole_nitrate_nitrogen_concentration = value
-
-    @property
-    def pollination_switch(self):
-        return self._[0].pollination_switch
-
-    @pollination_switch.setter
-    def pollination_switch(self, value):
-        self._[0].pollination_switch = value
 
     @property
     def phenological_delay_by_nitrogen_stress(self):

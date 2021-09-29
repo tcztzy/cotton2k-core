@@ -52,7 +52,6 @@ typedef struct State
     double supplied_ammonium_nitrogen;          // uptake of ammonia N by the plant from the soil, mg N per slab per day.
     double petiole_nitrogen;                    // total petiole nitrogen, g per plant.
     double petiole_nitrate_nitrogen_concentration; // average nitrate nitrogen concentration in petioles.
-    bool pollination_switch;                    // pollination switch: false = no pollination, true = yes.
     int number_of_pre_fruiting_nodes;           // number of prefruiting nodes, per plant.
     double leaf_area_pre_fruiting[9];           // area of prefruiting node leaves, dm2.
     double delay_for_new_branch[3];
