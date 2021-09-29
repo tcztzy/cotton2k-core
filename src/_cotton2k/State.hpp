@@ -47,7 +47,6 @@ typedef struct State
     double deep_soil_temperature;               // boundary soil temperature of deepest layer (K)
     double total_actual_leaf_growth;            // actual growth rate of all the leaves, g plant-1 day-1.
     double total_actual_petiole_growth;         // actual growth rate of all the petioles, g plant-1 day-1.
-    double actual_stem_growth;                  // actual growth rate of stems, g plant-1 day-1.
     double actual_boll_growth;                  // total actual growth of seedcotton in bolls, g plant-1 day-1.
     double actual_burr_growth;                  // total actual growth of burrs in bolls, g plant-1 day-1.
     double supplied_nitrate_nitrogen;           // uptake of nitrate by the plant from the soil, mg N per slab per day.
