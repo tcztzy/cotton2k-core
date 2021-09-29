@@ -694,6 +694,7 @@ cdef class State:
     cdef public unsigned int kday
     cdef public unsigned int number_of_vegetative_branches  # number of vegetative branches (including the main branch), per plant.
     cdef public double actual_soil_evaporation  # actual evaporation from soil surface, mm day-1.
+    cdef public double actual_square_growth  # total actual growth of squares, g plant-1 day-1.
     cdef public double actual_transpiration  # actual transpiration from plants, mm day-1.
     cdef public double pre_fruiting_nodes_age[9]  # age of each prefruiting node, physiological days.
     cdef public double average_min_leaf_water_potential  #running average of min_leaf_water_potential for the last 3 days.
@@ -964,14 +965,6 @@ cdef class State:
     @total_actual_petiole_growth.setter
     def total_actual_petiole_growth(self, value):
         self._[0].total_actual_petiole_growth = value
-
-    @property
-    def actual_square_growth(self):
-        return self._[0].actual_square_growth
-
-    @actual_square_growth.setter
-    def actual_square_growth(self, value):
-        self._[0].actual_square_growth = value
 
     @property
     def actual_stem_growth(self):

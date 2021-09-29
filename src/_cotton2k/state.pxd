@@ -42,7 +42,6 @@ cdef extern from "State.hpp":
         double deep_soil_temperature
         double total_actual_leaf_growth
         double total_actual_petiole_growth
-        double actual_square_growth
         double actual_stem_growth
         double actual_boll_growth
         double actual_burr_growth
