@@ -24,7 +24,7 @@ class PlantNitrogen:  # pylint: disable=too-few-public-methods,no-member,attribu
 
     Attributes
     ----------
-        pre_fruiting_nodes : list
+        pre_fruiting_nodes_age : list[double]
         vegetative_branches : list
         burres : float
             reserve N in burrs, in g per plant.
@@ -92,12 +92,12 @@ class PlantNitrogen:  # pylint: disable=too-few-public-methods,no-member,attribu
         # young leaves and is declining with leaf age.
         spetno3 = 0.0  # sum of petno3r.
         # Loop of prefruiting node leaves.
-        for node in self.pre_fruiting_nodes:  # type: ignore[attr-defined]
-            spetno3 += petno3r(node.age)
+        for i in range(self.number_of_pre_fruiting_nodes):  # type: ignore[attr-defined]
+            spetno3 += petno3r(self.pre_fruiting_nodes_age[i])  # type: ignore
         # Loop of all the other leaves, with the same computations.
 
         # number of petioles computed.
-        numl = len(self.pre_fruiting_nodes)  # type: ignore[attr-defined]
+        numl = self.number_of_pre_fruiting_nodes  # type: ignore[attr-defined]
         for vegetative_branch in self.vegetative_branches:  # type: ignore[attr-defined]
             for fruiting_branch in vegetative_branch.fruiting_branches:
                 numl += len(fruiting_branch.nodes)

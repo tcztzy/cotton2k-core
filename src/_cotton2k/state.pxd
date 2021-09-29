@@ -51,7 +51,6 @@ cdef extern from "State.hpp":
         double petiole_nitrogen
         double petiole_nitrate_nitrogen_concentration
         bool_t pollination_switch
-        double age_of_pre_fruiting_nodes[9]
         int number_of_pre_fruiting_nodes
         double leaf_area_pre_fruiting[9]
         double delay_for_new_branch[3]

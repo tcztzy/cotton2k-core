@@ -501,24 +501,6 @@ cdef class FruitingNode:
         return node
 
 
-cdef class PreFruitingNode:
-    cdef double *_age
-
-    @property
-    def age(self):
-        return self._age[0]
-
-    @age.setter
-    def age(self, value):
-        self._age[0] = value
-
-    @staticmethod
-    cdef PreFruitingNode from_ptr(double *age):
-        cdef PreFruitingNode node = PreFruitingNode.__new__(PreFruitingNode)
-        node._age = age
-        return node
-
-
 cdef class MainStemLeaf:
     cdef cMainStemLeaf *_
 
@@ -713,6 +695,7 @@ cdef class State:
     cdef public unsigned int number_of_vegetative_branches  # number of vegetative branches (including the main branch), per plant.
     cdef public double actual_soil_evaporation  # actual evaporation from soil surface, mm day-1.
     cdef public double actual_transpiration  # actual transpiration from plants, mm day-1.
+    cdef public double pre_fruiting_nodes_age[9]  # age of each prefruiting node, physiological days.
     cdef public double average_min_leaf_water_potential  #running average of min_leaf_water_potential for the last 3 days.
     cdef public double average_temperature  # average daily temperature, C, for 24 hours.
     cdef public double carbon_allocated_for_root_growth  # available carbon allocated for root growth, g per plant.
@@ -770,7 +753,6 @@ cdef class State:
     soil_temperature = np.zeros((40, 20), dtype=np.float64)  # daily average soil temperature, oK.
     hours = np.empty(24, dtype=object)
     cells = np.empty((40, 20), dtype=object)
-    pre_fruiting_nodes = []
 
     @property
     def day_inc(self):
@@ -964,10 +946,6 @@ cdef class State:
         self._[0].number_of_pre_fruiting_nodes = value
 
     @property
-    def age_of_pre_fruiting_nodes(self):
-        return self._[0].age_of_pre_fruiting_nodes
-
-    @property
     def leaf_area_pre_fruiting(self):
         return self._[0].leaf_area_pre_fruiting
 
@@ -1094,8 +1072,6 @@ cdef class State:
         for l in range(40):
             for k in range(20):
                 state.cells[l][k] = SoilCell.from_ptr(&_ptr[0].soil.cells[l][k], l, k)
-        for i in range(_ptr[0].number_of_pre_fruiting_nodes):
-            state.pre_fruiting_nodes.append(PreFruitingNode.from_ptr(&_ptr[0].age_of_pre_fruiting_nodes[i]))
         return state
 
     @staticmethod
@@ -1253,12 +1229,12 @@ cdef class State:
         # The following constant parameter is used:
         cdef double MaxAgePreFrNode = 66  # maximum age of a prefruiting node (constant)
         # When the age of the last prefruiting node exceeds MaxAgePreFrNode, this function is not activated.
-        if self.pre_fruiting_nodes[-1].age > MaxAgePreFrNode:
+        if self.pre_fruiting_nodes_age[self.number_of_pre_fruiting_nodes - 1] > MaxAgePreFrNode:
             return
         # Loop over all existing prefruiting nodes.
         # Increment the age of each prefruiting node in physiological days.
-        for node in self.pre_fruiting_nodes:
-            node.age += self.day_inc
+        for i in range(self.number_of_pre_fruiting_nodes):
+            self.pre_fruiting_nodes_age[i] += self.day_inc
         # For the last prefruiting node (if there are less than 9 prefruiting nodes):
         # The period (timeToNextPreFruNode) until the formation of the next node is VarPar(31), but it is modified for the first three nodes.
         # If the physiological age of the last prefruiting node is more than timeToNextPreFruNode, form a new prefruiting node - increase state.number_of_pre_fruiting_nodes, assign the initial average temperature for the new node, and initiate a new leaf on this node.
@@ -1270,7 +1246,7 @@ cdef class State:
         elif self.number_of_pre_fruiting_nodes == 3:
             time_to_next_pre_fruiting_node *= time_factor_for_third_pre_fruiting_node
 
-        if self.pre_fruiting_nodes[-1].age >= time_to_next_pre_fruiting_node:
+        if self.pre_fruiting_nodes_age[self.number_of_pre_fruiting_nodes - 1] >= time_to_next_pre_fruiting_node:
             if self.version >= 0x500:
                 leaf_weight = min(initial_pre_fruiting_nodes_leaf_area * self.leaf_weight_area_ratio, self.stem_weight - 0.2)
                 if leaf_weight <= 0:
@@ -1353,7 +1329,7 @@ cdef class State:
         cdef double sumrl = 0  # sum of leaf resistances for all the plant.
         for j in range(self.number_of_pre_fruiting_nodes):  # loop prefruiting nodes
             numl += 1
-            sumrl += leaf_resistance_for_transpiration(self.pre_fruiting_nodes[j].age)
+            sumrl += leaf_resistance_for_transpiration(self.pre_fruiting_nodes_age[j])
 
         for k in range(self.number_of_vegetative_branches):  # loop for all other nodes
             for l in range(self.vegetative_branches[k].number_of_fruiting_branches):
@@ -1958,12 +1934,12 @@ cdef class State:
         # Loop over all prefruiting nodes. If it is after first square, node age is updated here.
         for j in range(self.number_of_pre_fruiting_nodes):
             if first_square_date is not None:
-                self._[0].age_of_pre_fruiting_nodes[j] += self.day_inc
+                self.pre_fruiting_nodes_age[j] += self.day_inc
             # The leaf on this node is abscised if its age has reached droplf, and if there is a leaf here, and if LeafAreaIndex is not too small:
             # Update AbscisedLeafWeight, state.leaf_weight, state.petiole_weight, CumPlantNLoss.
             # Assign zero to state.leaf_area_pre_fruiting, PetioleWeightPreFru and state.leaf_weight_pre_fruiting of this leaf.
             # If a defoliation was applied.
-            if self.age_of_pre_fruiting_nodes[j] >= droplf and self.leaf_area_pre_fruiting[j] > 0 and self.leaf_area_index > 0.1:
+            if self.pre_fruiting_nodes_age[j] >= droplf and self.leaf_area_pre_fruiting[j] > 0 and self.leaf_area_index > 0.1:
                 self.leaf_nitrogen -= self.leaf_weight_pre_fruiting[j] * self.leaf_nitrogen_concentration
                 self.leaf_weight -= self.leaf_weight_pre_fruiting[j]
                 self.petiole_nitrogen -= PetioleWeightPreFru[j] * self.petiole_nitrogen_concentration
@@ -3089,7 +3065,7 @@ cdef class Simulation:
         state0.petiole_nitrate_nitrogen_concentration = 0
         state0.delay_of_new_fruiting_branch = [0, 0, 0]
         for i in range(9):
-            state0.age_of_pre_fruiting_nodes[i] = 0
+            state0.pre_fruiting_nodes_age[i] = 0
             state0.leaf_area_pre_fruiting[i] = 0
             state0.leaf_weight_pre_fruiting[i] = 0
         for k in range(3):
@@ -3692,7 +3668,7 @@ cdef class Simulation:
                 jp1 = j + 1
                 smax = max(self.cultivar_parameters[4], jp1 * (self.cultivar_parameters[2] - self.cultivar_parameters[3] * jp1))
                 c = vpotlf[7] + vpotlf[8] * jp1 * (jp1 - vpotlf[9])
-                rate = smax * c * p * exp(-c * pow(state.pre_fruiting_nodes[j].age, p)) * pow(state.pre_fruiting_nodes[j].age, (p - 1))
+                rate = smax * c * p * exp(-c * pow(state.pre_fruiting_nodes_age[j], p)) * pow(state.pre_fruiting_nodes_age[j], (p - 1))
                 # Growth rate is modified by water stress and a function of average temperature.
                 # Compute potential growth of leaf area, leaf weight and petiole weight for leaf on node j. Add leaf weight potential growth to leaf_potential_growth.
                 # Add potential growth of petiole weight to petiole_potential_growth.
