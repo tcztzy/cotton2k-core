@@ -8,15 +8,8 @@ typedef struct SoilCellStruct
     double water_content;            // volumetric water content of a soil cell, cm3 cm-3.
 } SoilCell;
 
-typedef struct SoilLayerStruct
-{
-    unsigned int number_of_left_columns_with_root;  // first column with roots in a soil layer.
-    unsigned int number_of_right_columns_with_root; // last column with roots in a soil layer.
-} SoilLayer;
-
 typedef struct SoilStruct
 {
-    SoilLayer layers[40];
     SoilCell cells[40][20];
 } Soil;
 #endif

@@ -620,22 +620,11 @@ cdef class Hour:
 cdef double[3] cgind = [1, 1, 0.10]  # the index for the capability of growth of class I roots (0 to 1).
 
 
-cdef class Soil:
-    cdef cSoil *_
-
-    @staticmethod
-    cdef Soil from_ptr(cSoil *_ptr):
-        cdef Soil soil = Soil.__new__(Soil)
-        soil._ = _ptr
-        return soil
-
-
 cdef class State:
     cdef cState *_
     cdef Simulation _sim
     cdef numpy.ndarray root_impedance  # root mechanical impedance for a soil cell, kg cm-2.
     cdef unsigned int _ordinal
-    cdef public Soil soil
     cdef public numpy.ndarray root_growth_factor  # root growth correction factor in a soil cell (0 to 1).
     cdef public numpy.ndarray root_weights
     cdef public numpy.ndarray root_weight_capable_uptake  # root weight capable of uptake, in g per soil cell.
@@ -983,7 +972,6 @@ cdef class State:
         state._ = _ptr
         state._sim = _sim
         state.version = version
-        state.soil = Soil.from_ptr(&_ptr[0].soil)
         for i in range(24):
             state.hours[i] = Hour()
         for l in range(40):
@@ -1059,7 +1047,7 @@ cdef class State:
         self.root_weight_capable_uptake[:] = 0
         # Loop for all soil soil cells with roots. compute for each soil cell root-weight capable of uptake (RootWtCapblUptake) as the sum of products of root weight and capability of uptake index (cuind) for each root class in it.
         for l in range(40):
-            for k in range(self.soil._[0].layers[l].number_of_left_columns_with_root, self.soil._[0].layers[l].number_of_right_columns_with_root + 1):
+            for k in range(20):
                 for i in range(3):
                     if self.root_weights[l, k, i] > 1e-15:
                         self.root_weight_capable_uptake[l, k] += self.root_weights[l, k, i] * cuind[i]
@@ -1211,7 +1199,7 @@ cdef class State:
         # All average values computed for the root zone, are weighted by RootWtCapblUptake (root weight capable of uptake), but the weight assigned will not be greater than vpsil[11].
         cdef double rrl  # root resistance per g of active roots.
         for l in range(40):
-            for k in range(self._[0].soil.layers[l].number_of_left_columns_with_root, self._[0].soil.layers[l].number_of_right_columns_with_root):
+            for k in range(20):
                 if self.root_weight_capable_uptake[l, k] >= vpsil[10]:
                     psinum += min(self.root_weight_capable_uptake[l, k], vpsil[11])
                     sumlv += min(self.root_weight_capable_uptake[l, k], vpsil[11]) * cmg
@@ -1560,12 +1548,6 @@ cdef class State:
         # The following is executed when the taproot reaches a new soil layer.
         self.taproot_layer_number += 1
         self.last_layer_with_root_depth += SIMULATED_LAYER_DEPTH[self.taproot_layer_number]
-        if (self._[0].soil.layers[self.taproot_layer_number].number_of_left_columns_with_root == 0 or
-            self._[0].soil.layers[self.taproot_layer_number].number_of_left_columns_with_root > plant_row_column):
-            self._[0].soil.layers[self.taproot_layer_number].number_of_left_columns_with_root = plant_row_column
-        if (self._[0].soil.layers[self.taproot_layer_number].number_of_right_columns_with_root == 0 or
-            self._[0].soil.layers[self.taproot_layer_number].number_of_right_columns_with_root < klocp1):
-            self._[0].soil.layers[self.taproot_layer_number].number_of_right_columns_with_root = klocp1
         # RootAge is initialized for these soil cells.
         self.root_age[self.taproot_layer_number][plant_row_column] = 0.01
         self.root_age[self.taproot_layer_number][klocp1] = 0.01
@@ -1650,8 +1632,6 @@ cdef class State:
                 # RootColNumLeft of this layer idefi
                 if self.root_age[l][newktip] == 0:
                     self.root_age[l][newktip] = 0.01
-                if newktip < self._[0].soil.layers[l].number_of_left_columns_with_root:
-                    self._[0].soil.layers[l].number_of_left_columns_with_root = newktip
 
     def lateral_root_growth_right(self, int l, int NumRootAgeGroups, unsigned int plant_row_column, double row_space):
         # The following constant parameters are used:
@@ -1691,8 +1671,6 @@ cdef class State:
                 # RootColNumLeft of this layer is redefined.
                 if self.root_age[l][newktip] == 0:
                     self.root_age[l][newktip] = 0.01
-                if newktip > self._[0].soil.layers[l].number_of_right_columns_with_root:
-                    self._[0].soil.layers[l].number_of_right_columns_with_root = newktip
 
     def potential_root_growth(self, NumRootAgeGroups, per_plant_area):
         """
@@ -1798,21 +1776,12 @@ cdef class State:
         # If this new compartmment is in a new layer with roots, also initialize its RootColNumLeft and RootColNumRight values.
         if self.root_age[lp1][k] == 0 and efacd > 0:
             self.root_age[lp1][k] = 0.01
-            if self._[0].soil.layers[lp1].number_of_left_columns_with_root == 0 or k < self._[0].soil.layers[lp1].number_of_left_columns_with_root:
-                self._[0].soil.layers[lp1].number_of_left_columns_with_root = k
-            if self._[0].soil.layers[lp1].number_of_right_columns_with_root == 0 or k > self._[0].soil.layers[lp1].number_of_right_columns_with_root:
-                self._[0].soil.layers[lp1].number_of_right_columns_with_root = k
         # If this is in the location of the taproot, and the roots reach a new soil layer, update the taproot parameters taproot_length, self.last_layer_with_root_depth, and self.taproot_layer_number.
         if k == plant_row_column or k == plant_row_column + 1:
             if lp1 > self.taproot_layer_number and efacd > 0:
                 self.taproot_length = self.last_layer_with_root_depth + 0.01
                 self.last_layer_with_root_depth += SIMULATED_LAYER_DEPTH[lp1]
                 self.taproot_layer_number = lp1
-        # Update the values of RootColNumLeft and RootColNumRight for this layer.
-        if km1 < self._[0].soil.layers[l].number_of_left_columns_with_root:
-            self._[0].soil.layers[l].number_of_left_columns_with_root = km1
-        if kp1 > self._[0].soil.layers[l].number_of_right_columns_with_root:
-            self._[0].soil.layers[l].number_of_right_columns_with_root = kp1
 
     def initialize_lateral_roots(self):
         """This function initiates lateral root growth."""
@@ -2228,7 +2197,7 @@ cdef class State:
                 # Compute, for each layer, the lower and upper water content limits for the transpiration function. These are set from limiting soil water potentials (-15 to -1 bars).
                 vh2lo = qpsi(-15, thad[l], thts[l], alpha[j], vanGenuchtenBeta[j])  # lower limit of water content for the transpiration function
                 vh2hi = qpsi(-1, thad[l], thts[l], alpha[j], vanGenuchtenBeta[j])  # upper limit of water content for the transpiration function
-                for k in range(self.soil._[0].layers[l].number_of_left_columns_with_root, self.soil._[0].layers[l].number_of_right_columns_with_root + 1):
+                for k in range(20):
                     # reduction factor for water uptake, caused by low levels of soil water, as a linear function of cell.water_content, between vh2lo and vh2hi.
                     redfac = min(max((self.cells[l][k].water_content - vh2lo) / (vh2hi - vh2lo), 0), 1)
                     # The computed 'uptake factor' (upf) for each soil cell is the product of 'root weight capable of uptake' and redfac.
@@ -2236,7 +2205,7 @@ cdef class State:
 
             difupt = 0  # the cumulative difference between computed transpiration and actual transpiration, in cm3, due to limitation of PWP.
             for l in range(40):
-                for k in range(self.soil._[0].layers[l].number_of_left_columns_with_root, self.soil._[0].layers[l].number_of_right_columns_with_root + 1):
+                for k in range(20):
                     if upf[l][k] > 0 and self.cells[l][k].water_content > thetar[l]:
                         # The amount of water extracted from each cell is proportional to its 'uptake factor'.
                         upth2o = Transp * upf[l][k] / upf.sum()  # transpiration from a soil cell, cm3 per day
@@ -2266,7 +2235,7 @@ cdef class State:
         # recompute SoilPsi for all soil cells with roots by calling function PSIQ,
         for l in range(40):
             j = SoilHorizonNum[l]
-            for k in range(self.soil._[0].layers[l].number_of_left_columns_with_root, self.soil._[0].layers[l].number_of_right_columns_with_root + 1):
+            for k in range(20):
                 SoilPsi[l][k] = (
                     psiq(self.cells[l][k].water_content, thad[l], thts[l], alpha[j], vanGenuchtenBeta[j])
                     - PsiOsmotic(self.cells[l][k].water_content, thts[l], ElCondSatSoilToday)
@@ -2282,7 +2251,7 @@ cdef class State:
         # Compute the proportional N requirement from each soil cell with roots, and call function NitrogenUptake() to compute nitrogen uptake.
         if sumep > 0 and self.total_required_nitrogen > 0:
             for l in range(40):
-                for k in range(self.soil._[0].layers[l].number_of_left_columns_with_root, self.soil._[0].layers[l].number_of_right_columns_with_root + 1):
+                for k in range(20):
                     if uptk[l][k] > 0:
                         # proportional allocation of TotalRequiredN to each cell
                         reqnc = self.total_required_nitrogen * uptk[l][k] / sumep
@@ -2301,7 +2270,7 @@ cdef class State:
         for l in range(40):
             j = SoilHorizonNum[l]
             sumdl[j] += SIMULATED_LAYER_DEPTH[l]
-            for k in range(self.soil._[0].layers[l].number_of_left_columns_with_root, self.soil._[0].layers[l].number_of_right_columns_with_root + 1):
+            for k in range(20):
                 # Check that RootWtCapblUptake in any cell is more than a minimum value vrcumin.
                 if self.root_weight_capable_uptake[l, k] >= vrcumin:
                     # Compute sumwat as the weighted sum of the water content, and psinum as the sum of these weights. Weighting is by root weight capable of uptake, or if it exceeds a maximum value (vrcumax) this maximum value is used for weighting.
@@ -3037,17 +3006,6 @@ cdef class Simulation:
             if sumdl >= ll * rlint:
                 LateralRootFlag[l] = 1
                 ll += 1
-        # All the state variables of the root system are initialized to zero.
-        for l in range(nl):
-            if l < 3:
-                state0._[0].soil.layers[l].number_of_left_columns_with_root = self.plant_row_column - 1
-                state0._[0].soil.layers[l].number_of_right_columns_with_root = self.plant_row_column + 2
-            elif l < 7:
-                state0._[0].soil.layers[l].number_of_left_columns_with_root = self.plant_row_column
-                state0._[0].soil.layers[l].number_of_right_columns_with_root = self.plant_row_column + 1
-            else:
-                state0._[0].soil.layers[l].number_of_left_columns_with_root = 0
-                state0._[0].soil.layers[l].number_of_right_columns_with_root = 0
 
         state0.init_root_data(self.plant_row_column, 0.01 * self.row_space / self.per_plant_area)
         # Start loop for all soil layers containing roots.
