@@ -15,8 +15,7 @@ class Simulation:
     year: int
     def __init__(self, version: int = 0x0400, **kwargs): ...
 
-class Soil:
-    number_of_layers_with_root: int
+class Soil: ...
 
 class SoilInit:
     lyrsol: int

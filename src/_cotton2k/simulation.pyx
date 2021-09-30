@@ -623,14 +623,6 @@ cdef double[3] cgind = [1, 1, 0.10]  # the index for the capability of growth of
 cdef class Soil:
     cdef cSoil *_
 
-    @property
-    def number_of_layers_with_root(self):
-        return self._[0].number_of_layers_with_root
-
-    @number_of_layers_with_root.setter
-    def number_of_layers_with_root(self, value):
-        self._[0].number_of_layers_with_root = value
-
     @staticmethod
     cdef Soil from_ptr(cSoil *_ptr):
         cdef Soil soil = Soil.__new__(Soil)
@@ -1066,7 +1058,7 @@ cdef class State:
         cuind = [1, 0.5, 0]  # the indices for the relative capability of uptake (between 0 and 1) of water and nutrients by root age classes.
         self.root_weight_capable_uptake[:] = 0
         # Loop for all soil soil cells with roots. compute for each soil cell root-weight capable of uptake (RootWtCapblUptake) as the sum of products of root weight and capability of uptake index (cuind) for each root class in it.
-        for l in range(self.soil.number_of_layers_with_root):
+        for l in range(40):
             for k in range(self.soil._[0].layers[l].number_of_left_columns_with_root, self.soil._[0].layers[l].number_of_right_columns_with_root + 1):
                 for i in range(3):
                     if self.root_weights[l, k, i] > 1e-15:
@@ -1218,7 +1210,7 @@ cdef class State:
         # Loop over all soil cells with roots. Check if RootWtCapblUptake is greater than vpsil[10].
         # All average values computed for the root zone, are weighted by RootWtCapblUptake (root weight capable of uptake), but the weight assigned will not be greater than vpsil[11].
         cdef double rrl  # root resistance per g of active roots.
-        for l in range(self.soil.number_of_layers_with_root):
+        for l in range(40):
             for k in range(self._[0].soil.layers[l].number_of_left_columns_with_root, self._[0].soil.layers[l].number_of_right_columns_with_root):
                 if self.root_weight_capable_uptake[l, k] >= vpsil[10]:
                     psinum += min(self.root_weight_capable_uptake[l, k], vpsil[11])
@@ -1568,10 +1560,6 @@ cdef class State:
         # The following is executed when the taproot reaches a new soil layer.
         self.taproot_layer_number += 1
         self.last_layer_with_root_depth += SIMULATED_LAYER_DEPTH[self.taproot_layer_number]
-        if self.taproot_layer_number > self._[0].soil.number_of_layers_with_root - 1:
-            self._[0].soil.number_of_layers_with_root = self.taproot_layer_number + 1
-            if self._[0].soil.number_of_layers_with_root > nl:
-                self._[0].soil.number_of_layers_with_root = nl
         if (self._[0].soil.layers[self.taproot_layer_number].number_of_left_columns_with_root == 0 or
             self._[0].soil.layers[self.taproot_layer_number].number_of_left_columns_with_root > plant_row_column):
             self._[0].soil.layers[self.taproot_layer_number].number_of_left_columns_with_root = plant_row_column
@@ -1721,7 +1709,7 @@ cdef class State:
             BulkDensity[SoilHorizonNum[l]]
             for l in range(40)
         ], dtype=np.double))
-        for l in range(self.soil.number_of_layers_with_root):
+        for l in range(40):
             for k in range(nk):
                 # Check if this soil cell contains roots (if RootAge is greater than 0), and execute the following if this is true.
                 # In each soil cell with roots, the root weight capable of growth rtwtcg is computed as the sum of RootWeight[l][k][i] * cgind[i] for all root classes.
@@ -1820,9 +1808,7 @@ cdef class State:
                 self.taproot_length = self.last_layer_with_root_depth + 0.01
                 self.last_layer_with_root_depth += SIMULATED_LAYER_DEPTH[lp1]
                 self.taproot_layer_number = lp1
-        # Update state.soil.number_of_layers_with_root, if necessary, and the values of RootColNumLeft and RootColNumRight for this layer.
-        if self.soil.number_of_layers_with_root <= l and efacd > 0:
-            self.soil.number_of_layers_with_root = l + 1
+        # Update the values of RootColNumLeft and RootColNumRight for this layer.
         if km1 < self._[0].soil.layers[l].number_of_left_columns_with_root:
             self._[0].soil.layers[l].number_of_left_columns_with_root = km1
         if kp1 > self._[0].soil.layers[l].number_of_right_columns_with_root:
@@ -2237,7 +2223,7 @@ cdef class State:
         # the actual transpiration converted to cm3 per slab units.
         Transp = 0.10 * row_space * PotentialTranspiration * PsiOnTranspiration(AverageSoilPsi)
         while True:
-            for l in range(self.soil.number_of_layers_with_root):
+            for l in range(40):
                 j = SoilHorizonNum[l]
                 # Compute, for each layer, the lower and upper water content limits for the transpiration function. These are set from limiting soil water potentials (-15 to -1 bars).
                 vh2lo = qpsi(-15, thad[l], thts[l], alpha[j], vanGenuchtenBeta[j])  # lower limit of water content for the transpiration function
@@ -2249,7 +2235,7 @@ cdef class State:
                     upf[l][k] = self.root_weight_capable_uptake[l, k] * redfac
 
             difupt = 0  # the cumulative difference between computed transpiration and actual transpiration, in cm3, due to limitation of PWP.
-            for l in range(self.soil.number_of_layers_with_root):
+            for l in range(40):
                 for k in range(self.soil._[0].layers[l].number_of_left_columns_with_root, self.soil._[0].layers[l].number_of_right_columns_with_root + 1):
                     if upf[l][k] > 0 and self.cells[l][k].water_content > thetar[l]:
                         # The amount of water extracted from each cell is proportional to its 'uptake factor'.
@@ -2278,7 +2264,7 @@ cdef class State:
                 break
 
         # recompute SoilPsi for all soil cells with roots by calling function PSIQ,
-        for l in range(self.soil.number_of_layers_with_root):
+        for l in range(40):
             j = SoilHorizonNum[l]
             for k in range(self.soil._[0].layers[l].number_of_left_columns_with_root, self.soil._[0].layers[l].number_of_right_columns_with_root + 1):
                 SoilPsi[l][k] = (
@@ -2295,7 +2281,7 @@ cdef class State:
 
         # Compute the proportional N requirement from each soil cell with roots, and call function NitrogenUptake() to compute nitrogen uptake.
         if sumep > 0 and self.total_required_nitrogen > 0:
-            for l in range(self.soil.number_of_layers_with_root):
+            for l in range(40):
                 for k in range(self.soil._[0].layers[l].number_of_left_columns_with_root, self.soil._[0].layers[l].number_of_right_columns_with_root + 1):
                     if uptk[l][k] > 0:
                         # proportional allocation of TotalRequiredN to each cell
@@ -2312,7 +2298,7 @@ cdef class State:
         sumwat = np.zeros(9, dtype=np.float64)  # sum of weighted soil water content for computing avgwat.
         sumdl = np.zeros(9, dtype=np.float64)  # sum of thickness of all soil layers containing roots.
         # Compute sum of dl as sumdl for each soil horizon.
-        for l in range(self.soil.number_of_layers_with_root):
+        for l in range(40):
             j = SoilHorizonNum[l]
             sumdl[j] += SIMULATED_LAYER_DEPTH[l]
             for k in range(self.soil._[0].layers[l].number_of_left_columns_with_root, self.soil._[0].layers[l].number_of_right_columns_with_root + 1):
@@ -2940,7 +2926,6 @@ cdef class Simulation:
     def _init_state(self):
         cdef State state0 = self._current_state
         state0.date = self.start_date
-        state0.soil.number_of_layers_with_root = 7
         state0.plant_height = 4.0
         state0.stem_weight = 0.2
         state0.petiole_weight = 0

@@ -9,6 +9,5 @@ cdef extern from "Soil.h":
         unsigned int number_of_right_columns_with_root
 
     ctypedef struct cSoil "Soil":
-        unsigned int number_of_layers_with_root
         SoilLayer layers[40]
         cSoilCell cells[40][20]

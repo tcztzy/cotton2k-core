@@ -95,7 +95,7 @@ class RootGrowth:  # pylint: disable=no-member,attribute-defined-outside-init,to
         self.lateral_root_growth(NumRootAgeGroups, plant_row_column, row_space)
         # Initialize daily_root_loss (weight of sloughed roots) for this day.
         daily_root_loss = 0  # total weight of sloughed roots, g per plant per day.
-        for l in range(self.soil.number_of_layers_with_root):
+        for l in range(40):
             for k in range(20):
                 # Check RootAge to determine if this soil cell contains roots, and then
                 # compute root aging and root death by calling root_aging() and
@@ -139,7 +139,7 @@ class RootGrowth:  # pylint: disable=no-member,attribute-defined-outside-init,to
         # among the root classes in it in proportion to the parameters
         # root_growth_index(i), and the previous values of root_weights(k,l,i), and
         # added to root_weights(k,l,i).
-        for l in range(self.soil.number_of_layers_with_root):
+        for l in range(40):
             for k in range(20):
                 if self.root_age[l][k] > 0:
                     # sum of growth index multiplied by root weight, for all classes in

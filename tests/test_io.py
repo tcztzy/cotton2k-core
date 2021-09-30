@@ -91,7 +91,7 @@ def test_write_output(sim: Simulation):
     assert (state.open_bolls_burr_weight - 0) < 1e-9
     assert (state.green_bolls_weight - 0) < 1e-9
     assert (state.green_bolls_burr_weight - 0) < 1e-9
-    assert (state.petiole_weight - 0.05284892692860696) < 1e-9
+    assert (state.petiole_weight - 0.05284893981237342) < 1e-9
     assert (state.square_weight - 0) < 1e-9
     assert (state.reserve_carbohydrate - 0) < 1e-9
     assert (state.number_of_open_bolls - 10.66628490996115) < 1e-9

@@ -16,7 +16,6 @@ typedef struct SoilLayerStruct
 
 typedef struct SoilStruct
 {
-    unsigned int number_of_layers_with_root;
     SoilLayer layers[40];
     SoilCell cells[40][20];
 } Soil;
