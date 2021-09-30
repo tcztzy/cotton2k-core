@@ -1,4 +1,5 @@
 import datetime
+from collections.abc import Callable, Sequence
 from enum import IntEnum
 from typing import Optional
 
@@ -44,9 +45,26 @@ class Stage(IntEnum):
     YoungGreenBoll = 7
 
 
-class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined-outside-init,too-many-instance-attributes
+# pylint: disable=E1101,E0203,R0902,R0912,R0913,R0914,W0201
+class Phenology:
+    average_temperature: float
+    date: datetime.date
+    day_inc: float
     fruiting_nodes_ginning_percent: npt.NDArray[np.double]
     fruiting_nodes_stage: npt.NDArray[np.int_]
+    ginning_percent: float
+    green_bolls_burr_weight: float
+    green_bolls_weight: float
+    kday: int
+    lint_yield: float
+    new_boll_formation: Callable
+    nitrogen_stress_fruiting: float
+    nitrogen_stress_vegetative: float
+    number_of_open_bolls: float
+    open_bolls_burr_weight: float
+    open_bolls_weight: float
+    vegetative_branches: Sequence
+    water_stress: float
 
     @property
     def phenological_delay_for_vegetative_by_carbon_stress(self):
@@ -164,7 +182,7 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
             self._sim.defoliate_date,
         )
 
-    def simulate_fruiting_site(  # pylint: disable=too-many-arguments,too-many-locals,too-many-branches
+    def simulate_fruiting_site(
         self,
         k,
         l,
@@ -201,11 +219,7 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
         ]
         # FruitingCode = 0 indicates that this node has not yet been formed.
         # In this case, assign zero to boltmp and return.
-        site = (
-            self.vegetative_branches[k]  # type: ignore[attr-defined]
-            .fruiting_branches[l]
-            .nodes[m]
-        )
+        site = self.vegetative_branches[k].fruiting_branches[l].nodes[m]
         if self.fruiting_nodes_stage[k, l, m] == Stage.NotYetFormed:
             site.boll.cumulative_temperature = 0
             return None
@@ -214,17 +228,17 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
         # the effect of water and nitrogen stresses (agefac).
 
         # effect of water and nitrogen stresses on leaf aging.
-        agefac = (1 - self.water_stress) * vfrsite[0] + (  # type: ignore[attr-defined]
-            1 - self.nitrogen_stress_vegetative  # type: ignore[attr-defined]
+        agefac = (1 - self.water_stress) * vfrsite[0] + (
+            1 - self.nitrogen_stress_vegetative
         ) * vfrsite[1]
-        site.leaf.age += self.day_inc + agefac  # type: ignore[attr-defined]
+        site.leaf.age += self.day_inc + agefac
         # After the application of defoliation, add the effect of defoliation on leaf
         # age.
-        if defoliate_date and self.date > defoliate_date:  # type: ignore[attr-defined]
+        if defoliate_date and self.date > defoliate_date:
             site.leaf.age += var38
         # FruitingCode = 3, 4, 5 or 6 indicates that this node has an open boll,
         # or has been completely abscised. Return in this case.
-        if self.fruiting_nodes_stage[k, l, m] in (  # type: ignore
+        if self.fruiting_nodes_stage[k, l, m] in (
             Stage.MatureBoll,
             Stage.AbscisedAsBoll,
             Stage.AbscisedAsSquare,
@@ -233,7 +247,7 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
             return None
         # Age of node is modified for low minimum temperatures and for high maximum
         # temperatures.
-        ageinc = self.day_inc  # type: ignore[attr-defined]
+        ageinc = self.day_inc
         # Adjust leaf aging for low minimum temperature.
         if min_temperature < vfrsite[2]:
             ageinc += vfrsite[3] * (vfrsite[2] - min_temperature)
@@ -243,8 +257,7 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
         ageinc = max(ageinc, vfrsite[7])
         # Compute average temperature of this site since formation.
         site.average_temperature = (
-            site.average_temperature * site.age
-            + self.average_temperature * ageinc  # type: ignore[attr-defined]
+            site.average_temperature * site.age + self.average_temperature * ageinc
         ) / (site.age + ageinc)
         # Update the age of this node, AgeOfSite(k,l,m), by adding ageinc.
         site.age += ageinc
@@ -252,22 +265,15 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
         # If square is old enough, make it a green boll: initialize the computations of
         # average boll temperature (boltmp) and boll age (AgeOfBoll). Stage will now be
         # Stage.YoungGreenBoll.
-        if self.fruiting_nodes_stage[k, l, m] == Stage.Square:  # type: ignore
-            if site.age >= vfrsite[8]:  # type: ignore[attr-defined]
-                (
-                    site.boll.cumulative_temperature
-                ) = self.average_temperature  # type: ignore[attr-defined]
-                site.boll.age = self.day_inc  # type: ignore[attr-defined]
-                self.fruiting_nodes_stage[  # type: ignore[attr-defined]
-                    k, l, m
-                ] = Stage.YoungGreenBoll
-                self.new_boll_formation(site)  # type: ignore[attr-defined]
+        if self.fruiting_nodes_stage[k, l, m] == Stage.Square:
+            if site.age >= vfrsite[8]:
+                (site.boll.cumulative_temperature) = self.average_temperature
+                site.boll.age = self.day_inc
+                self.fruiting_nodes_stage[k, l, m] = Stage.YoungGreenBoll
+                self.new_boll_formation(site)
                 # If this is the first flower, define FirstBloom.
-                if (
-                    first_bloom_date is None
-                    and self.green_bolls_weight > 0  # type: ignore[attr-defined]
-                ):
-                    return self.date  # type: ignore[attr-defined]
+                if first_bloom_date is None and self.green_bolls_weight > 0:
+                    return self.date
             return None
         # If there is a boll at this site:
         # Calculate average boll temperature (boltmp), and boll age
@@ -278,36 +284,30 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
         # by nitrogen stress (state.nitrogen_stress_fruiting).
         if site.boll.weight > 0:
             # effect of leaf area index on boll temperature and age.
-            if (
-                self.leaf_area_index <= vfrsite[11]  # type: ignore[attr-defined]
-                and self.kday > 100  # type: ignore[attr-defined]
-            ):
-                dum = (
-                    vfrsite[12]
-                    - vfrsite[13] * self.leaf_area_index  # type: ignore[attr-defined]
-                )
+            if self.leaf_area_index <= vfrsite[11] and self.kday > 100:
+                dum = vfrsite[12] - vfrsite[13] * self.leaf_area_index
             else:
                 dum = 1
             # added physiological age of boll on this day.
             dagebol = (
-                self.day_inc * dum  # type: ignore[attr-defined]
-                + vfrsite[14] * (1 - self.water_stress)  # type: ignore[attr-defined]
-                + vfrsite[10] * (1 - self.nitrogen_stress_fruiting)  # type: ignore
+                self.day_inc * dum
+                + vfrsite[14] * (1 - self.water_stress)
+                + vfrsite[10] * (1 - self.nitrogen_stress_fruiting)
             )
             site.boll.cumulative_temperature = (
                 site.boll.cumulative_temperature * site.boll.age
-                + self.average_temperature * dagebol  # type: ignore[attr-defined]
+                + self.average_temperature * dagebol
             ) / (site.boll.age + dagebol)
             site.boll.age += dagebol
         # if this node is a young green boll (Stage.YoungGreenBoll):
         # Check boll age and after a fixed age convert it to an "old" green boll
         # (Stage.GreenBoll).
-        if self.fruiting_nodes_stage[k, l, m] == Stage.YoungGreenBoll:  # type: ignore
+        if self.fruiting_nodes_stage[k, l, m] == Stage.YoungGreenBoll:
             if site.boll.age >= vfrsite[9]:
-                self.fruiting_nodes_stage[k, l, m] = Stage.GreenBoll  # type: ignore
+                self.fruiting_nodes_stage[k, l, m] = Stage.GreenBoll
             return None
-        if self.fruiting_nodes_stage[k, l, m] == Stage.GreenBoll:  # type: ignore
-            self.boll_opening(  # type: ignore[attr-defined]
+        if self.fruiting_nodes_stage[k, l, m] == Stage.GreenBoll:
+            self.boll_opening(
                 site,
                 (k, l, m),
                 defoliate_date,
@@ -322,7 +322,7 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
 
     def add_vegetative_branch(self, stemNRatio, DaysTo1stSqare, initial_leaf_area):
         """Decides whether a new vegetative branch is to be added, and then forms it."""
-        if len(self.vegetative_branches) == 3:
+        if self.number_of_vegetative_branches == 3:
             return
         # TimeToNextVegBranch is computed as a function of this average temperature.
         node = self.vegetative_branches[-1].fruiting_branches[0].nodes[0]
@@ -381,7 +381,7 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
         # When a new vegetative branch is formed, increase NumVegBranches by 1.
         self.number_of_vegetative_branches += 1
 
-    def add_fruiting_branch(  # pylint: disable=too-many-arguments,too-many-locals
+    def add_fruiting_branch(
         self,
         k,
         density_factor,
@@ -476,7 +476,6 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
         new_node.average_temperature = self.average_temperature
         self.delay_of_new_fruiting_branch[k] = 0
 
-    # pylint: disable=too-many-arguments,too-many-locals
     def add_fruiting_node(self, k, l, stemNRatio, density_factor, var34, var36, var37):
         """Decide if a new node is to be added to a fruiting branch, and forms it."""
         # The following constant parameters are used:
@@ -584,7 +583,7 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
         self.leaf_weight -= cotylwt
         self.leaf_nitrogen -= cotylwt * self.leaf_nitrogen / self.leaf_weight
 
-    def boll_opening(  # pylint: disable=too-many-arguments
+    def boll_opening(
         self,
         site,
         site_index: tuple[int, int, int],
@@ -617,20 +616,15 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
         dehiss *= var40
         dehiss = min(dehiss, vboldhs[4])
         # Dehiss is decreased after a defoliation.
-        if defoliate_date and self.date > defoliate_date:  # type: ignore[attr-defined]
+        if defoliate_date and self.date > defoliate_date:
             dehiss *= pow(
                 vboldhs[5],
-                (self.date - defoliate_date).days,  # type: ignore[attr-defined]
+                (self.date - defoliate_date).days,
             )
         # If leaf area index is less than dpar1, decrease dehiss.
-        if self.leaf_area_index < ddpar1:  # type: ignore[attr-defined]
+        if self.leaf_area_index < ddpar1:
             # effect of small lai on dehiss
-            fdhslai = (
-                ddpar2
-                + self.leaf_area_index  # type: ignore[attr-defined]
-                * (1 - ddpar2)
-                / ddpar1
-            )
+            fdhslai = ddpar2 + self.leaf_area_index * (1 - ddpar2) / ddpar1
             fdhslai = min(max(fdhslai, 0), 1)
             dehiss *= fdhslai
         if site.boll.age < dehiss:
@@ -638,23 +632,20 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
         # If green boll is old enough (AgeOfBoll greater than dehiss), make it an open
         # boll, set stage to MatureBoll, and update boll and burr weights.
         self.fruiting_nodes_stage[site_index] = Stage.MatureBoll
-        self.open_bolls_weight += site.boll.weight  # type: ignore[attr-defined]
-        self.open_bolls_burr_weight += site.burr.weight  # type: ignore[attr-defined]
-        self.green_bolls_weight -= site.boll.weight  # type: ignore[attr-defined]
-        self.green_bolls_burr_weight -= site.burr.weight  # type: ignore[attr-defined]
+        self.open_bolls_weight += site.boll.weight
+        self.open_bolls_burr_weight += site.burr.weight
+        self.green_bolls_weight -= site.boll.weight
+        self.green_bolls_burr_weight -= site.burr.weight
         # Compute the ginning percentage as a function of boll temperature.
         # Compute the average ginning percentage of all the bolls opened until now
         # (self.ginning_percent).
         self.fruiting_nodes_ginning_percent[site_index] = (var41 - var42 * atn) / 100
         self.ginning_percent = (
-            self.ginning_percent  # type: ignore[has-type]
-            * self.number_of_open_bolls  # type: ignore[attr-defined]
+            self.ginning_percent * self.number_of_open_bolls
             + self.fruiting_nodes_ginning_percent[site_index] * site.fraction
-        ) / (
-            self.number_of_open_bolls + site.fraction  # type: ignore[attr-defined]
-        )  # type: ignore[attr-defined]
+        ) / (self.number_of_open_bolls + site.fraction)
         # Cumulative lint yield (LintYield) is computed in kg per ha.
-        self.lint_yield += (  # type: ignore[attr-defined]
+        self.lint_yield += (
             self.fruiting_nodes_ginning_percent[site_index]
             * site.boll.weight
             * plant_population
@@ -662,7 +653,7 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
         )
         self.fiber_quality(atn, site.fraction)
         # Update the number of open bolls per plant (nopen).
-        self.number_of_open_bolls += site.fraction  # type: ignore[attr-defined]
+        self.number_of_open_bolls += site.fraction
 
     def fiber_quality(self, atn, fraction):
         """Computation of fiber properties is as in GOSSYM, it is not used in COTTON2K,
@@ -676,20 +667,13 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
         # flx (fiber length in inches, 2.5% span) is computed, and averaged (as
         # fiber_length) for all open bolls.
         flx = 1.219 - 0.0065 * atn  # fiber length (inches, 2.5% span) of this boll.
-        self.fiber_strength = (  # type: ignore[attr-defined]
-            self.fiber_strength * self.number_of_open_bolls
-            + fsx * fraction  # type: ignore[attr-defined]
-        ) / (
-            self.number_of_open_bolls + fraction  # type: ignore[attr-defined]
-        )
-        self.fiber_length = (  # type: ignore[attr-defined]
-            self.fiber_length * self.number_of_open_bolls
-            + flx * fraction  # type: ignore[attr-defined]
-        ) / (
-            self.number_of_open_bolls + fraction  # type: ignore[attr-defined]
-        )
+        self.fiber_strength = (
+            self.fiber_strength * self.number_of_open_bolls + fsx * fraction
+        ) / (self.number_of_open_bolls + fraction)
+        self.fiber_length = (
+            self.fiber_length * self.number_of_open_bolls + flx * fraction
+        ) / (self.number_of_open_bolls + fraction)
 
-    # pylint: disable=access-member-before-definition
     def leaf_abscission(self, per_plant_area, first_square_date, defoliate_date):
         # If there are almost no leaves, this routine is not executed.
         if self.leaf_area_index <= 0.0001:
