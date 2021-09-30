@@ -703,7 +703,6 @@ cdef class State:
     cdef public double nitrogen_stress_vegetative  # nitrogen stress limiting vegetative development.
     cdef public double nitrogen_stress_fruiting  # nitrogen stress limiting fruit development.
     cdef public double nitrogen_stress_root  # nitrogen stress limiting root development.
-    cdef public double number_of_open_bolls
     cdef public double number_of_green_bolls  # average number of retained green bolls, per plant.
     cdef public double open_bolls_burr_weight
     cdef public double pavail  # residual available carbon for root growth from previous day.
@@ -794,6 +793,10 @@ cdef class State:
                 for m in range(self.vegetative_branches[k].fruiting_branches[l].number_of_fruiting_nodes):
                     area += self.vegetative_branches[k].fruiting_branches[l].nodes[m].leaf.area
         return area
+
+    @property
+    def number_of_open_bolls(self) -> float:
+        return self.fruiting_nodes_fraction[self.fruiting_nodes_stage == Stage.MatureBoll].sum()
 
     @property
     def leaf_nitrogen_concentration(self):
@@ -2104,15 +2107,12 @@ cdef class State:
     def compute_site_numbers(self):
         """Calculates square, green boll, open boll, and abscised site numbers (NumSquares, NumGreenBolls, NumOpenBolls, and AbscisedFruitSites, respectively), as the sums of FruitFraction in all sites with appropriate FruitingCode."""
         self.number_of_green_bolls = 0
-        self.number_of_open_bolls = 0
         for k in range(self.number_of_vegetative_branches):
             for l in range(self.vegetative_branches[k].number_of_fruiting_branches):
                 for m in range(self.vegetative_branches[k].fruiting_branches[l].number_of_fruiting_nodes):
                     site = self.vegetative_branches[k].fruiting_branches[l].nodes[m]
                     if self.fruiting_nodes_stage[k, l, m] in [Stage.YoungGreenBoll, Stage.GreenBoll]:
                         self.number_of_green_bolls += self.fruiting_nodes_fraction[k, l, m]
-                    elif self.fruiting_nodes_stage[k, l, m] == Stage.MatureBoll:
-                        self.number_of_open_bolls += self.fruiting_nodes_fraction[k, l, m]
 
     def new_boll_formation(self, site):
         """Simulates the formation of a new boll at a fruiting site."""
@@ -2966,7 +2966,6 @@ cdef class Simulation:
         state0.leaf_nitrogen = 0.0112
         state0.number_of_vegetative_branches = 1
         state0.number_of_green_bolls = 0
-        state0.number_of_open_bolls = 0
         state0.fiber_length = 0
         state0.fiber_strength = 0
         state0.nitrogen_stress = 1
