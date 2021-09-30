@@ -131,6 +131,17 @@ class State(
         ).sum()
 
     @property
+    def lint_yield(self) -> float:
+        """yield of lint, kgs per hectare."""
+        return (
+            (self.fruiting_nodes_boll_weight * self.fruiting_nodes_ginning_percent)[
+                self.fruiting_nodes_stage == Stage.MatureBoll
+            ].sum()
+            * self._sim.plant_population
+            * 0.001
+        )
+
+    @property
     def number_of_squares(self):
         return (
             self.fruiting_nodes_fraction[self.fruiting_nodes_stage == Stage.Square]

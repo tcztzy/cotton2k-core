@@ -69,16 +69,6 @@ class Phenology:
     water_stress: float
 
     @property
-    def lint_yield(self) -> float:
-        """yield of lint, kgs per hectare."""
-        _yield = self.fruiting_nodes_boll_weight * self.fruiting_nodes_ginning_percent
-        return (
-            _yield[self.fruiting_nodes_stage == Stage.MatureBoll].sum()
-            * self._sim.plant_population
-            * 0.001
-        )
-
-    @property
     def phenological_delay_for_vegetative_by_carbon_stress(self):
         """delay in formation of new fruiting branches caused by carbon stress."""
         delay = np.polynomial.Polynomial(
