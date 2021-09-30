@@ -342,14 +342,6 @@ cdef class Boll:
         self._[0].age = value
 
     @property
-    def weight(self):
-        return self._[0].weight
-
-    @weight.setter
-    def weight(self, value):
-        self._[0].weight = value
-
-    @property
     def cumulative_temperature(self):
         return self._[0].cumulative_temperature
 
@@ -671,6 +663,7 @@ cdef class State:
     cdef public numpy.ndarray root_growth_factor  # root growth correction factor in a soil cell (0 to 1).
     cdef public numpy.ndarray root_weights
     cdef public numpy.ndarray root_weight_capable_uptake  # root weight capable of uptake, in g per soil cell.
+    cdef public numpy.ndarray fruiting_nodes_boll_weight  # weight of seedcotton for each site, g per plant.
     cdef public numpy.ndarray fruiting_nodes_stage
     cdef public numpy.ndarray fruiting_nodes_ginning_percent
     cdef public object pollination_switch  # pollination switch: false = no pollination, true = yes.
@@ -1363,9 +1356,9 @@ cdef class State:
                     if self.fruiting_nodes_stage[k, l, m] in [Stage.GreenBoll, Stage.YoungGreenBoll]:
                         # dry weight added to seedcotton in a boll.
                         dwboll = site.boll.potential_growth * self.fruit_growth_ratio
-                        site.boll.weight += dwboll
+                        self.fruiting_nodes_boll_weight[k, l, m] += dwboll
                         self.actual_boll_growth += dwboll
-                        self.green_bolls_weight += site.boll.weight
+                        self.green_bolls_weight += self.fruiting_nodes_boll_weight[k, l, m]
                         # dry weight added to the burrs in a boll.
                         dwburr = site.burr.potential_growth * self.fruit_growth_ratio
                         site.burr.weight += dwburr
@@ -2104,11 +2097,12 @@ cdef class State:
             percent of seeds in seedcotton, used to compute lost nitrogen.
         """
         # Update state.seed_nitrogen, state.burr_nitrogen, CumPlantNLoss, state.green_bolls_weight, state.green_bolls_burr_weight, BollWeight[k][l][m], state.site[k][l][m].burr.weight, and FruitFraction[k][l][m].
-        self.seed_nitrogen -= site.boll.weight * abscissionRatio * (1 - gin1) * self.seed_nitrogen_concentration
+        index = (site.k, site.l, site.m)
+        self.seed_nitrogen -= self.fruiting_nodes_boll_weight[index] * abscissionRatio * (1 - gin1) * self.seed_nitrogen_concentration
         self.burr_nitrogen -= site.burr.weight * abscissionRatio * self.burr_nitrogen_concentration
-        self.green_bolls_weight -= site.boll.weight * abscissionRatio
+        self.green_bolls_weight -= self.fruiting_nodes_boll_weight[index] * abscissionRatio
         self.green_bolls_burr_weight -= site.burr.weight * abscissionRatio
-        site.boll.weight -= site.boll.weight * abscissionRatio
+        self.fruiting_nodes_boll_weight[index] *= (1 - abscissionRatio)
         site.burr.weight -= site.burr.weight * abscissionRatio
         site.fraction -= site.fraction * abscissionRatio
 
@@ -2116,12 +2110,12 @@ cdef class State:
 
         if site.fraction <= 0.001:
             self.fruiting_nodes_stage[site.k, site.l, site.m] = Stage.AbscisedAsBoll
-            self.seed_nitrogen -= site.boll.weight * (1 - gin1) * self.seed_nitrogen_concentration
+            self.seed_nitrogen -= self.fruiting_nodes_boll_weight[index] * (1 - gin1) * self.seed_nitrogen_concentration
             self.burr_nitrogen -= site.burr.weight * self.burr_nitrogen_concentration
             site.fraction = 0
-            self.green_bolls_weight -= site.boll.weight
+            self.green_bolls_weight -= self.fruiting_nodes_boll_weight[index]
             self.green_bolls_burr_weight -= site.burr.weight
-            site.boll.weight = 0
+            self.fruiting_nodes_boll_weight[index] = 0
             site.burr.weight = 0
 
     def compute_site_numbers(self):
@@ -2139,6 +2133,7 @@ cdef class State:
 
     def new_boll_formation(self, site):
         """Simulates the formation of a new boll at a fruiting site."""
+        index = (site.k, site.l, site.m)
         # The following constant parameters are used:
         cdef double seedratio = 0.64  # ratio of seeds in seedcotton weight.
         cdef double[2] vnewboll = [0.31, 0.02]
@@ -2152,8 +2147,8 @@ cdef class State:
         # The nitrogen in the square is partitioned in the same proportions. The nitrogen that was in the square is transferred to the burrs. Update state.green_bolls_weight, state.green_bolls_burr_weight and state.square_weight. assign zero to SquareWeight at this site.
         cdef double bolinit  # initial weight of boll after flowering.
         bolinit = vnewboll[0] * site.square.weight
-        site.boll.weight = 0.2 * bolinit
-        site.burr.weight = bolinit - site.boll.weight
+        self.fruiting_nodes_boll_weight[index] = 0.2 * bolinit
+        site.burr.weight = bolinit - self.fruiting_nodes_boll_weight[index]
 
         cdef double sqr1n  # the nitrogen content of one square before flowering.
         sqr1n = self.square_nitrogen_concentration * site.square.weight
@@ -2161,11 +2156,11 @@ cdef class State:
         sqr1n = sqr1n * vnewboll[0]
 
         cdef double seed1n  # the nitrogen content of seeds in a new boll on flowering.
-        seed1n = min(site.boll.weight * seedratio * vnewboll[1], sqr1n)
+        seed1n = min(self.fruiting_nodes_boll_weight[index] * seedratio * vnewboll[1], sqr1n)
         self.seed_nitrogen += seed1n
         self.burr_nitrogen += sqr1n - seed1n
 
-        self.green_bolls_weight += site.boll.weight
+        self.green_bolls_weight += self.fruiting_nodes_boll_weight[index]
         self.green_bolls_burr_weight += site.burr.weight
         self.square_weight -= site.square.weight
         site.square.weight = 0
@@ -3018,6 +3013,7 @@ cdef class Simulation:
         state0.supplied_nitrate_nitrogen = 0
         state0.petiole_nitrate_nitrogen_concentration = 0
         state0.delay_of_new_fruiting_branch = [0, 0, 0]
+        state0.fruiting_nodes_boll_weight = np.zeros((3, 30, 5), dtype=np.double)
         state0.fruiting_nodes_stage = np.zeros((3, 30, 5), dtype=np.int_)
         state0.fruiting_nodes_ginning_percent = np.ones((3, 30, 5), dtype=np.double) * 0.35
         for i in range(9):
@@ -3056,7 +3052,6 @@ cdef class Simulation:
                         boll=dict(
                             age=0,
                             potential_growth=0,
-                            weight=0,
                             cumulative_temperature=0,
                         ),
                         burr=dict(

@@ -50,6 +50,7 @@ class Phenology:
     average_temperature: float
     date: datetime.date
     day_inc: float
+    fruiting_nodes_boll_weight: npt.NDArray[np.double]
     fruiting_nodes_ginning_percent: npt.NDArray[np.double]
     fruiting_nodes_stage: npt.NDArray[np.int_]
     ginning_percent: float
@@ -282,7 +283,7 @@ class Phenology:
         # variable. It is used to increase boll temperature and to accelerate
         # boll aging when leaf cover is decreased. Boll age is also modified
         # by nitrogen stress (state.nitrogen_stress_fruiting).
-        if site.boll.weight > 0:
+        if self.fruiting_nodes_boll_weight[k, l, m] > 0:
             # effect of leaf area index on boll temperature and age.
             if self.leaf_area_index <= vfrsite[11] and self.kday > 100:
                 dum = vfrsite[12] - vfrsite[13] * self.leaf_area_index
@@ -632,9 +633,9 @@ class Phenology:
         # If green boll is old enough (AgeOfBoll greater than dehiss), make it an open
         # boll, set stage to MatureBoll, and update boll and burr weights.
         self.fruiting_nodes_stage[site_index] = Stage.MatureBoll
-        self.open_bolls_weight += site.boll.weight
+        self.open_bolls_weight += self.fruiting_nodes_boll_weight[site_index]
         self.open_bolls_burr_weight += site.burr.weight
-        self.green_bolls_weight -= site.boll.weight
+        self.green_bolls_weight -= self.fruiting_nodes_boll_weight[site_index]
         self.green_bolls_burr_weight -= site.burr.weight
         # Compute the ginning percentage as a function of boll temperature.
         # Compute the average ginning percentage of all the bolls opened until now
@@ -647,7 +648,7 @@ class Phenology:
         # Cumulative lint yield (LintYield) is computed in kg per ha.
         self.lint_yield += (
             self.fruiting_nodes_ginning_percent[site_index]
-            * site.boll.weight
+            * self.fruiting_nodes_boll_weight[site_index]
             * plant_population
             * 0.001
         )
