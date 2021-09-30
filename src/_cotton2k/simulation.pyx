@@ -459,14 +459,6 @@ cdef class FruitingNode:
         self._[0].fraction = value
 
     @property
-    def ginning_percent(self):
-        return self._[0].ginning_percent
-
-    @ginning_percent.setter
-    def ginning_percent(self, value):
-        self._[0].ginning_percent = value
-
-    @property
     def leaf(self):
         return NodeLeaf.from_ptr(&self._.leaf)
 
@@ -680,6 +672,7 @@ cdef class State:
     cdef public numpy.ndarray root_weights
     cdef public numpy.ndarray root_weight_capable_uptake  # root weight capable of uptake, in g per soil cell.
     cdef public numpy.ndarray fruiting_nodes_stage
+    cdef public numpy.ndarray fruiting_nodes_ginning_percent
     cdef public object pollination_switch  # pollination switch: false = no pollination, true = yes.
     cdef public unsigned int seed_layer_number  # layer number where the seeds are located.
     cdef public unsigned int taproot_layer_number  # last soil layer with taproot.
@@ -2014,7 +2007,7 @@ cdef class State:
                                     if self.fruiting_nodes_stage[k, l, m] == Stage.Square:
                                         self.square_abscission(site, abscissionRatio)
                                     else:
-                                        self.boll_abscission(site, abscissionRatio, self.ginning_percent if self.ginning_percent > 0 else site.ginning_percent)
+                                        self.boll_abscission(site, abscissionRatio, self.ginning_percent if self.ginning_percent > 0 else self.fruiting_nodes_ginning_percent[k, l, m])
                 # Assign zero to the array members for this day.
                 ShedByCarbonStress[lt] = 0
                 ShedByNitrogenStress[lt] = 0
@@ -3026,6 +3019,7 @@ cdef class Simulation:
         state0.petiole_nitrate_nitrogen_concentration = 0
         state0.delay_of_new_fruiting_branch = [0, 0, 0]
         state0.fruiting_nodes_stage = np.zeros((3, 30, 5), dtype=np.int_)
+        state0.fruiting_nodes_ginning_percent = np.ones((3, 30, 5), dtype=np.double) * 0.35
         for i in range(9):
             state0.pre_fruiting_nodes_age[i] = 0
             state0.pre_fruiting_leaf_area[i] = 0
@@ -3049,7 +3043,6 @@ cdef class Simulation:
                         age=0,
                         fraction=0,
                         average_temperature=0,
-                        ginning_percent=0.35,
                         leaf=dict(
                             age=0,
                             potential_growth=0,

@@ -3,6 +3,7 @@ from enum import IntEnum
 from typing import Optional
 
 import numpy as np
+import numpy.typing as npt
 
 
 class DaysToFirstSquare:  # pylint: disable=too-few-public-methods
@@ -44,6 +45,9 @@ class Stage(IntEnum):
 
 
 class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined-outside-init,too-many-instance-attributes
+    fruiting_nodes_ginning_percent: npt.NDArray[np.double]
+    fruiting_nodes_stage: npt.NDArray[np.int_]
+
     @property
     def phenological_delay_for_vegetative_by_carbon_stress(self):
         """delay in formation of new fruiting branches caused by carbon stress."""
@@ -202,7 +206,7 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
             .fruiting_branches[l]
             .nodes[m]
         )
-        if self.fruiting_nodes_stage[k, l, m] == Stage.NotYetFormed:  # type: ignore
+        if self.fruiting_nodes_stage[k, l, m] == Stage.NotYetFormed:
             site.boll.cumulative_temperature = 0
             return None
         # LeafAge(k,l,m) is the age of the leaf at this site.
@@ -305,6 +309,7 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
         if self.fruiting_nodes_stage[k, l, m] == Stage.GreenBoll:  # type: ignore
             self.boll_opening(  # type: ignore[attr-defined]
                 site,
+                (k, l, m),
                 defoliate_date,
                 site.boll.cumulative_temperature,
                 plant_population,
@@ -582,6 +587,7 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
     def boll_opening(  # pylint: disable=too-many-arguments
         self,
         site,
+        site_index: tuple[int, int, int],
         defoliate_date: Optional[datetime.date],
         tmpboll: float,
         plant_population: float,
@@ -631,9 +637,7 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
             return
         # If green boll is old enough (AgeOfBoll greater than dehiss), make it an open
         # boll, set stage to MatureBoll, and update boll and burr weights.
-        self.fruiting_nodes_stage[  # type: ignore
-            site.k, site.l, site.m
-        ] = Stage.MatureBoll
+        self.fruiting_nodes_stage[site_index] = Stage.MatureBoll
         self.open_bolls_weight += site.boll.weight  # type: ignore[attr-defined]
         self.open_bolls_burr_weight += site.burr.weight  # type: ignore[attr-defined]
         self.green_bolls_weight -= site.boll.weight  # type: ignore[attr-defined]
@@ -641,17 +645,20 @@ class Phenology:  # pylint: disable=no-member,protected-access,attribute-defined
         # Compute the ginning percentage as a function of boll temperature.
         # Compute the average ginning percentage of all the bolls opened until now
         # (self.ginning_percent).
-        site.ginning_percent = (var41 - var42 * atn) / 100
+        self.fruiting_nodes_ginning_percent[site_index] = (var41 - var42 * atn) / 100
         self.ginning_percent = (
             self.ginning_percent  # type: ignore[has-type]
             * self.number_of_open_bolls  # type: ignore[attr-defined]
-            + site.ginning_percent * site.fraction
+            + self.fruiting_nodes_ginning_percent[site_index] * site.fraction
         ) / (
             self.number_of_open_bolls + site.fraction  # type: ignore[attr-defined]
         )  # type: ignore[attr-defined]
         # Cumulative lint yield (LintYield) is computed in kg per ha.
         self.lint_yield += (  # type: ignore[attr-defined]
-            site.ginning_percent * site.boll.weight * plant_population * 0.001
+            self.fruiting_nodes_ginning_percent[site_index]
+            * site.boll.weight
+            * plant_population
+            * 0.001
         )
         self.fiber_quality(atn, site.fraction)
         # Update the number of open bolls per plant (nopen).

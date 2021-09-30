@@ -213,6 +213,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
         ):
             setattr(post, attr, getattr(pre, attr))
         for ndarray in (
+            "fruiting_nodes_ginning_percent",
             "fruiting_nodes_stage",
             "root_weights",
             "root_growth_factor",

@@ -31,7 +31,6 @@ cdef extern from "FruitingSite.h":
         double age
         double fraction
         double average_temperature
-        double ginning_percent
         Leaf leaf
         SquareStruct square
         cBoll boll
