@@ -29,3 +29,5 @@ coverage.xml
 *.pyd
 *.pdb
 *.whl
+
+/compile_flags.txt
