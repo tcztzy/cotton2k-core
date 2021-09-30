@@ -342,14 +342,6 @@ cdef class Boll:
         self._[0].age = value
 
     @property
-    def cumulative_temperature(self):
-        return self._[0].cumulative_temperature
-
-    @cumulative_temperature.setter
-    def cumulative_temperature(self, value):
-        self._[0].cumulative_temperature = value
-
-    @property
     def potential_growth(self):
         return self._[0].potential_growth
 
@@ -3033,7 +3025,6 @@ cdef class Simulation:
                         boll=dict(
                             age=0,
                             potential_growth=0,
-                            cumulative_temperature=0,
                         ),
                         burr=dict(
                             potential_growth=0,

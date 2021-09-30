@@ -27,10 +27,28 @@ class State(
     sim: "Simulation"
     open_bolls_weight: float = 0
 
-    def __init__(self, state: CyState, sim, open_bolls_weight=0) -> None:
+    def __init__(
+        self,
+        state: CyState,
+        sim,
+        pre_state=None,
+    ) -> None:
         self._ = state
         self._sim = sim
-        self.open_bolls_weight = open_bolls_weight
+        if pre_state is None:
+            self.open_bolls_weight = 0
+            self.fruiting_nodes_boll_cumulative_temperature = np.zeros(
+                (3, 30, 5), dtype=np.double
+            )
+        else:
+            for attr in (
+                "fruiting_nodes_boll_cumulative_temperature",
+                "open_bolls_weight",
+            ):
+                value = getattr(pre_state, attr)
+                if hasattr(value, "copy") and callable(value.copy):
+                    value = value.copy()
+                setattr(self, attr, value)
 
     def __getattr__(self, name: str) -> Any:
         try:
@@ -164,6 +182,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             if isinstance(start_date, datetime.date)
             else int(start_date[:4])
         )
+        self.initialize_state0()
         self.read_input(**kwargs)
         METEOROLOGY[(kwargs["latitude"], kwargs["longitude"])] = {
             datetime.date.fromisoformat(kwargs["climate_start_date"])
@@ -215,9 +234,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             "taproot_layer_number",
             "taproot_length",
             "total_required_nitrogen",
-        ):
-            setattr(post, attr, getattr(pre, attr))
-        for ndarray in (
+            # ndarrays
             "fruiting_nodes_boll_weight",
             "fruiting_nodes_fraction",
             "fruiting_nodes_ginning_percent",
@@ -226,8 +243,11 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             "root_growth_factor",
             "root_weight_capable_uptake",
         ):
-            setattr(post, ndarray, getattr(pre, ndarray).copy())
-        self.states.append(State(post, self, self.state(i).open_bolls_weight))
+            value = getattr(pre, attr)
+            if hasattr(value, "copy") and callable(value.copy):
+                value = value.copy()
+            setattr(post, attr, value)
+        self.states.append(State(post, self, self.state(i)))
         self._current_state = post  # pylint: disable=attribute-defined-outside-init
 
     def _initialize_switch(self):
@@ -290,13 +310,16 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
                     (sumwk - plant_location) > self._column_width / 2
                 )
 
+    def initialize_state0(self):
+        self._current_state = self._state(0)
+        super()._init_state()
+        self.states = [State(self._current_state, self)]
+
     def read_input(
         self, agricultural_inputs=None, **kwargs
     ):  # pylint: disable=unused-argument
         """This is the main function for reading input."""
         # pylint: disable=attribute-defined-outside-init
-        self._current_state = self._state(0)
-        self._init_state()
         self._soil_temperature_init()
         self._initialize_globals()
         self._initialize_switch()
@@ -313,7 +336,6 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
         return self
 
     def _simulate(self):
-        self.states = [State(self._current_state, self)]
         days = (self.stop_date - self.start_date).days
         for i in range(days):
             self._simulate_this_day(i)
@@ -389,7 +411,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             raise RuntimeError
 
     def _growth(self, u, new_stem_weight):
-        state = State(self._current_state, self)
+        state = self.state(u)
         # Call _potential_leaf_growth() to compute potential growth rate of leaves.
         self._potential_leaf_growth(u)
         # If it is after first square, call _potential_fruit_growth() to compute

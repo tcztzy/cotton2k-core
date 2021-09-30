@@ -51,6 +51,7 @@ class Phenology:
     average_temperature: float
     date: datetime.date
     day_inc: float
+    fruiting_nodes_boll_cumulative_temperature: npt.NDArray[np.double]
     fruiting_nodes_boll_weight: npt.NDArray[np.double]
     fruiting_nodes_fraction: npt.NDArray[np.double]
     fruiting_nodes_ginning_percent: npt.NDArray[np.double]
@@ -231,7 +232,7 @@ class Phenology:
         # In this case, assign zero to boltmp and return.
         site = self.vegetative_branches[k].fruiting_branches[l].nodes[m]
         if self.fruiting_nodes_stage[k, l, m] == Stage.NotYetFormed:
-            site.boll.cumulative_temperature = 0
+            self.fruiting_nodes_boll_cumulative_temperature[k, l, m] = 0
             return None
         # LeafAge(k,l,m) is the age of the leaf at this site.
         # it is updated by adding the physiological age of this day,
@@ -277,7 +278,9 @@ class Phenology:
         # Stage.YoungGreenBoll.
         if self.fruiting_nodes_stage[k, l, m] == Stage.Square:
             if site.age >= vfrsite[8]:
-                (site.boll.cumulative_temperature) = self.average_temperature
+                self.fruiting_nodes_boll_cumulative_temperature[
+                    k, l, m
+                ] = self.average_temperature
                 site.boll.age = self.day_inc
                 self.fruiting_nodes_stage[k, l, m] = Stage.YoungGreenBoll
                 self.new_boll_formation(site)
@@ -304,8 +307,8 @@ class Phenology:
                 + vfrsite[14] * (1 - self.water_stress)
                 + vfrsite[10] * (1 - self.nitrogen_stress_fruiting)
             )
-            site.boll.cumulative_temperature = (
-                site.boll.cumulative_temperature * site.boll.age
+            self.fruiting_nodes_boll_cumulative_temperature[k, l, m] = (
+                self.fruiting_nodes_boll_cumulative_temperature[k, l, m] * site.boll.age
                 + self.average_temperature * dagebol
             ) / (site.boll.age + dagebol)
             site.boll.age += dagebol
@@ -321,7 +324,6 @@ class Phenology:
                 site,
                 (k, l, m),
                 defoliate_date,
-                site.boll.cumulative_temperature,
                 var39,
                 var40,
                 var41,
@@ -596,7 +598,6 @@ class Phenology:
         site,
         site_index: tuple[int, int, int],
         defoliate_date: Optional[datetime.date],
-        tmpboll: float,
         var39,
         var40,
         var41,
@@ -616,7 +617,9 @@ class Phenology:
         ]
         # Assign atn as the average boll temperature (tmpboll), and check that it is
         # not higher than a maximum value.
-        atn = min(tmpboll, vboldhs[0])  # modified average temperature of this boll.
+        atn = min(  # modified average temperature of this boll.
+            self.fruiting_nodes_boll_cumulative_temperature[site_index], vboldhs[0]
+        )
         # Compute dehiss as a function of boll temperature.
         # days from flowering to boll opening.
         dehiss = var39 + atn * (vboldhs[1] + atn * (vboldhs[2] + atn * vboldhs[3]))

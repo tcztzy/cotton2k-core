@@ -19,7 +19,6 @@ cdef extern from "FruitingSite.h":
     ctypedef struct cBoll "Boll":
         double age
         double potential_growth
-        double cumulative_temperature
     ctypedef struct cBurr "Burr":
         double potential_growth
         double weight
