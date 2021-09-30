@@ -160,12 +160,7 @@ class Photosynthesis:
         # Old stems are those more than voldstm = 32 calendar days old.
         # Maintenance respiration is computed on the basis of plant dry weight, minus
         # the old stems and the dry tissue of opened bolls.
-        return (
-            self.plant_weight
-            - self.open_bolls_weight
-            - self.open_bolls_burr_weight
-            - old_stem_weight
-        ) * rsubo
+        return (self.maintenance_weight - old_stem_weight) * rsubo
 
     # pylint: disable=too-many-locals
     def get_net_photosynthesis(

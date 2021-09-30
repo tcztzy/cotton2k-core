@@ -65,7 +65,6 @@ class Phenology:
     nitrogen_stress_vegetative: float
     number_of_open_bolls: float
     open_bolls_burr_weight: float
-    open_bolls_weight: float
     vegetative_branches: Sequence
     water_stress: float
 
@@ -642,7 +641,6 @@ class Phenology:
         # If green boll is old enough (AgeOfBoll greater than dehiss), make it an open
         # boll, set stage to MatureBoll, and update boll and burr weights.
         self.fruiting_nodes_stage[site_index] = Stage.MatureBoll
-        self.open_bolls_weight += self.fruiting_nodes_boll_weight[site_index]
         self.open_bolls_burr_weight += site.burr.weight
         self.green_bolls_weight -= self.fruiting_nodes_boll_weight[site_index]
         self.green_bolls_burr_weight -= site.burr.weight

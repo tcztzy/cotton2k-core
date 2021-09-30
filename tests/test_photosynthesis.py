@@ -12,9 +12,7 @@ def test_photosynthesis():
     photo.day_length = 12
     photo.light_interception = 1
     photo.daytime_temperature = 24
-    photo.plant_weight = 50
-    photo.open_bolls_weight = 5
-    photo.open_bolls_burr_weight = 3
+    photo.maintenance_weight = 42
     photo.leaf_area_index = 1
     photo.plant_height = 70
     photo.version = 0x400

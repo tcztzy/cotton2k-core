@@ -87,6 +87,13 @@ def test_write_output(sim: Simulation):
     assert (state.root_weight - 57.962083610964996) < 1e-9
     assert (state.stem_weight - 28.14266502833103) < 1e-9
     assert (state.plant_weight - 174.06201458313524) < 1e-9
+    assert (state.open_bolls_weight - 51.080494811575534) < 1e-9
+    assert (state.open_bolls_burr_weight - 0) < 1e-9
+    assert (state.green_bolls_weight - 0) < 1e-9
+    assert (state.green_bolls_burr_weight - 0) < 1e-9
+    assert (state.petiole_weight - 0.05284892692860696) < 1e-9
+    assert (state.square_weight - 0) < 1e-9
+    assert (state.reserve_carbohydrate - 0) < 1e-9
     assert (state.number_of_open_bolls - 10.66628490996115) < 1e-9
     assert (state.number_of_green_bolls - 10.654268246224818) < 1e-9
     assert (state.number_of_squares - 1) < 1e-9

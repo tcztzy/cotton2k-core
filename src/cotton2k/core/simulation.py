@@ -25,7 +25,6 @@ class State(
 ):  # pylint: disable=too-many-instance-attributes
     _: CyState
     sim: "Simulation"
-    open_bolls_weight: float = 0
 
     def __init__(
         self,
@@ -36,15 +35,11 @@ class State(
         self._ = state
         self._sim = sim
         if pre_state is None:
-            self.open_bolls_weight = 0
             self.fruiting_nodes_boll_cumulative_temperature = np.zeros(
                 (3, 30, 5), dtype=np.double
             )
         else:
-            for attr in (
-                "fruiting_nodes_boll_cumulative_temperature",
-                "open_bolls_weight",
-            ):
+            for attr in ("fruiting_nodes_boll_cumulative_temperature",):
                 value = getattr(pre_state, attr)
                 if hasattr(value, "copy") and callable(value.copy):
                     value = value.copy()
@@ -100,39 +95,46 @@ class State(
     @property
     def plant_weight(self):
         # pylint: disable=no-member
-        return (
-            self.root_weight
-            + self.stem_weight
-            + self.green_bolls_weight
-            + self.green_bolls_burr_weight
-            + self.leaf_weight
-            + self.petiole_weight
-            + self.square_weight
-            + self.open_bolls_weight
-            + self.open_bolls_burr_weight
-            + self.reserve_carbohydrate
-        )
+        return self.root_weight + self.above_ground_biomass
 
     @property
     def above_ground_biomass(self):
         # pylint: disable=no-member
         return (
-            self.stem_weight
-            + self.green_bolls_weight
-            + self.green_bolls_burr_weight
-            + self.leaf_weight
-            + self.petiole_weight
-            + self.square_weight
+            self.above_ground_maintenance_weight
             + self.open_bolls_weight
             + self.open_bolls_burr_weight
+        )
+
+    @property
+    def above_ground_maintenance_weight(self):
+        return (
+            self.stem_weight  # pylint: disable=no-member
+            + self.green_bolls_weight  # pylint: disable=no-member
+            + self.green_bolls_burr_weight  # pylint: disable=no-member
+            + self.leaf_weight  # pylint: disable=no-member
+            + self.petiole_weight  # pylint: disable=no-member
+            + self.square_weight
             + self.reserve_carbohydrate
         )
 
     @property
+    def maintenance_weight(self):
+        return self.root_weight + self.above_ground_maintenance_weight
+
+    @property
+    def open_bolls_weight(self):
+        return (
+            self.fruiting_nodes_boll_weight[
+                self.fruiting_nodes_stage == Stage.MatureBoll
+            ]
+        ).sum()
+
+    @property
     def number_of_squares(self):
-        return self.fruiting_nodes_fraction[
-            self.fruiting_nodes_stage == Stage.Square
-        ].sum()
+        return (
+            self.fruiting_nodes_fraction[self.fruiting_nodes_stage == Stage.Square]
+        ).sum()
 
     @property
     def agetop(self):
