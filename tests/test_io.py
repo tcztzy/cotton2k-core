@@ -82,6 +82,7 @@ def test_write_output(sim: Simulation):
                 0,
             ]
     assert (state.lint_yield - 2219.4412479701537) < 1e-9
+    assert (state.ginning_percent - 0.37750407781082385) < 1e-9
     assert (state.leaf_weight - 6.416714304185261) < 1e-9
     assert (state.root_weight - 57.962083610964996) < 1e-9
     assert (state.stem_weight - 28.14266502833103) < 1e-9
