@@ -3310,6 +3310,130 @@ cdef class Simulation:
         # compute daily averages.
         state.soil_temperature[:] /= iter1
 
+    def daytmp(
+        self,
+        u,
+        ti,
+        site8,
+        sunr,
+        suns,
+    ) -> float:
+        """Computes and returns the hourly values of air temperature, using the
+        measured daily maximum and minimum.
+
+        The algorithm is described in Ephrath et al. (1996). It is based on the
+        following assumptions:
+
+        1. The time of minimum daily temperature is at sunrise.
+        2. The time of maximum daily temperature is SitePar[8] hours after solar
+        noon.
+
+        Many models assume a sinusoidal curve of the temperature during the day,
+        but actual data deviate from the sinusoidal curve in the following
+        characteristic way: a faster increase right after sunrise, a near plateau
+        maximum during several hours in the middle of the day, and a rather fast
+        decrease by sunset. The physical reason for this is a more efficient mixing
+        of heated air from ground level into the atmospheric boundary layer, driven
+        by strong lapse temperature gradients buoyancy.
+
+        NOTE: **will be used for "power" as in Fortran notation**.
+
+        A first order approximation is
+
+            daytmp = tmin + (tmax-tmin) * st * tkk / (tkk + daytmp - tmin)
+
+        where
+
+            st = sin(pi * (ti - SolarNoon + dayl / 2) / (dayl + 2 * SitePar[8]))
+
+        Since daytmp appears on both sides of the first equation, it can be solved
+        and written explicitly as:
+
+            daytmp = tmin - tkk/2 + 0.5 * sqrt(tkk**2 + 4 * amp * tkk * st)
+
+        where the amplitude of tmin and tmax is calculated as
+            amp = (tmax - tmin) * (1 + (tmax - tmin) / tkk)
+        This ensures that temperature still passes through tmin and tmax values.
+        The value of tkk was determined by calibration as 15.
+
+        This algorithm is used for the period from sunrise to the time of maximum
+        temperature, hmax. A similar algorithm is used for the time from hmax to
+        sunset, but the value of the minimum temperature of the next day
+        (mint_tomorrow) is used instead of mint_today.
+
+        Night air temperature is described by an exponentially declining curve.
+        For the time from sunset to mid-night:
+
+            daytmp = (mint_tomorrow - sst * exp((dayl - 24) / tcoef)
+                    + (sst - mint_tomorrow) * exp((suns - ti) / tcoef))
+                    / (1 - exp((dayl - 24) / tcoef))
+
+        where tcoef is a time coefficient, determined by calibration as 4, sst is
+        the sunset temperature, determined by the daytime equation as:
+
+            sst = mint_tomorrow - tkk / 2 + 0.5 * sqrt(tkk**2 + 4 * amp * tkk * sts)
+
+        where
+
+            sts  = sin(pi * dayl / (dayl + 2 * SitePar[8]))
+            amp = (tmax - mint_tomorrow) * (1 + (tmax - mint_tomorrow) / tkk)
+
+        For the time from midnight to sunrise, similar equations are used, but the
+        minimum temperature of this day (mint_today) is used instead of
+        mint_tomorrow, and the maximum temperature of the previous day
+        (maxt_yesterday) is used instead of maxt_today. Also, (suns-ti-24) is used
+        for the time variable instead of (suns-ti).
+
+        These exponential equations for night-time temperature ensure that the
+        curve will be continuous with the daytime equation at sunset, and will pass
+        through the minimum temperature at sunrise.
+
+        Reference
+        ---------
+        Ephrath, J.E., Goudriaan, J. and Marani, A. 1996. Modelling diurnal patterns of air temperature, radiation, wind speed and relative humidity by equations from daily characteristics. Agricultural Systems 51:377-393.
+        """
+        state = self._current_state
+        tkk = 15  # The temperature increase at which the sensible heat flux is doubled, in comparison with the situation without buoyancy.
+        tcoef = 4  # time coefficient for the exponential part of the equation.
+        hmax = state.solar_noon + site8  # hour of maximum temperature
+        yesterday = self.climate[max(u - 1, 0)]
+        today = self.climate[u]
+        tomorrow = self.climate[u + 1]
+
+        amp: float  # amplitude of temperatures for a period.
+        sst: float  # the temperature at sunset.
+        st: float  # computed from time of day, used for daytime temperature.
+        sts: float  # intermediate variable for computing sst.
+
+        if ti <= sunr:
+            # from midnight to sunrise
+            amp = (yesterday["Tmax"] - today["Tmin"]) * (1 + (yesterday["Tmax"] - today["Tmin"]) / tkk)
+            sts = sin(pi * state.day_length / (state.day_length + 2 * site8))
+            # compute temperature at sunset:
+            sst = today["Tmin"] - tkk / 2 + 0.5 * sqrt(tkk * tkk + 4 * amp * tkk * sts)
+            return (
+                today["Tmin"] - sst * exp((state.day_length - 24) / tcoef)
+                + (sst - today["Tmin"]) * exp((suns - ti - 24) / tcoef)
+            ) / (1 - exp((state.day_length - 24) / tcoef))
+        if ti <= hmax:
+            # from sunrise to hmax
+            amp = (today["Tmax"] - today["Tmin"]) * (1 + (today["Tmax"] - today["Tmin"]) / tkk)
+            st = sin(pi * (ti - state.solar_noon + state.day_length / 2) / (state.day_length + 2 * site8))
+            return today["Tmin"] - tkk / 2 + sqrt(tkk * tkk + 4 * amp * tkk * st) / 2
+        if ti <= suns:
+            # from hmax to sunset
+            amp = (today["Tmax"] - tomorrow["Tmin"]) * (1 + (today["Tmax"] - tomorrow["Tmin"]) / tkk)
+            st = sin(pi * (ti - state.solar_noon + state.day_length / 2) / (state.day_length + 2 * site8))
+            return tomorrow["Tmin"] - tkk / 2 + sqrt(tkk * tkk + 4 * amp * tkk * st) / 2
+        # from sunset to midnight
+        amp = (today["Tmax"] - tomorrow["Tmin"]) * (1 + (today["Tmax"] - tomorrow["Tmin"]) / tkk)
+        sts = sin(pi * state.day_length / (state.day_length + 2 * site8))
+        sst = tomorrow["Tmin"] - tkk / 2 + sqrt(tkk * tkk + 4 * amp * tkk * sts) / 2
+        return (
+            tomorrow["Tmin"] - sst * exp((state.day_length - 24) / tcoef)
+            + (sst - tomorrow["Tmin"]) * exp((suns - ti) / tcoef)
+        ) / (1 - exp((state.day_length - 24) / tcoef))
+
     def _daily_climate(self, u):
         state = self._current_state
         cdef double declination  # daily declination angle, in radians
@@ -3369,7 +3493,7 @@ cdef class Simulation:
             ti = ihr + 0.5
             sinb = sd + cd * cos(pi * (ti - state.solar_noon) / 12)
             hour.radiation = radiation(radsum, sinb, c11)
-            hour.temperature = daytmp(self._sim, u, ti, SitePar[8], sunr, suns)
+            hour.temperature = self.daytmp(u, ti, SitePar[8], sunr, suns)
             hour.dew_point = tdewhour(self._sim, u, ti, hour.temperature, sunr, state.solar_noon, SitePar[8], SitePar[12], SitePar[13], SitePar[14])
             hour.humidity = dayrh(hour.temperature, hour.dew_point)
             hour.wind_speed = compute_hourly_wind_speed(ti, self._sim.climate[u].Wind * 1000 / 86400, t1, t2, t3, wnytf)

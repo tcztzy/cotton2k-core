@@ -28,7 +28,6 @@ from .state cimport cState
 from .soil cimport cSoilCell, cSoil
 
 cdef extern:
-    double daytmp(cSimulation &, uint32_t, double, double, double, double)
     double tdewhour(cSimulation &, uint32_t, double, double, double, double, double, double, double, double)
     double SimulateRunoff(cSimulation &, uint32_t, double, double, uint32_t)
 
