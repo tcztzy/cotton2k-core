@@ -653,8 +653,6 @@ class Phenology:
             * self.fruiting_nodes_fraction[site_index]
         ) / (self.number_of_open_bolls + self.fruiting_nodes_fraction[site_index])
         self.fiber_quality(atn, self.fruiting_nodes_fraction[site_index])
-        # Update the number of open bolls per plant (nopen).
-        self.number_of_open_bolls += self.fruiting_nodes_fraction[site_index]
 
     def fiber_quality(self, atn, fraction):
         """Computation of fiber properties is as in GOSSYM, it is not used in COTTON2K,
