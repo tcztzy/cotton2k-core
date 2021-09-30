@@ -1,7 +1,7 @@
 import datetime
 from collections.abc import Callable, Sequence
 from enum import IntEnum
-from typing import Optional
+from typing import Any, Optional
 
 import numpy as np
 import numpy.typing as npt
@@ -47,6 +47,7 @@ class Stage(IntEnum):
 
 # pylint: disable=E1101,E0203,R0902,R0912,R0913,R0914,W0201
 class Phenology:
+    _sim: Any
     average_temperature: float
     date: datetime.date
     day_inc: float
@@ -57,7 +58,6 @@ class Phenology:
     green_bolls_burr_weight: float
     green_bolls_weight: float
     kday: int
-    lint_yield: float
     new_boll_formation: Callable
     nitrogen_stress_fruiting: float
     nitrogen_stress_vegetative: float
@@ -66,6 +66,12 @@ class Phenology:
     open_bolls_weight: float
     vegetative_branches: Sequence
     water_stress: float
+
+    @property
+    def lint_yield(self) -> float:
+        """yield of lint, kgs per hectare."""
+        _yield = self.fruiting_nodes_boll_weight * self.fruiting_nodes_ginning_percent
+        return _yield.sum() * self._sim.plant_population * 0.001
 
     @property
     def phenological_delay_for_vegetative_by_carbon_stress(self):
@@ -169,7 +175,6 @@ class Phenology:
                         self._sim.first_bloom_date,
                         self._sim.climate[u]["Tmin"],
                         self._sim.climate[u]["Tmax"],
-                        self._sim.plant_population,
                         *self._sim.cultivar_parameters[38:43]
                     )
                     if first_bloom is not None:
@@ -192,7 +197,6 @@ class Phenology:
         first_bloom_date,
         min_temperature,
         max_temperature,
-        plant_population,
         var38,
         var39,
         var40,
@@ -313,7 +317,6 @@ class Phenology:
                 (k, l, m),
                 defoliate_date,
                 site.boll.cumulative_temperature,
-                plant_population,
                 var39,
                 var40,
                 var41,
@@ -590,7 +593,6 @@ class Phenology:
         site_index: tuple[int, int, int],
         defoliate_date: Optional[datetime.date],
         tmpboll: float,
-        plant_population: float,
         var39,
         var40,
         var41,
@@ -645,13 +647,6 @@ class Phenology:
             self.ginning_percent * self.number_of_open_bolls
             + self.fruiting_nodes_ginning_percent[site_index] * site.fraction
         ) / (self.number_of_open_bolls + site.fraction)
-        # Cumulative lint yield (LintYield) is computed in kg per ha.
-        self.lint_yield += (
-            self.fruiting_nodes_ginning_percent[site_index]
-            * self.fruiting_nodes_boll_weight[site_index]
-            * plant_population
-            * 0.001
-        )
         self.fiber_quality(atn, site.fraction)
         # Update the number of open bolls per plant (nopen).
         self.number_of_open_bolls += site.fraction

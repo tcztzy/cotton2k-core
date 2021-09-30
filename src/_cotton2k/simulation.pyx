@@ -701,7 +701,6 @@ cdef class State:
     cdef public double leaf_weight
     cdef public double leaf_weight_pre_fruiting[9]  # weight of prefruiting node leaves, g.
     cdef public double light_interception  # ratio of light interception by plant canopy.
-    cdef public double lint_yield  # yield of lint, kgs per hectare.
     cdef public double max_leaf_water_potential  # maximum (dawn) leaf water potential, MPa.
     cdef public double min_leaf_water_potential  # minimum (noon) leaf water potential, MPa.
     cdef public double net_photosynthesis  # net photosynthetic rate, g per plant per day.
@@ -2965,7 +2964,6 @@ cdef class Simulation:
     def _init_state(self):
         cdef State state0 = self._current_state
         state0.date = self.start_date
-        state0.lint_yield = 0
         state0.soil.number_of_layers_with_root = 7
         state0.plant_height = 4.0
         state0.stem_weight = 0.2
