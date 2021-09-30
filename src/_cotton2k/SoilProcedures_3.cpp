@@ -104,7 +104,7 @@ void NitrogenUptake(State &state, SoilCell &soil_cell, int l, int k, double reqn
 
 ////////////////////////////////////////////////////////////////////////////////
 void WaterFlux(double q1[], double psi1[], double dd[], double qr1[],
-               double qs1[], double pp1[], int nn, int iv, int ll, long numiter)
+               double qs1[], double pp1[], int nn, int iv, int ll, long numiter, int noitr)
 //     This function computes the movement of water in the soil, caused by potential differences
 //  between cells in a soil column or in a soil layer. It is called by function
 //  CapillaryFlow(). It calls functions WaterBalance(), psiq(), qpsi() and wcond().

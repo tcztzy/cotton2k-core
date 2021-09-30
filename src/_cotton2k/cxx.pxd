@@ -51,7 +51,6 @@ cdef extern from "global.h":
     double thts[40]
     int LocationColumnDrip
     int LocationLayerDrip
-    int noitr
     double VolNh4NContent[40][20]
     double VolUreaNContent[40][20]
     double ElCondSatSoilToday

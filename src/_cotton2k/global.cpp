@@ -17,7 +17,6 @@ int LocationColumnDrip,  // number of column in which the drip emitter is locate
     MinDaysBetweenIrrig, // minimum number of days between consecutive irrigations (used for computing predicted irrigation).
     nk,                  // number of vertical columns of soil cells in the slab.
     nl,                  // number of horizontal layers of soil cells in the slab.
-    noitr,               // number of iterations per day, for calling some soil water related functions.
     NumIrrigations,      // number of irrigations.
     NumNitApps;          // number of applications of nitrogen fertilizer.
 

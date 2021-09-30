@@ -16,12 +16,12 @@ double Drain(SoilCell[40][20], double);
 double CellDistance(int, int, int, int, double);
 
 // SoilProcedures_3
-void WaterFlux(double[], double[], double[], double[], double[], double[], int, int, int, long);
+void WaterFlux(double[], double[], double[], double[], double[], double[], int, int, int, long, int);
 
 void NitrogenFlow(int, double[], double[], double[], double[], double[]);
 
 //////////////////////////
-void CapillaryFlow(Simulation &sim, unsigned int u)
+void CapillaryFlow(Simulation &sim, unsigned int u, int noitr)
 //     This function computes the capillary water flow between soil cells. It is called by
 //  SoilProcedures(), noitr times per day.  The number of iterations (noitr) has been computed
 //  in SoilProcedures() as a function of the amount of water applied. It is executed only once
@@ -80,7 +80,7 @@ void CapillaryFlow(Simulation &sim, unsigned int u)
         } // end loop l
 //     Call the following functions: WaterFlux() calculates the water flow caused by potential
 //  gradients; NitrogenFlow() computes the movement of nitrates caused by the flow of water.
-        WaterFlux(q1, psi1, _dl, thad, thts, PoreSpace, nlx, iv, 0, numiter);
+        WaterFlux(q1, psi1, _dl, thad, thts, PoreSpace, nlx, iv, 0, numiter, noitr);
         NitrogenFlow(nl, q01, q1, _dl, nit, nur);
 //     Reassign the updated values of q1, nit, nur and psi1 back to
 //  cell.water_content, VolNo3NContent, VolUreaNContent and SoilPsi.
@@ -115,7 +115,7 @@ void CapillaryFlow(Simulation &sim, unsigned int u)
         }
 //     Call subroutines WaterFlux(), and NitrogenFlow() to compute water nitrate and
 //  urea transport in the layer.
-        WaterFlux(q1, psi1, wk1, qr1, qs1, pp1, nk, iv, l, numiter);
+        WaterFlux(q1, psi1, wk1, qr1, qs1, pp1, nk, iv, l, numiter, noitr);
         NitrogenFlow(nk, q01, q1, wk1, nit, nur);
 //     Reassign the updated values of q1, nit, nur and psi1 back to
 //  cell.water_content, VolNo3NContent, VolUreaNContent and SoilPsi.

@@ -34,7 +34,6 @@ from .cxx cimport (
     AverageSoilPsi,
     VolNh4NContent,
     VolUreaNContent,
-    noitr,
     thts,
     thetar,
     HeatCondDrySoil,
@@ -3657,7 +3656,7 @@ cdef class Simulation:
 
     def _soil_procedures(self, u):
         """This function manages all the soil related processes, and is executed once each day."""
-        global AverageSoilPsi, LocationColumnDrip, LocationLayerDrip, noitr
+        global AverageSoilPsi, LocationColumnDrip, LocationLayerDrip
         state = self._current_state
         # The following constant parameters are used:
         cdef double cpardrip = 0.2
@@ -3694,7 +3693,7 @@ cdef class Simulation:
             # If water is applied, GravityFlow() is called when the method of irrigation is not by drippers, followed by CapillaryFlow().
             for iter in range(noitr):
                 GravityFlow(self._sim.states[u].soil.cells, applywat, self.row_space)
-                CapillaryFlow(self._sim, u)
+                CapillaryFlow(self._sim, u, noitr)
         if DripWaterAmount > 0:
             # For drip irrigation.
             # The number of iterations is computed from the volume of the soil cell in which the water is applied.
@@ -3704,11 +3703,10 @@ cdef class Simulation:
             # If water is applied, DripFlow() is called followed by CapillaryFlow().
             for iter in range(noitr):
                 DripFlow(state._[0].soil.cells, applywat, self.row_space)
-                CapillaryFlow(self._sim, u)
+                CapillaryFlow(self._sim, u, noitr)
         # When no water is added, there is only one iteration in this day.
         if WaterToApply + DripWaterAmount <= 0:
-            noitr = 1
-            CapillaryFlow(self._sim, u)
+            CapillaryFlow(self._sim, u, 1)
 
     def _soil_nitrogen(self, u):
         """This function computes the transformations of the nitrogen compounds in the soil."""

@@ -19,7 +19,7 @@ typedef struct NitrogenFertilizer
 extern NitrogenFertilizer NFertilizer[150];
 ////    Integers    ////
 extern int LocationColumnDrip, LocationLayerDrip, MinDaysBetweenIrrig,
-    nk, nl, noitr, NumIrrigations, NumNitApps;
+    nk, nl, NumIrrigations, NumNitApps;
 extern int SoilHorizonNum[maxl];
 ////    Double    ////
 extern double AverageSoilPsi, conmax, dclay, dsand, ElCondSatSoilToday, IrrigationDepth,
