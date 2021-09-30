@@ -532,6 +532,12 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             self.plant_row_column,
         )
 
+    def _soil_procedures(self, u):
+        state = self.state(u)
+        # Call function ApplyFertilizer() for nitrogen fertilizer application.
+        state.apply_fertilizer(self.row_space, self.plant_population)
+        super()._soil_procedures(u)
+
     @property
     def _column_width(self):
         return self.row_space / 20

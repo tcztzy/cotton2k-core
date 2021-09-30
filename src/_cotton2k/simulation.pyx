@@ -3661,8 +3661,6 @@ cdef class Simulation:
         # The following constant parameters are used:
         cdef double cpardrip = 0.2
         cdef double cparelse = 0.4
-        # Call function ApplyFertilizer() for nitrogen fertilizer application.
-        state.apply_fertilizer(self.row_space, self.plant_population)
         cdef double DripWaterAmount = 0  # amount of water applied by drip irrigation
         cdef double WaterToApply  # amount of water applied by non-drip irrigation or rainfall
         # Check if there is rain on this day
