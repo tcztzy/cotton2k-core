@@ -443,14 +443,6 @@ cdef class FruitingNode:
         self._[0].age = value
 
     @property
-    def fraction(self):
-        return self._[0].fraction
-
-    @fraction.setter
-    def fraction(self, value):
-        self._[0].fraction = value
-
-    @property
     def leaf(self):
         return NodeLeaf.from_ptr(&self._.leaf)
 
@@ -664,6 +656,7 @@ cdef class State:
     cdef public numpy.ndarray root_weights
     cdef public numpy.ndarray root_weight_capable_uptake  # root weight capable of uptake, in g per soil cell.
     cdef public numpy.ndarray fruiting_nodes_boll_weight  # weight of seedcotton for each site, g per plant.
+    cdef public numpy.ndarray fruiting_nodes_fraction  # fraction of fruit remaining at each fruiting site (0 to 1).
     cdef public numpy.ndarray fruiting_nodes_stage
     cdef public numpy.ndarray fruiting_nodes_ginning_percent
     cdef public object pollination_switch  # pollination switch: false = no pollination, true = yes.
@@ -768,16 +761,6 @@ cdef class State:
         if not isinstance(value, date):
             raise TypeError
         self._ordinal = value.toordinal()
-
-    @property
-    def number_of_squares(self):
-        def g():
-            for k in range(self.number_of_vegetative_branches):
-                for l in range(self.vegetative_branches[k].number_of_fruiting_branches):
-                    for m in range(self.vegetative_branches[k].fruiting_branches[l].number_of_fruiting_nodes):
-                        if self.fruiting_nodes_stage[k, l, m] == Stage.Square:
-                            yield self.vegetative_branches[k].fruiting_branches[l].nodes[m].fraction
-        return sum(g())
 
     @property
     def solar_noon(self):
@@ -2071,15 +2054,16 @@ cdef class State:
         ---------
         abscissionRatio
             ratio of abscission of a fruiting site."""
+        index = (site.k, site.l, site.m)
         # Compute the square weight lost by shedding (wtlos) as a proportion of SquareWeight of this site. Update state.square_nitrogen, CumPlantNLoss, SquareWeight[k][l][m], BloomWeightLoss, state.square_weight and FruitFraction[k][l][m].
         cdef double wtlos = site.square.weight * abscissionRatio  # weight lost by shedding at this site.
         self.square_nitrogen -= wtlos * self.square_nitrogen_concentration
         site.square.weight -= wtlos
         self.square_weight -= wtlos
-        site.fraction *= (1 - abscissionRatio)
+        self.fruiting_nodes_fraction[index] *= (1 - abscissionRatio)
         # If FruitFraction[k][l][m] is less than 0.001 make it zero, and update state.square_nitrogen, CumPlantNLoss, BloomWeightLoss, state.square_weight, SquareWeight[k][l][m], and assign 5 to FruitingCode.
-        if site.fraction <= 0.001:
-            site.fraction = 0
+        if self.fruiting_nodes_fraction[index] <= 0.001:
+            self.fruiting_nodes_fraction[index] = 0
             self.square_nitrogen -= site.square.weight * self.square_nitrogen_concentration
             self.square_weight -= site.square.weight
             site.square.weight = 0
@@ -2103,15 +2087,15 @@ cdef class State:
         self.green_bolls_burr_weight -= site.burr.weight * abscissionRatio
         self.fruiting_nodes_boll_weight[index] *= (1 - abscissionRatio)
         site.burr.weight -= site.burr.weight * abscissionRatio
-        site.fraction -= site.fraction * abscissionRatio
+        self.fruiting_nodes_fraction[index] *= (1 - abscissionRatio)
 
         # If FruitFraction[k][l][m] is less than 0.001 make it zero, update state.seed_nitrogen, state.burr_nitrogen, CumPlantNLoss, state.green_bolls_weight, state.green_bolls_burr_weight, BollWeight[k][l][m], state.site[k][l][m].burr.weight, and assign 4 to FruitingCode.
 
-        if site.fraction <= 0.001:
+        if self.fruiting_nodes_fraction[index] <= 0.001:
             self.fruiting_nodes_stage[site.k, site.l, site.m] = Stage.AbscisedAsBoll
             self.seed_nitrogen -= self.fruiting_nodes_boll_weight[index] * (1 - gin1) * self.seed_nitrogen_concentration
             self.burr_nitrogen -= site.burr.weight * self.burr_nitrogen_concentration
-            site.fraction = 0
+            self.fruiting_nodes_fraction[index] = 0
             self.green_bolls_weight -= self.fruiting_nodes_boll_weight[index]
             self.green_bolls_burr_weight -= site.burr.weight
             self.fruiting_nodes_boll_weight[index] = 0
@@ -2126,9 +2110,9 @@ cdef class State:
                 for m in range(self.vegetative_branches[k].fruiting_branches[l].number_of_fruiting_nodes):
                     site = self.vegetative_branches[k].fruiting_branches[l].nodes[m]
                     if self.fruiting_nodes_stage[k, l, m] in [Stage.YoungGreenBoll, Stage.GreenBoll]:
-                        self.number_of_green_bolls += site.fraction
+                        self.number_of_green_bolls += self.fruiting_nodes_fraction[k, l, m]
                     elif self.fruiting_nodes_stage[k, l, m] == Stage.MatureBoll:
-                        self.number_of_open_bolls += site.fraction
+                        self.number_of_open_bolls += self.fruiting_nodes_fraction[k, l, m]
 
     def new_boll_formation(self, site):
         """Simulates the formation of a new boll at a fruiting site."""
@@ -2139,7 +2123,7 @@ cdef class State:
         # If bPollinSwitch is false accumulate number of blooms to be dropped, and define FruitingCode as 6.
         if not self.pollination_switch:
             self.fruiting_nodes_stage[site.k, site.l, site.m] = Stage.AbscisedAsFlower
-            site.fraction = 0
+            self.fruiting_nodes_fraction[index] = 0
             site.square.weight = 0
             return
         # The initial weight of the new boll (BollWeight) and new burr (state.burr_weight) will be a fraction of the square weight, and the rest will be added to BloomWeightLoss. 80% of the initial weight will be in the burr.
@@ -3012,6 +2996,7 @@ cdef class Simulation:
         state0.petiole_nitrate_nitrogen_concentration = 0
         state0.delay_of_new_fruiting_branch = [0, 0, 0]
         state0.fruiting_nodes_boll_weight = np.zeros((3, 30, 5), dtype=np.double)
+        state0.fruiting_nodes_fraction = np.zeros((3, 30, 5), dtype=np.double)
         state0.fruiting_nodes_stage = np.zeros((3, 30, 5), dtype=np.int_)
         state0.fruiting_nodes_ginning_percent = np.ones((3, 30, 5), dtype=np.double) * 0.35
         for i in range(9):
@@ -3035,7 +3020,6 @@ cdef class Simulation:
                 for m in range(5):
                     state0._[0].vegetative_branches[k].fruiting_branches[l].nodes[m] = dict(
                         age=0,
-                        fraction=0,
                         average_temperature=0,
                         leaf=dict(
                             age=0,
@@ -3533,7 +3517,7 @@ cdef class Simulation:
                         # ratesqr is the rate of square growth, g per square per day.
                         # The routine for this is derived from GOSSYM, and so are the parameters used.
                         ratesqr = tfrt * vpotfrt[3] * exp(-vpotfrt[2] + vpotfrt[3] * self._sim.states[u].vegetative_branches[k].fruiting_branches[l].nodes[m].age)
-                        self._sim.states[u].vegetative_branches[k].fruiting_branches[l].nodes[m].square.potential_growth = ratesqr * self._sim.states[u].vegetative_branches[k].fruiting_branches[l].nodes[m].fraction
+                        self._sim.states[u].vegetative_branches[k].fruiting_branches[l].nodes[m].square.potential_growth = ratesqr * state.fruiting_nodes_fraction[k, l, m]
                         PotGroAllSquares += self._sim.states[u].vegetative_branches[k].fruiting_branches[l].nodes[m].square.potential_growth
                     # Growth of seedcotton is simulated separately from the growth of burrs. The logistic function is used to simulate growth of seedcotton. The constants of this function for cultivar 'Acala-SJ2', are based on the data of Marani (1979); they are derived from calibration for other cultivars
                     # agemax is the age of the boll (in physiological days after bloom) at the time when the boll growth rate is maximal.
@@ -3560,8 +3544,8 @@ cdef class Simulation:
                         else:
                             ratebur = vpotfrt[4] * tfrt * wfdb
                         # Potential boll (seeds and lint) growth rate (ratebol) and potential burr growth rate (ratebur) are multiplied by FruitFraction to compute PotGroBolls and PotGroBurrs for node (k,l,m).
-                        self._sim.states[u].vegetative_branches[k].fruiting_branches[l].nodes[m].boll.potential_growth = ratebol * self._sim.states[u].vegetative_branches[k].fruiting_branches[l].nodes[m].fraction
-                        self._sim.states[u].vegetative_branches[k].fruiting_branches[l].nodes[m].burr.potential_growth = ratebur * self._sim.states[u].vegetative_branches[k].fruiting_branches[l].nodes[m].fraction
+                        self._sim.states[u].vegetative_branches[k].fruiting_branches[l].nodes[m].boll.potential_growth = ratebol * state.fruiting_nodes_fraction[k, l, m]
+                        self._sim.states[u].vegetative_branches[k].fruiting_branches[l].nodes[m].burr.potential_growth = ratebur * state.fruiting_nodes_fraction[k, l, m]
                         # Sum potential growth rates of bolls and burrs as PotGroAllBolls and PotGroAllBurrs, respectively.
                         PotGroAllBolls += self._sim.states[u].vegetative_branches[k].fruiting_branches[l].nodes[m].boll.potential_growth
                         PotGroAllBurrs += self._sim.states[u].vegetative_branches[k].fruiting_branches[l].nodes[m].burr.potential_growth

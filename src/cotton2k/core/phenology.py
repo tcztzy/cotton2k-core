@@ -52,6 +52,7 @@ class Phenology:
     date: datetime.date
     day_inc: float
     fruiting_nodes_boll_weight: npt.NDArray[np.double]
+    fruiting_nodes_fraction: npt.NDArray[np.double]
     fruiting_nodes_ginning_percent: npt.NDArray[np.double]
     fruiting_nodes_stage: npt.NDArray[np.int_]
     ginning_percent: float
@@ -351,7 +352,7 @@ class Phenology:
             return
         vb = self._new_vegetative_branch
         # Assign 1 to FruitFraction and FruitingCode of the first site of this branch.
-        vb.fruiting_branches[0].nodes[0].fraction = 1
+        self.fruiting_nodes_fraction[self.number_of_vegetative_branches, 0, 0] = 1
         self.fruiting_nodes_stage[
             self.number_of_vegetative_branches, 0, 0
         ] = Stage.Square
@@ -458,12 +459,11 @@ class Phenology:
         # the index number of the new fruiting branch on this vegetative branch, after
         # a new branch has been added.
         new_branch = vb.fruiting_branches[-1]
+        l = vb.number_of_fruiting_branches - 1
         new_branch.number_of_fruiting_nodes = 1
         new_node = new_branch.nodes[0]
-        new_node.fraction = 1
-        self.fruiting_nodes_stage[
-            k, vb.number_of_fruiting_branches - 1, 0
-        ] = Stage.Square
+        self.fruiting_nodes_fraction[k, l, 0] = 1
+        self.fruiting_nodes_stage[k, l, 0] = Stage.Square
         # Initiate new leaves at the first node of the new fruiting branch, and at the
         # corresponding main stem node. The mass and nitrogen in the new leaves is
         # substacted from the stem.
@@ -539,7 +539,7 @@ class Phenology:
             leaf_weight = leaf_area * self.leaf_weight_area_ratio
         fb.number_of_fruiting_nodes += 1
         node = fb.nodes[nnid + 1]
-        node.fraction = 1
+        self.fruiting_nodes_fraction[k, l, nnid + 1] = 1
         self.fruiting_nodes_stage[k, l, nnid + 1] = Stage.Square
         # Initiate a new leaf at the new node. The mass and nitrogen in the new leaf is
         # substacted from the stem.
@@ -561,7 +561,7 @@ class Phenology:
         self.vegetative_branches[0].fruiting_branches[0].number_of_fruiting_nodes = 1
         first_node = self.vegetative_branches[0].fruiting_branches[0].nodes[0]
         self.fruiting_nodes_stage[0, 0, 0] = Stage.Square
-        first_node.fraction = 1
+        self.fruiting_nodes_fraction[0, 0, 0] = 1
         # Initialize a new leaf at this position. define its initial weight and area.
         # VarPar[34] is the initial area of a new leaf. The mass and nitrogen of the
         # new leaf are substacted from the stem.
@@ -649,11 +649,12 @@ class Phenology:
         self.fruiting_nodes_ginning_percent[site_index] = (var41 - var42 * atn) / 100
         self.ginning_percent = (
             self.ginning_percent * self.number_of_open_bolls
-            + self.fruiting_nodes_ginning_percent[site_index] * site.fraction
-        ) / (self.number_of_open_bolls + site.fraction)
-        self.fiber_quality(atn, site.fraction)
+            + self.fruiting_nodes_ginning_percent[site_index]
+            * self.fruiting_nodes_fraction[site_index]
+        ) / (self.number_of_open_bolls + self.fruiting_nodes_fraction[site_index])
+        self.fiber_quality(atn, self.fruiting_nodes_fraction[site_index])
         # Update the number of open bolls per plant (nopen).
-        self.number_of_open_bolls += site.fraction
+        self.number_of_open_bolls += self.fruiting_nodes_fraction[site_index]
 
     def fiber_quality(self, atn, fraction):
         """Computation of fiber properties is as in GOSSYM, it is not used in COTTON2K,

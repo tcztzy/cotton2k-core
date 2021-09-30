@@ -111,6 +111,12 @@ class State(
         )
 
     @property
+    def number_of_squares(self):
+        return self.fruiting_nodes_fraction[
+            self.fruiting_nodes_stage == Stage.Square
+        ].sum()
+
+    @property
     def agetop(self):
         l = len(self.vegetative_branches[0].fruiting_branches) - 1
         # average physiological age of top three nodes.
@@ -213,6 +219,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             setattr(post, attr, getattr(pre, attr))
         for ndarray in (
             "fruiting_nodes_boll_weight",
+            "fruiting_nodes_fraction",
             "fruiting_nodes_ginning_percent",
             "fruiting_nodes_stage",
             "root_weights",

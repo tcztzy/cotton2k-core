@@ -28,7 +28,6 @@ cdef extern from "FruitingSite.h":
         double weight
     ctypedef struct FruitingSite:
         double age
-        double fraction
         double average_temperature
         Leaf leaf
         SquareStruct square
