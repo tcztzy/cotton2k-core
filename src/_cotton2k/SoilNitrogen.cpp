@@ -43,7 +43,7 @@ extern "C"
   residues. Soil Sci. Soc. Am. J. 55:1031-1037.
 ************************************************************************/
 //////////////////////////
-void UreaHydrolysis(SoilCell &soil_cell, int l, int k, double soil_temperature)
+void UreaHydrolysis(int l, int k, double soil_temperature, double water_content, double fresh_organic_matter)
 //     This function computes the hydrolysis of urea to ammonium in the soil.
 //  It is called by function SoilNitrogen(). It calls the function SoilWaterEffect().
 //     The following procedure is based on the CERES routine, as
@@ -67,7 +67,7 @@ void UreaHydrolysis(SoilCell &soil_cell, int l, int k, double soil_temperature)
 //  sum of stable and fresh organic matter, assuming 0.4 carbon content in soil organic matter.
     int j = SoilHorizonNum[l]; // profile horizon number for this soil layer.
     double oc; // organic carbon in the soil (% by weight).
-    oc = 0.4 * (soil_cell.fresh_organic_matter + HumusOrganicMatter[l][k]) * 0.1 / BulkDensity[j];
+    oc = 0.4 * (fresh_organic_matter + HumusOrganicMatter[l][k]) * 0.1 / BulkDensity[j];
 //     Compute the potential rate of hydrolysis of urea. It is assumed
 //  that the potential rate will not be lower than ak0 = 0.25 .
     double ak;  // potential rate of urea hydrolysis (day-1).
@@ -77,7 +77,7 @@ void UreaHydrolysis(SoilCell &soil_cell, int l, int k, double soil_temperature)
 //     Compute the effect of soil moisture using function SoilWaterEffect on the rate of urea
 //  hydrolysis. The constant swf1 is added to the soil moisture function for mineralization,
     double swf; // soil moisture effect on rate of urea hydrolysis.
-    swf = SoilWaterEffect(soil_cell.water_content, FieldCapacity[l], thetar[l], thts[l], 0.5) + swf1;
+    swf = SoilWaterEffect(water_content, FieldCapacity[l], thetar[l], thts[l], 0.5) + swf1;
     if (swf < 0)
         swf = 0;
     if (swf > 1)
