@@ -143,7 +143,7 @@ void CapillaryFlow(Simulation &sim, unsigned int u, int noitr)
 ////////////////////////////////////////////////////////////////////////////////////
 double Drain(SoilCell soil_cells[40][20], double row_space)
 //     This function computes the gravity flow of water in the slab, and returns the
-//  drainage of water out of the slab. It is called from GravityFlow() and CapillaryFlow().
+//  drainage of water out of the slab. It is called from CapillaryFlow().
 //
 //     The following global variables are referenced:
 //       dl, FieldCapacity, MaxWaterCapacity, nk, nl, NO3FlowFraction, PoreSpace, wk

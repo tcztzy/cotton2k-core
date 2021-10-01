@@ -38,7 +38,6 @@ cdef extern from "SoilNitrogen.h":
     void Denitrification(cSoilCell &, int, int, double, double)
 
 cdef extern from "SoilProcedures.h":
-    void GravityFlow(cSoilCell[40][20], double, double)
     void CapillaryFlow(cSimulation &, unsigned int, int)
     void DripFlow(cSoilCell[40][20], double, double)
     void NitrogenUptake(cState &, cSoilCell &, int, int, double, double, double)

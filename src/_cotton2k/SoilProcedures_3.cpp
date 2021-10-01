@@ -1,7 +1,6 @@
 //  SoilProcedures_3.cpp
 //
 //   functions in this file:
-// GravityFlow()
 // NitrogenUptake()
 // WaterFlux()
 // WaterBalance()
@@ -16,21 +15,6 @@ void WaterBalance(double[], double[], double [], int);
 
 // SoilProcedures_2
 double Drain(SoilCell[40][20], double);
-
-////////////////////////////////////////////////////////////////////////////
-void GravityFlow(SoilCell soil_cells[40][20], double applywat, double row_space)
-//     This function computes the water redistribution in the soil or surface irrigation
-//  (by flooding or sprinklers). It is called by SoilProcedures(). It calls function Drain().
-//     The following argument is used:          ApplyWat = amount of water applied, mm.
-//     The following global variables are referenced:
-//       dl, nk.
-//     The following global variables are set:
-//       CumWaterDrained.
-{
-//     Add the applied amount of water to the top soil cell of each column.
-    for (int k = 0; k < nk; k++)
-        soil_cells[0][k].water_content += 0.10 * applywat / dl(0);
-}
 
 ///////////////////////////////////////////////////////////////////////////
 void NitrogenUptake(State &state, SoilCell &soil_cell, int l, int k, double reqnc, double row_space, double per_plant_area)

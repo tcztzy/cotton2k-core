@@ -2256,6 +2256,18 @@ cdef class State:
                         reqnc = self.total_required_nitrogen * uptk[l][k] / sumep
                         NitrogenUptake(self._[0], self._[0].soil.cells[l][k], l, k, reqnc, row_space, per_plant_area)
 
+    def gravity_flow(self, applywat):
+        """This function computes the water redistribution in the soil or surface irrigation (by flooding or sprinklers). It is called by SoilProcedures(). It calls function Drain().
+
+        Arguments
+        ---------
+        applywat
+            amount of water applied, mm.
+        """
+        # Add the applied amount of water to the top soil cell of each column.
+        for k in range(20):
+            self._[0].soil.cells[0][k].water_content += 0.10 * applywat / SIMULATED_LAYER_DEPTH[0]
+
     def average_psi(self, row_space):
         """This function computes and returns the average soil water potential of the root zone of the soil slab. This average is weighted by the amount of active roots (roots capable of uptake) in each soil cell. Soil zones without roots are not included."""
         # Constants used:
@@ -3812,9 +3824,9 @@ cdef class Simulation:
             # the amount of water applied, mm per iteration.
             applywat = WaterToApply / noitr
             # The following subroutines are called noitr times per day:
-            # If water is applied, GravityFlow() is called when the method of irrigation is not by drippers, followed by CapillaryFlow().
+            # If water is applied, state.gravity_flow() is called when the method of irrigation is not by drippers, followed by CapillaryFlow().
             for iter in range(noitr):
-                GravityFlow(self._sim.states[u].soil.cells, applywat, self.row_space)
+                state.gravity_flow(applywat)
                 CapillaryFlow(self._sim, u, noitr)
         if DripWaterAmount > 0:
             # For drip irrigation.
