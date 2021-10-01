@@ -244,6 +244,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             "pre_fruiting_leaf_area",
             "seed_layer_number",
             "seed_moisture",
+            "soil_heat_flux_numiter",
             "stem_weight",
             "taproot_layer_number",
             "taproot_length",

@@ -19,18 +19,13 @@ from _cotton2k.utils import date2doy, doy2date
 from _cotton2k.thermology import canopy_balance
 from .climate cimport ClimateStruct
 from .cxx cimport (
-    dclay,
-    dsand,
     cSimulation,
-    SandVolumeFraction,
-    ClayVolumeFraction,
     ElCondSatSoilToday,
     LocationColumnDrip,
     LocationLayerDrip,
     PotGroAllSquares,
     PotGroAllBolls,
     PotGroAllBurrs,
-    PoreSpace,
     SoilPsi,
     SoilHorizonNum,
     AverageSoilPsi,
@@ -38,9 +33,6 @@ from .cxx cimport (
     VolUreaNContent,
     thts,
     thetar,
-    HeatCondDrySoil,
-    HeatCapacitySoilSolid,
-    MarginalWaterContent,
     HumusOrganicMatter,
     NO3FlowFraction,
     MaxWaterCapacity,
@@ -50,6 +42,7 @@ from .irrigation cimport Irrigation
 from .rs cimport (
     SlabLoc,
     wk,
+    dl,
     SoilMechanicResistance,
     wcond,
     PsiOsmotic,
@@ -112,6 +105,15 @@ SIMULATED_LAYER_DEPTH[:3] = 2
 SIMULATED_LAYER_DEPTH[3] = 4
 SIMULATED_LAYER_DEPTH[-2:] = 10
 SIMULATED_LAYER_DEPTH_CUMSUM = np.cumsum(SIMULATED_LAYER_DEPTH)
+cdef double dclay  # aggregation factor for clay in water.
+cdef double dsand  # aggregation factor for sand in water.
+cdef double HeatCondDrySoil[maxl]  # the heat conductivity of dry soil.
+cdef double MarginalWaterContent[40]  # marginal soil water content (as a function of soil texture) for computing soil heat conductivity.
+cdef double ClayVolumeFraction[40]  # fraction by volume of clay in the soil.
+cdef double SandVolumeFraction[40]  # fraction by volume of sand plus silt in the soil.
+cdef double FieldCapacity[40]  # volumetric water content of soil at field capacity for each soil layer, cm3 cm-3.
+cdef double PoreSpace[40]  # pore space of soil, volume fraction.
+cdef double HeatCapacitySoilSolid[40]  # heat capacity of the solid phase of the soil.
 
 
 cdef water_flux(double q1[], double psi1[], double dd[], double qr1[], double qs1[], double pp1[], int nn, int iv, int ll, long numiter, int noitr):
@@ -343,6 +345,92 @@ cdef void water_balance(double q1[], double qx[], double dd[], int nn):
     if dabs > 0:
         for i in range(nn):
             q1[i] = q1[i] - abs(q1[i] - qx[i]) * dev / (dabs * dd[i])
+
+# arrays with file scope:
+cdef double dz[40]  # equal to the dl array in a columnn, or wk in a row.
+cdef double ts1[40]  # array of soil temperatures.
+cdef double ts0[40]  # array of previous soil temperatures.
+cdef double hcap[40]  # heat capacity of soil layer (cal cm-3 oC-1).
+
+
+cdef double ThermalCondSoil(double q0, double t0, int l0):
+    """Computes and returns the thermal conductivity of the soil (cal cm-1 s-1 oC-1). It is based on the work of De Vries(1963).
+
+    Arguments
+    ---------
+    l0
+        soil layer.
+    q0
+        volumetric soil moisture content.
+    t0
+        soil temperature (K).
+    """
+    # Constant parameters:
+    cdef double bclay = 7.0  # heat conductivity of clay (= 7 mcal cm-1 s-1 oc-1).
+    cdef double bsand = 20.0  # heat conductivity of sand (= 20 mcal cm-1 s-1 oc-1).
+    cdef double cka = 0.0615  # heat conductivity of air (= 0.0615 mcal cm-1 s-1 oc-1).
+    cdef double ckw = 1.45  # heat conductivity of water (= 1.45 mcal cm-1 s-1 oc-1).
+    # Convert soil temperature to degrees C.
+    cdef double tcel = t0 - 273.161  # soil temperature, in C.
+    # Compute cpn, the apparent heat conductivity of air in soil pore spaces, when saturated with water vapor, using a function of soil temperature, which changes linearly between 36 and 40 C.
+    cdef double bb  # effect of temperature on heat conductivity of air saturated with water vapor.
+    if tcel <= 36:
+        bb = 0.06188
+    elif tcel > 36 and tcel <= 40:
+        bb = 0.06188 + (tcel - 36) * (0.05790 - 0.06188) / (40 - 36)
+    else:
+        bb = 0.05790
+    cdef double cpn  # apparent heat conductivity of air in soil pore spaces, when it is saturated with water vapor.
+    cpn = cka + 0.05 * np.exp(bb * tcel)
+    # Compute xair, air content of soil per volume, from soil porosity and moisture content.
+    # Compute thermal conductivity
+    # (a) for wet soil (soil moisture higher than field capacity),
+    # (b) for less wet soil.
+    # In each case compute first ga, and then dair.
+    cdef double xair  # air content of soil, per volume.
+    xair = max(PoreSpace[l0] - q0, 0)
+    cdef double dair  # aggregation factor for air in soil pore spaces.
+    cdef double ga  # shape factor for air in pore spaces.
+    cdef double hcond  # computed heat conductivity of soil, mcal cm-1 s-1 oc-1.
+    if q0 >= FieldCapacity[l0]:
+        # (a) Heat conductivity of soil wetter than field capacity.
+        ga = 0.333 - 0.061 * xair / PoreSpace[l0]
+        dair = form(cpn, ckw, ga)
+        hcond = (q0 * ckw + dsand * bsand * SandVolumeFraction[l0] + dclay * bclay * ClayVolumeFraction[l0] + dair * cpn * xair) / (q0 + dsand * SandVolumeFraction[l0] + dclay * ClayVolumeFraction[l0] + dair * xair)
+    else:
+        # (b) For soil less wet than field capacity, compute also ckn (heat conductivity of air in the soil pores).
+        qq: float  # soil water content for computing ckn and ga.
+        ckn: float  # heat conductivity of air in pores in soil.
+        qq = max(q0, MarginalWaterContent[l0])
+        ckn = cka + (cpn - cka) * qq / FieldCapacity[l0]
+        ga = 0.041 + 0.244 * (qq - MarginalWaterContent[l0]) / (FieldCapacity[l0] - MarginalWaterContent[l0])
+        dair = form(ckn, ckw, ga)
+        hcond = (qq * ckw + dsand * bsand * SandVolumeFraction[l0] + dclay * bclay * ClayVolumeFraction[l0] + dair * ckn * xair) / (qq + dsand * SandVolumeFraction[l0] + dclay * ClayVolumeFraction[l0] + dair * xair)
+        # When soil moisture content is less than the limiting value MarginalWaterContent, modify the value of hcond.
+        if qq <= MarginalWaterContent[l0]:
+            hcond = (hcond - HeatCondDrySoil[l0]) * q0 / MarginalWaterContent[l0] + HeatCondDrySoil[l0]
+    # The result is hcond converted from mcal to cal.
+    return hcond / 1000
+
+
+cdef void HeatBalance(int nn):
+    """This function checks and corrects the heat balance in the soil soil cells, within a soil layer. It is called by function SoilHeatFlux() only for horizontal flux.
+
+    The implicit part of the solution may cause some deviation in the total heat sum to occur. This module corrects the heat balance if the sum of absolute deviations is not zero, so that the total amount of heat in the array does not change. The correction is proportional to the difference between the previous and present heat amounts.
+
+    Arguments
+    ---------
+    nn
+        the number of soil cells in this layer or column.
+    """
+    dabs = 0  # Sum of absolute value of differences in heat content in the array between beginning and end of this time step.
+    dev = 0  # Sum of differences of heat amount in soil.
+    for i in range(nn):
+        dev += dz[i] * hcap[i] * (ts1[i] - ts0[i])
+        dabs += abs(ts1[i] - ts0[i])
+    if dabs > 0:
+        for i in range(nn):
+            ts1[i] = ts1[i] - abs(ts1[i] - ts0[i]) * dev / (dabs * dz[i] * hcap[i])
 
 
 cdef class SoilInit:
@@ -2626,7 +2714,7 @@ cdef class State:
                 q1[l] = self._[0].soil.cells[l][k].water_content
                 q01[l] = self._[0].soil.cells[l][k].water_content
                 psi1[l] = SoilPsi[l][k] + PsiOsmotic(self._[0].soil.cells[l][k].water_content, thts[l], ElCondSatSoilToday)
-                nit[l] = self._[0].soil.cells[l][k].nitrate_nitrogen_content;
+                nit[l] = self._[0].soil.cells[l][k].nitrate_nitrogen_content
                 nur[l] = VolUreaNContent[l][k]
                 _dl[l] = SIMULATED_LAYER_DEPTH[l]
             # Call the following functions: water_flux() calculates the water flow caused by potential gradients; NitrogenFlow() computes the movement of nitrates caused by the flow of water.
@@ -2835,6 +2923,136 @@ cdef class State:
                     VolNh4NContent[LocationLayerDrip][LocationColumnDrip] += NFertilizer[i].amtamm * ferc * row_space / (depth * wk(LocationColumnDrip, row_space))
                     self.cells[LocationLayerDrip][LocationColumnDrip].nitrate_nitrogen_content += NFertilizer[i].amtnit * ferc * row_space / (depth * wk(LocationColumnDrip, row_space))
                     VolUreaNContent[LocationLayerDrip][LocationColumnDrip] += NFertilizer[i].amtura * ferc * row_space / (depth * wk(LocationColumnDrip, row_space))
+
+    cdef public long soil_heat_flux_numiter  # number of this iteration.
+
+    def soil_heat_flux(self, double dlt, int iv, int nn, int layer, int n0, double row_space):
+        """Computes heat flux in one direction between soil cells.
+
+        NOTE: the units are:
+        thermal conductivity = cal cm-1 s-1 oC-1;
+        heat capacity = cal cm-3 oC-1;
+        thermal diffusivity = cm2 s-1;
+        ckx and cky are dimensionless;
+
+        Arguments
+        ---------
+        dlt
+            time (seconds) of one iteration.
+        iv
+            = 1 for vertical flux, = 0 for horizontal flux.
+        layer
+            soil layer number.
+        n0
+            number of layer or column of this array
+        nn
+            number of soil cells in the array.
+            """
+        # Constant parameters:
+        cdef double beta1 = 0.90  # weighting factor for the implicit method of computation.
+        cdef double ca = 0.0003  # heat capacity of air (cal cm-3 oC-1).
+        # Set soil layer number l (needed to define HeatCapacitySoilSolid, PoreSpace, ThermalCondSoil).
+        # Compute for each soil cell the heat capacity and heat diffusivity.
+
+        cdef int l = layer  # soil layer number.
+        cdef double q1[40]  # array of water content.
+        cdef double asoi[40]  # array of thermal diffusivity of soil cells (cm2 s-1).
+        for i in range(nn):
+            if iv == 1:
+                l = i
+                q1[i] = self._[0].soil.cells[i][n0].water_content
+                ts1[i] = SoilTemp[i][n0]
+                dz[i] = dl(i)
+            else:
+                q1[i] = self._[0].soil.cells[n0][i].water_content
+                ts1[i] = SoilTemp[n0][i]
+                dz[i] = wk(i, row_space)
+            hcap[i] = HeatCapacitySoilSolid[l] + q1[i] + (PoreSpace[l] - q1[i]) * ca
+            asoi[i] = ThermalCondSoil(q1[i], ts1[i], l) / hcap[i]
+        # The numerical solution of the flow equation is a combination of the implicit method (weighted by beta1) and the explicit method (weighted by 1-beta1).
+        cdef double dltt  # computed time step required.
+        cdef double avdif[40]  # average thermal diffusivity between adjacent cells.
+        cdef double dy[40]  # array of distances between centers of adjacent cells (cm).
+        cdef double dltmin = dlt  # minimum time step for the explicit solution.
+        avdif[0] = 0
+        dy[0] = 0
+        for i in range(1, nn):
+            # Compute average diffusivities avdif between layer i and the previous (i-1), and dy(i), distance (cm) between centers of layer i and the previous (i-1)
+            avdif[i] = (asoi[i] + asoi[i - 1]) / 2
+            dy[i] = (dz[i - 1] + dz[i]) / 2
+            # Determine the minimum time step required for the explicit solution.
+            dltt = 0.2 * dy[i] * dz[i] / avdif[i] / (1 - beta1)
+            if dltt < dltmin:
+                dltmin = dltt
+        # Use time step of dlt1 seconds, for iterx iterations
+        iterx = int(dlt / dltmin)  # computed number of iterations.
+        if dltmin < dlt:
+            iterx += 1
+        cdef double dlt1 = dlt / iterx  # computed time (seconds) of an iteration.
+        # start iterations. Store temperature data in array ts0. count iterations.
+        for ii in range(iterx):
+            for i in range(nn):
+                ts0[i] = ts1[i]
+                if iv == 1:
+                    l = i
+                asoi[i] = ThermalCondSoil(q1[i], ts1[i], l) / hcap[i]
+                if i > 0:
+                    avdif[i] = (asoi[i] + asoi[i - 1]) / 2
+            self.soil_heat_flux_numiter += 1
+            # The solution of the simultaneous equations in the implicit method alternates between the two directions along the arrays. The reason for this is because the direction of the solution may cause some cumulative bias. The counter numiter determines the direction of the solution.
+            # arrays used for the implicit numerical solution.
+            cau = np.zeros(40, dtype=np.double)
+            dau = np.zeros(40, dtype=np.double)
+            # nondimensional diffusivities to next and previous layers.
+            ckx: float
+            cky: float
+            # used for computing the implicit solution.
+            vara: float
+            varb: float
+            if self.soil_heat_flux_numiter % 2 == 0:
+                # 1st direction of computation, for an even iteration number:
+                dau[0] = 0
+                cau[0] = ts1[0]
+                # Loop from the second to the last but one soil cells. Compute nondimensional diffusivities to next and previous layers.
+                for i in range(1, nn - 1):
+                    ckx = avdif[i + 1] * dlt1 / (dz[i] * dy[i + 1])
+                    cky = avdif[i] * dlt1 / (dz[i] * dy[i])
+                    # Correct value of layer 1 for explicit heat movement to/from layer 2
+                    if i == 1:
+                        cau[0] = ts1[0] - (1 - beta1) * (ts1[0] - ts1[1]) * cky * dz[1] / dz[0]
+                    vara = 1 + beta1 * (ckx + cky) - beta1 * ckx * dau[i - 1]
+                    dau[i] = beta1 * cky / vara
+                    varb = ts1[i] + (1 - beta1) * (cky * ts1[i - 1] + ckx * ts1[i + 1] - (cky + ckx) * ts1[i])
+                    cau[i] = (varb + beta1 * ckx * cau[i - 1]) / vara
+                # Correct value of last layer (nn-1) for explicit heat movement to/from layer nn-2
+                ts1[nn - 1] = ts1[nn - 1] - (1 - beta1) * (ts1[nn - 1] - ts1[nn - 2]) * ckx * dz[nn - 2] / dz[nn - 1]
+                # Continue with the implicit solution
+                for i in range(nn - 2, -1, -1):
+                    ts1[i] = dau[i] * ts1[i + 1] + cau[i]
+            else:
+                # Alternate direction of computation for odd iteration number
+                dau[nn - 1] = 0
+                cau[nn - 1] = ts1[nn - 1]
+                for i in range(nn - 2, 0, -1):
+                    ckx = avdif[i + 1] * dlt1 / (dz[i] * dy[i + 1])
+                    cky = avdif[i] * dlt1 / (dz[i] * dy[i])
+                    if i == nn - 2:
+                        cau[nn - 1] = ts1[nn - 1] - (1 - beta1) * (ts1[nn - 1] - ts1[nn - 2]) * ckx * dz[nn - 2] / dz[nn - 1]
+                    vara = 1 + beta1 * (ckx + cky) - beta1 * cky * dau[i + 1]
+                    dau[i] = beta1 * ckx / vara
+                    varb = ts1[i] + (1 - beta1) * (ckx * ts1[i + 1] + cky * ts1[i - 1] - (cky + ckx) * ts1[i])
+                    cau[i] = (varb + beta1 * cky * cau[i + 1]) / vara
+                ts1[0] = ts1[0] - (1 - beta1) * (ts1[0] - ts1[1]) * cky * dz[1] / dz[0]
+                for i in range(1, nn):
+                    ts1[i] = dau[i] * ts1[i - 1] + cau[i]
+            # Call HeatBalance to correct quantitative deviations caused by the imlicit part of the solution.
+            HeatBalance(nn)
+        # Set values of SoiTemp
+        for i in range(nn):
+            if iv == 1:
+                SoilTemp[i][n0] = ts1[i]
+            else:
+                SoilTemp[n0][i] = ts1[i]
 
     def water_uptake(self, row_space, per_plant_area):
         """This function computes the uptake of water by plant roots from the soil (i.e., actual transpiration rate)."""
@@ -3623,6 +3841,7 @@ cdef class Simulation:
 
     def _init_state(self):
         cdef State state0 = self._current_state
+        state0.soil_heat_flux_numiter = 0
         state0.date = self.start_date
         state0.plant_height = 4.0
         state0.stem_weight = 0.2
@@ -3990,7 +4209,7 @@ cdef class Simulation:
             layer = 0  # soil layer number
             # Loop over kk columns, and call SoilHeatFlux().
             for k in range(kk):
-                SoilHeatFlux(state._[0], dlt, iv, nn, layer, k, self.row_space)
+                state.soil_heat_flux(dlt, iv, nn, layer, k, self.row_space)
             # If no horizontal heat flux is assumed, make all array members of SoilTemp equal to the value computed for the first column. Also, do the same for array memebers of cell.water_content.
             if self.emerge_switch <= 1:
                 for l in range(nl):
@@ -4007,7 +4226,7 @@ cdef class Simulation:
                 nn = nk
                 for l in range(nl):
                     layer = l
-                    SoilHeatFlux(state._[0], dlt, iv, nn, layer, l, self.row_space)
+                    state.soil_heat_flux(dlt, iv, nn, layer, l, self.row_space)
             # Compute average temperature of soil layers, in degrees C.
             tsolav = [0] * nl  # hourly average soil temperature C, of a soil layer.
             for l in range(nl):

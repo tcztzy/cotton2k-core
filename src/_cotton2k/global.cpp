@@ -28,26 +28,18 @@ double
     AverageSoilPsi,                   // average soil matric water potential, bars, computed as the weighted average of the root zone.
     vanGenuchtenBeta[9],              // parameter of the Van Genuchten equation.
     BulkDensity[9],                   // bulk density of soil in a horizon, g cm-3.
-    ClayVolumeFraction[maxl],         // fraction by volume of clay in the soil.
     conmax,                           // the maximum value for non-dimensional hydraulic conductivity
-    dclay,                            // aggregation factor for clay in water.
-    dsand,                            // aggregation factor for sand in water.
+
     ElCondSatSoilToday,               // electrical conductivity of saturated extract (mmho/cm) on this day.
-    FieldCapacity[maxl],              // volumetric water content of soil at field capacity for each soil layer, cm3 cm-3.
-    HeatCapacitySoilSolid[maxl],      // heat capacity of the solid phase of the soil.
-    HeatCondDrySoil[maxl],            // the heat conductivity of dry soil.
     HumusNitrogen[maxl][maxk],        // N in stable humic fraction material in a soil cells, mg/cm3.
     HumusOrganicMatter[maxl][maxk],   // humus fraction of soil organic matter, mg/cm3.
     IrrigationDepth,                  // depth of predicted irrigation, cm.
-    MarginalWaterContent[maxl],       // marginal soil water content (as a function of soil texture) for computing soil heat conductivity.
     MaxWaterCapacity[maxl],           // volumetric water content of a soil layer at maximum capacity, before drainage, cm3 cm-3.
     NO3FlowFraction[maxl],            // fraction of nitrate that can move to the next layer.
-    PoreSpace[maxl],                  // pore space of soil, volume fraction.
     PotGroAllBolls,                   // sum of potential growth rates of seedcotton in all bolls, g plant-1 day-1.
     PotGroAllBurrs,                   // sum of potential growth rates of burrs in all bolls, g plant-1 day-1.
     PotGroAllSquares,                 // sum of potential growth rates of all squares, g plant-1 day-1.
     RatioImplicit,                    // the ratio for the implicit numerical solution of the water transport equation (used in FLUXI and in SFLUX.
-    SandVolumeFraction[maxl],         // fraction by volume of sand plus silt in the soil.
     SaturatedHydCond[9],              // saturated hydraulic conductivity, cm per day.
     SitePar[21],                      // array of site specific constant parameters.
     SoilPsi[maxl][maxk],              // matric water potential of a soil cell, bars.

@@ -33,10 +33,7 @@ cdef extern from "global.h":
     double vanGenuchtenBeta[9]
     double SaturatedHydCond[9]
     double BulkDensity[9]
-    double SandVolumeFraction[40]
-    double ClayVolumeFraction[40]
     double thad[40]
-    double FieldCapacity[40]
     double SoilTemp[40][20]
     double PotGroAllSquares
     double PotGroAllBolls
@@ -44,7 +41,6 @@ cdef extern from "global.h":
     NitrogenFertilizer NFertilizer[150]
     int NumNitApps
     int NumIrrigations
-    double PoreSpace[40]
     double SoilPsi[40][20]
     int SoilHorizonNum[40]
     double AverageSoilPsi
@@ -55,12 +51,7 @@ cdef extern from "global.h":
     double VolUreaNContent[40][20]
     double ElCondSatSoilToday
     double thetar[40]
-    double HeatCondDrySoil[40]
-    double HeatCapacitySoilSolid[40]
-    double MarginalWaterContent[40]
     double HumusOrganicMatter[40][20]
     double NO3FlowFraction[40]
     double MaxWaterCapacity[40]
     double HumusNitrogen[40][20]
-    double dclay
-    double dsand

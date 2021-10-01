@@ -3,6 +3,7 @@ from .fruiting_site cimport Stage
 
 cdef extern:
     double wk(unsigned int, double)
+    double dl(unsigned int)
     int SlabLoc(int, double)
     double SoilMechanicResistance(double)
     double wcond(double, double, double, double, double, double)
