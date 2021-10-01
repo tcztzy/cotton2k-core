@@ -5,7 +5,6 @@
 // SoilWaterEffect();
 // MineralizeNitrogen()
 // Nitrification()
-// Denitrification()
 //
 #include <cmath>
 #include "global.h"
@@ -66,50 +65,4 @@ void Nitrification(SoilCell &soil_cell, int l, int k, double DepthOfLayer, doubl
     dnit = ratenit * VolNh4NContent[l][k];
     VolNh4NContent[l][k] -= dnit;
     soil_cell.nitrate_nitrogen_content += dnit;
-}
-
-/////////////////////////
-void Denitrification(SoilCell &soil_cell, int l, int k, double row_space, double soil_temperature)
-//     This function computes the denitrification of nitrate N in the soil.
-//     It is called by function SoilNitrogen().
-//     The procedure is based on the CERES routine, as documented by Godwin and Jones (1991).
-//
-//     The following global variables are referenced here:
-//       dl, FieldCapacity, HumusOrganicMatter, thts
-//    The following global variables are set here:     SoilNitrogenLoss, VolNo3NContent
-{
-//    The following constant parameters are used:
-    const double cpar01 = 24.5;
-    const double cpar02 = 3.1;
-    const double cpardenit = 0.00006;
-    const double cparft = 0.046;
-    const double cparhum = 0.58;
-    const double vno3min = 0.00025;
-//
-    double soilc; // soil carbon content, mg/cm3.
-//     soilc is calculated as 0.58 (cparhum) of the stable humic fraction
-//  (following CERES), and cw is estimated following Rolston et al. (1980).
-    soilc = cparhum * HumusOrganicMatter[l][k];
-    double cw;    // water soluble carbon content of soil, ppm.
-    cw = cpar01 + cpar02 * soilc;
-//     The effects of soil moisture (fw) and soil temperature (ft) are computed as 0 to 1 factors.
-    double fw; // effect of soil moisture on denitrification rate.
-    fw = (soil_cell.water_content - FieldCapacity[l]) / (thts[l] - FieldCapacity[l]);
-    if (fw < 0)
-        fw = 0;
-    double ft; // effect of soil temperature on denitrification rate.
-    ft = 0.1 * exp(cparft * (soil_temperature - 273.161));
-    if (ft > 1)
-        ft = 1;
-//     The actual rate of denitrification is calculated. The equation is modified from CERES to
-//  units of mg/cm3/day.
-    double dnrate; // actual rate of denitrification, mg N per cm3 of soil per day.
-    dnrate = cpardenit * cw * soil_cell.nitrate_nitrogen_content * fw * ft;
-//     Make sure that a minimal amount of nitrate will remain after denitrification.
-    if (dnrate > (soil_cell.nitrate_nitrogen_content - vno3min))
-        dnrate = soil_cell.nitrate_nitrogen_content - vno3min;
-    if (dnrate < 0)
-        dnrate = 0;
-//     Update VolNo3NContent, and add the amount of nitrogen lost to SoilNitrogenLoss.
-    soil_cell.nitrate_nitrogen_content -= dnrate;
 }

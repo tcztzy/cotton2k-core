@@ -2285,6 +2285,36 @@ cdef class State:
                 nitrate_nitrogen_content -= addvnc
                 FreshOrganicNitrogen[l][k] += addvnc
 
+    def denitrification(self, index):
+        """Computes the denitrification of nitrate N in the soil.
+
+        The procedure is based on the CERES routine, as documented by Godwin and Jones (1991).
+        """
+        soil_temperature = self.soil_temperature[index]
+        l, k = index
+        # The following constant parameters are used:
+        cpar01: float = 24.5
+        cpar02: float = 3.1
+        cpardenit: float = 0.00006
+        cparft: float = 0.046
+        cparhum: float = 0.58
+        vno3min: float = 0.00025
+
+        # soil carbon content, mg/cm3. soilc is calculated as 0.58 (cparhum) of the stable humic fraction (following CERES), and cw is estimated following Rolston et al. (1980).
+        soilc: float = cparhum * HumusOrganicMatter[l][k]
+        # water soluble carbon content of soil, ppm.
+        cw: float = cpar01 + cpar02 * soilc
+        # The effects of soil moisture (fw) and soil temperature (ft) are computed as 0 to 1 factors.
+        # effect of soil moisture on denitrification rate.
+        fw: float = max((self._[0].soil.cells[l][k].water_content - FieldCapacity[l]) / (thts[l] - FieldCapacity[l]), 0)
+        # effect of soil temperature on denitrification rate.
+        ft: float = min(0.1 * exp(cparft * (soil_temperature - 273.161)), 1)
+        # The actual rate of denitrification is calculated. The equation is modified from CERES to units of mg/cm3/day.
+        # actual rate of denitrification, mg N per cm3 of soil per day.
+        dnrate: float = min(max(cpardenit * cw * self._[0].soil.cells[l][k].nitrate_nitrogen_content * fw * ft, 0), self._[0].soil.cells[l][k].nitrate_nitrogen_content - vno3min)
+        # Update VolNo3NContent, and add the amount of nitrogen lost to SoilNitrogenLoss.
+        self._[0].soil.cells[l][k].nitrate_nitrogen_content -= dnrate
+
     def apply_fertilizer(self, row_space, plant_population):
         """This function simulates the application of nitrogen fertilizer on each date of application."""
         cdef double ferc = 0.01  # constant used to convert kgs per ha to mg cm-2
@@ -4034,7 +4064,7 @@ cdef class Simulation:
     def _soil_nitrogen(self, u):
         """This function computes the transformations of the nitrogen compounds in the soil."""
         state = self._current_state
-        # For each soil cell: call functions state.urea_hydrolysis(), mineralize_nitrogen(), Nitrification() and Denitrification().
+        # For each soil cell: call functions state.urea_hydrolysis(), mineralize_nitrogen(), Nitrification() and denitrification().
         for l in range(nl):
             for k in range(nk):
                 if VolUreaNContent[l][k] > 0:
@@ -4042,10 +4072,10 @@ cdef class Simulation:
                 state.mineralize_nitrogen((l, k), self.start_date, self.row_space)
                 if VolNh4NContent[l][k] > 0.00001:
                     Nitrification(self._sim.states[u].soil.cells[l][k], l, k, SIMULATED_LAYER_DEPTH_CUMSUM[l], state.soil_temperature[l][k])
-                # Denitrification() is called if there are enough water and nitrates in the soil cell. cparmin is the minimum temperature C for denitrification.
+                # denitrification() is called if there are enough water and nitrates in the soil cell. cparmin is the minimum temperature C for denitrification.
                 cparmin = 5
                 if self._sim.states[u].soil.cells[l][k].nitrate_nitrogen_content > 0.001 and self._sim.states[u].soil.cells[l][k].water_content > FieldCapacity[l] and state.soil_temperature[l][k] >= (cparmin + 273.161):
-                    Denitrification(self._sim.states[u].soil.cells[l][k], l, k, self.row_space, state.soil_temperature[l][k])
+                    state.denitrification((l, k))
 
     def _initialize_globals(self):
         # Define the numbers of rows and columns in the soil slab (nl, nk).
