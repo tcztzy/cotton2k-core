@@ -237,6 +237,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             "nitrogen_stress_fruiting",
             "nitrogen_stress_root",
             "number_of_vegetative_branches",
+            "numiter",
             "pavail",
             "plant_height",
             "pre_fruiting_nodes_age",

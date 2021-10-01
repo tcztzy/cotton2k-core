@@ -2360,6 +2360,86 @@ cdef class State:
         VolNh4NContent[l][k] -= dnit
         self._[0].soil.cells[l][k].nitrate_nitrogen_content += dnit
 
+    cdef public long numiter  # counter used for WaterFlux() calls.
+
+    def capillary_flow(self, noitr):
+        """This function computes the capillary water flow between soil cells. It is called by SoilProcedures(), noitr times per day. The number of iterations (noitr) has been computed in SoilProcedures() as a function of the amount of water applied. It is executed only once per day if no water is applied by rain or irrigation."""
+        cdef double wk1[40]  # dummy array for passing values of array wk.
+        cdef double _dl[40]
+        # Set initial values in first day.
+        if self.date == self._sim.start_date:
+            self.numiter = 0
+            for l in range(40):
+                wk1[l] = 0
+        # Increase the counter numiter, and compute the updated values of SoilPsi in each soil cell by calling functions psiq() and PsiOsmotic().
+        self.numiter += 1
+        for l in range(40):
+            j = SoilHorizonNum[l]  # the soil horizon number
+            for k in range(20):
+                SoilPsi[l][k] = psiq(self._[0].soil.cells[l][k].water_content, thad[l], thts[l], alpha[j], vanGenuchtenBeta[j]) - PsiOsmotic(self._[0].soil.cells[l][k].water_content, thts[l], ElCondSatSoilToday)
+
+        cdef double q01[40]  # one dimensional array of a layer or a column of previous values of cell.water_content.
+        cdef double q1[40]  # one dimensional array of a layer or a column of cell.water_content.
+        cdef double psi1[40]  # one dimensional array of a layer or a column of SoilPsi.
+        cdef double nit[40]  # one dimensional array of a layer or a column of VolNo3NContent.
+        cdef double nur[40]  # one dimensional array of a layer or a column of VolUreaNContent.
+        # direction indicator: iv = 1 for vertical flow in each column; iv = 0 for horizontal flow in each layer.
+        # VERTICAL FLOW in each column. the direction indicator iv is set to 1.
+        iv: int = 1
+        # Loop over all columns. Temporary one-dimensional arrays are defined for each column: assign the cell.water_content[] values to temporary one-dimensional arrays q1 and q01. Assign SoilPsi, VolNo3NContent and VolUreaNContent values to arrays psi1, nit and nur, respectively.
+        for k in range(20):
+            for l in range(40):
+                q1[l] = self._[0].soil.cells[l][k].water_content
+                q01[l] = self._[0].soil.cells[l][k].water_content
+                psi1[l] = SoilPsi[l][k] + PsiOsmotic(self._[0].soil.cells[l][k].water_content, thts[l], ElCondSatSoilToday)
+                nit[l] = self._[0].soil.cells[l][k].nitrate_nitrogen_content;
+                nur[l] = VolUreaNContent[l][k]
+                _dl[l] = SIMULATED_LAYER_DEPTH[l]
+            # Call the following functions: WaterFlux() calculates the water flow caused by potential gradients; NitrogenFlow() computes the movement of nitrates caused by the flow of water.
+            WaterFlux(q1, psi1, _dl, thad, thts, PoreSpace, 40, iv, 0, self.numiter, noitr)
+            NitrogenFlow(nl, q01, q1, _dl, nit, nur)
+            # Reassign the updated values of q1, nit, nur and psi1 back to cell.water_content, VolNo3NContent, VolUreaNContent and SoilPsi.
+            for l in range(40):
+                self._[0].soil.cells[l][k].water_content = q1[l]
+                self._[0].soil.cells[l][k].nitrate_nitrogen_content = nit[l]
+                VolUreaNContent[l][k] = nur[l]
+                SoilPsi[l][k] = psi1[l] - PsiOsmotic(self._[0].soil.cells[l][k].water_content, thts[l], ElCondSatSoilToday)
+        cdef double pp1[40]  # one dimensional array of a layer or a column of PP.
+        cdef double qr1[40]  # one dimensional array of a layer or a column of THAD.
+        cdef double qs1[40]  # one dimensional array of a layer or a column of THTS.
+
+        # HORIZONTAL FLUX in each layer. The direction indicator iv is set to 0.
+        iv = 0
+        # Loop over all layers. Define the horizon number j for this layer. Temporary one-dimensional arrays are defined for each layer: assign the cell.water_content values to  q1 and q01. Assign SoilPsi, VolNo3NContent, VolUreaNContent, thad and thts values of the soil cells to arrays psi1, nit, nur, qr1 and qs1, respectively.
+        for l in range(40):
+            for k in range(20):
+                q1[k] = self._[0].soil.cells[l][k].water_content
+                q01[k] = self._[0].soil.cells[l][k].water_content
+                psi1[k] = SoilPsi[l][k] + PsiOsmotic(self._[0].soil.cells[l][k].water_content, thts[l], ElCondSatSoilToday)
+                qr1[k] = thad[l]
+                qs1[k] = thts[l]
+                pp1[k] = PoreSpace[l]
+                nit[k] = self._[0].soil.cells[l][k].nitrate_nitrogen_content
+                nur[k] = VolUreaNContent[l][k]
+                wk1[k] = wk(k, self._sim.row_space)
+            # Call subroutines WaterFlux(), and NitrogenFlow() to compute water nitrate and urea transport in the layer.
+            WaterFlux(q1, psi1, wk1, qr1, qs1, pp1, nk, iv, l, self.numiter, noitr)
+            NitrogenFlow(nk, q01, q1, wk1, nit, nur)
+            # Reassign the updated values of q1, nit, nur and psi1 back to cell.water_content, VolNo3NContent, VolUreaNContent and SoilPsi.
+            for k in range(20):
+                self._[0].soil.cells[l][k].water_content = q1[k]
+                SoilPsi[l][k] = psi1[k] - PsiOsmotic(self._[0].soil.cells[l][k].water_content, thts[l], ElCondSatSoilToday)
+                self._[0].soil.cells[l][k].nitrate_nitrogen_content = nit[k]
+                VolUreaNContent[l][k] = nur[k]
+        # Call Drain() to move excess water down in the column and compute drainage out of the column. Update cumulative drainage.
+        cdef double WaterDrainedOut = 0  # water drained out of the slab, mm.
+        WaterDrainedOut += Drain(self._[0].soil.cells, self._sim.row_space)
+        # Compute the soil water potential for all soil cells.
+        for l in range(40):
+            j = SoilHorizonNum[l]
+            for k in range(20):
+                SoilPsi[l][k] = psiq(self._[0].soil.cells[l][k].water_content, thad[l], thts[l], alpha[j], vanGenuchtenBeta[j]) - PsiOsmotic(self._[0].soil.cells[l][k].water_content, thts[l], ElCondSatSoilToday)
+
     def apply_fertilizer(self, row_space, plant_population):
         """This function simulates the application of nitrogen fertilizer on each date of application."""
         cdef double ferc = 0.01  # constant used to convert kgs per ha to mg cm-2
@@ -4091,7 +4171,7 @@ cdef class Simulation:
             # If water is applied, state.gravity_flow() is called when the method of irrigation is not by drippers, followed by CapillaryFlow().
             for iter in range(noitr):
                 state.gravity_flow(applywat)
-                CapillaryFlow(self._sim, u, noitr)
+                state.capillary_flow(noitr)
         if DripWaterAmount > 0:
             # For drip irrigation.
             # The number of iterations is computed from the volume of the soil cell in which the water is applied.
@@ -4101,10 +4181,10 @@ cdef class Simulation:
             # If water is applied, DripFlow() is called followed by CapillaryFlow().
             for iter in range(noitr):
                 DripFlow(state._[0].soil.cells, applywat, self.row_space)
-                CapillaryFlow(self._sim, u, noitr)
+                state.capillary_flow(noitr)
         # When no water is added, there is only one iteration in this day.
         if WaterToApply + DripWaterAmount <= 0:
-            CapillaryFlow(self._sim, u, 1)
+            state.capillary_flow(1)
 
     def _initialize_globals(self):
         # Define the numbers of rows and columns in the soil slab (nl, nk).

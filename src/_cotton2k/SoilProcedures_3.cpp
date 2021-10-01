@@ -13,9 +13,6 @@
 
 void WaterBalance(double[], double[], double [], int);
 
-// SoilProcedures_2
-double Drain(SoilCell[40][20], double);
-
 ///////////////////////////////////////////////////////////////////////////
 void NitrogenUptake(State &state, SoilCell &soil_cell, int l, int k, double reqnc, double row_space, double per_plant_area)
 //     The function NitrogenUptake() computes the uptake of nitrate and ammonium N

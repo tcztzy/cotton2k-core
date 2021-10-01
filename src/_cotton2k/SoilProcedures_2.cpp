@@ -1,7 +1,6 @@
 // File SoilProcedures_2.cpp
 //
 //   functions in this file:
-// CapillaryFlow()
 // Drain()
 // DripFlow()
 // CellDistance()
@@ -11,134 +10,7 @@
 #include "GeneralFunctions.h"
 #include "Simulation.hpp"
 
-double Drain(SoilCell[40][20], double);
-
 double CellDistance(int, int, int, int, double);
-
-// SoilProcedures_3
-void WaterFlux(double[], double[], double[], double[], double[], double[], int, int, int, long, int);
-
-void NitrogenFlow(int, double[], double[], double[], double[], double[]);
-
-//////////////////////////
-void CapillaryFlow(Simulation &sim, unsigned int u, int noitr)
-//     This function computes the capillary water flow between soil cells. It is called by
-//  SoilProcedures(), noitr times per day.  The number of iterations (noitr) has been computed
-//  in SoilProcedures() as a function of the amount of water applied. It is executed only once
-//  per day if no water is applied by rain or irrigation.
-//     It calls functions:   Drain(), NitrogenFlow(), psiq(), PsiOsmotic(), WaterFlux().
-//
-//     The following global variables are referenced:
-//       alpha, ,vanGenuchtenBeta, DayStart, dl, ElCondSatSoilToday, nk, nl, PoreSpace,
-//       SoilHorizonNum, thad ,thts, wk.
-//     The following global variables are set:
-//       CumWaterDrained, SoilPsi, VolNo3NContent, VolUreaNContent.
-{
-    State &state = sim.states[u];
-    static long numiter; // counter used for WaterFlux() calls.
-    double wk1[40];      // dummy array for passing values of array wk.
-//     Set initial values in first day.
-    if (u <= 0) {
-        numiter = 0;
-        for (int l = 0; l < nl; l++)
-            wk1[l] = 0;
-    }
-//     Increase the counter numiter, and compute the updated values of SoilPsi in each
-//  soil cell by calling functions psiq() and PsiOsmotic().
-    numiter++;
-    for (int l = 0; l < nl; l++) {
-        int j = SoilHorizonNum[l];  //  the soil horizon number
-        for (int k = 0; k < nk; k++)
-            SoilPsi[l][k] = psiq(state.soil.cells[l][k].water_content, thad[l], thts[l], alpha[j], vanGenuchtenBeta[j])
-                            - PsiOsmotic(state.soil.cells[l][k].water_content, thts[l], ElCondSatSoilToday);
-    }
-//
-    int nlx = nl; // The last layer without a water table.
-    int iv; //  direction indicator: iv = 1 for vertical flow in each column;
-    //    iv = 0 for horizontal flow in each layer.
-    double q01[40]; // one dimensional array of a layer or a column of previous
-    // values of cell.water_content.
-    double q1[40];  // one dimensional array of a layer or a column of cell.water_content.
-    double psi1[40];// one dimensional array of a layer or a column of SoilPsi.
-    double nit[40]; // one dimensional array of a layer or a column of VolNo3NContent.
-    double nur[40]; // one dimensional array of a layer or a column of VolUreaNContent.
-//
-//     VERTICAL FLOW in each column. the direction indicator iv is set to 1.
-    iv = 1;
-//     Loop over all columns. Temporary one-dimensional arrays are defined for each column:
-//  assign the cell.water_content[] values to temporary one-dimensional arrays q1 and q01. Assign
-//  SoilPsi, VolNo3NContent and VolUreaNContent values to arrays psi1, nit and nur, respectively.
-    for (int k = 0; k < nk; k++) {
-        double _dl[40];
-        for (int l = 0; l < nlx; l++) {
-            q1[l] = state.soil.cells[l][k].water_content;
-            q01[l] = state.soil.cells[l][k].water_content;
-            psi1[l] = SoilPsi[l][k] + PsiOsmotic(state.soil.cells[l][k].water_content, thts[l], ElCondSatSoilToday);
-            nit[l] = state.soil.cells[l][k].nitrate_nitrogen_content;
-            nur[l] = VolUreaNContent[l][k];
-            _dl[l] = dl(l);
-        } // end loop l
-//     Call the following functions: WaterFlux() calculates the water flow caused by potential
-//  gradients; NitrogenFlow() computes the movement of nitrates caused by the flow of water.
-        WaterFlux(q1, psi1, _dl, thad, thts, PoreSpace, nlx, iv, 0, numiter, noitr);
-        NitrogenFlow(nl, q01, q1, _dl, nit, nur);
-//     Reassign the updated values of q1, nit, nur and psi1 back to
-//  cell.water_content, VolNo3NContent, VolUreaNContent and SoilPsi.
-        for (int l = 0; l < nlx; l++) {
-            state.soil.cells[l][k].water_content = q1[l];
-            state.soil.cells[l][k].nitrate_nitrogen_content = nit[l];
-            VolUreaNContent[l][k] = nur[l];
-            SoilPsi[l][k] = psi1[l] - PsiOsmotic(state.soil.cells[l][k].water_content, thts[l], ElCondSatSoilToday);
-        } // end loop l
-    } // end loop k
-    double pp1[40]; // one dimensional array of a layer or a column of PP.
-    double qr1[40]; // one dimensional array of a layer or a column of THAD.
-    double qs1[40]; // one dimensional array of a layer or a column of THTS.
-//
-//     HORIZONTAL FLUX in each layer. The direction indicator iv is set to 0.
-    iv = 0;
-//     Loop over all layers. Define the horizon number j for this layer. Temporary
-//  one-dimensional arrays are defined for each layer: assign the cell.water_content values
-//  to  q1 and q01. Assign SoilPsi, VolNo3NContent, VolUreaNContent, thad and thts values
-//  of the soil cells to arrays psi1, nit, nur, qr1 and qs1, respectively.
-    for (int l = 0; l < nlx; l++) {
-        for (int k = 0; k < nk; k++) {
-            q1[k] = state.soil.cells[l][k].water_content;
-            q01[k] = state.soil.cells[l][k].water_content;
-            psi1[k] = SoilPsi[l][k] + PsiOsmotic(state.soil.cells[l][k].water_content, thts[l], ElCondSatSoilToday);
-            qr1[k] = thad[l];
-            qs1[k] = thts[l];
-            pp1[k] = PoreSpace[l];
-            nit[k] = state.soil.cells[l][k].nitrate_nitrogen_content;
-            nur[k] = VolUreaNContent[l][k];
-            wk1[k] = wk(k, sim.row_space);
-        }
-//     Call subroutines WaterFlux(), and NitrogenFlow() to compute water nitrate and
-//  urea transport in the layer.
-        WaterFlux(q1, psi1, wk1, qr1, qs1, pp1, nk, iv, l, numiter, noitr);
-        NitrogenFlow(nk, q01, q1, wk1, nit, nur);
-//     Reassign the updated values of q1, nit, nur and psi1 back to
-//  cell.water_content, VolNo3NContent, VolUreaNContent and SoilPsi.
-        for (int k = 0; k < nk; k++) {
-            state.soil.cells[l][k].water_content = q1[k];
-            SoilPsi[l][k] = psi1[k] - PsiOsmotic(state.soil.cells[l][k].water_content, thts[l], ElCondSatSoilToday);
-            state.soil.cells[l][k].nitrate_nitrogen_content = nit[k];
-            VolUreaNContent[l][k] = nur[k];
-        } // snd loop k
-    } // end loop l
-//     Call Drain() to move excess water down in the column and compute drainage out
-//  of the column. Update cumulative drainage.
-    double WaterDrainedOut = 0;    // water drained out of the slab, mm.
-    WaterDrainedOut += Drain(state.soil.cells, sim.row_space);
-//  Compute the soil water potential for all soil cells.
-    for (int l = 0; l < nl; l++) {
-        int j = SoilHorizonNum[l];
-        for (int k = 0; k < nk; k++) {
-            SoilPsi[l][k] = psiq(state.soil.cells[l][k].water_content, thad[l], thts[l], alpha[j], vanGenuchtenBeta[j])
-                            - PsiOsmotic(state.soil.cells[l][k].water_content, thts[l], ElCondSatSoilToday);
-        }
-    }
-}
 
 ////////////////////////////////////////////////////////////////////////////////////
 double Drain(SoilCell soil_cells[40][20], double row_space)

@@ -32,9 +32,11 @@ cdef extern:
     double SimulateRunoff(cSimulation &, uint32_t, double, double, uint32_t)
 
 cdef extern from "SoilProcedures.h":
-    void CapillaryFlow(cSimulation &, unsigned int, int)
     void DripFlow(cSoilCell[40][20], double, double)
     void NitrogenUptake(cState &, cSoilCell &, int, int, double, double, double)
+    double Drain(cSoilCell[40][20], double)
+    void NitrogenFlow(int, double[], double[], double[], double[], double[])
+    void WaterFlux(double[], double[], double[], double[], double[], double[], int, int, int, long, int);
 
 cdef extern from "SoilTemperature.h":
     void SoilHeatFlux(cState &, double, int, int, int, int, double)
