@@ -61,3 +61,4 @@ cdef extern from "global.h":
     double HumusOrganicMatter[40][20]
     double NO3FlowFraction[40]
     double MaxWaterCapacity[40]
+    double HumusNitrogen[40][20]

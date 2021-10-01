@@ -26,9 +26,7 @@ extern double AverageSoilPsi, conmax, dclay, dsand, ElCondSatSoilToday, Irrigati
     PotGroAllBolls, PotGroAllBurrs, PotGroAllSquares, RatioImplicit;
 
 extern double airdr[9], alpha[9], vanGenuchtenBeta[9], BulkDensity[9],
-    ClayVolumeFraction[maxl],
-    FieldCapacity[maxl],
-    FreshOrganicNitrogen[maxl][maxk],
+    ClayVolumeFraction[maxl], FieldCapacity[maxl],
     HeatCapacitySoilSolid[maxl], HeatCondDrySoil[maxl], HumusNitrogen[maxl][maxk],
     HumusOrganicMatter[maxl][maxk],
     MarginalWaterContent[maxl], MaxWaterCapacity[maxl],

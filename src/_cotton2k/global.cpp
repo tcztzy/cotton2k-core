@@ -34,7 +34,6 @@ double
     dsand,                            // aggregation factor for sand in water.
     ElCondSatSoilToday,               // electrical conductivity of saturated extract (mmho/cm) on this day.
     FieldCapacity[maxl],              // volumetric water content of soil at field capacity for each soil layer, cm3 cm-3.
-    FreshOrganicNitrogen[maxl][maxk], // N in fresh organic matter in a soil cell, mg cm-3.
     HeatCapacitySoilSolid[maxl],      // heat capacity of the solid phase of the soil.
     HeatCondDrySoil[maxl],            // the heat conductivity of dry soil.
     HumusNitrogen[maxl][maxk],        // N in stable humic fraction material in a soil cells, mg/cm3.

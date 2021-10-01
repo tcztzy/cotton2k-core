@@ -42,6 +42,7 @@ from .cxx cimport (
     HumusOrganicMatter,
     NO3FlowFraction,
     MaxWaterCapacity,
+    HumusNitrogen,
 )
 from .irrigation cimport Irrigation
 from .rs cimport (
@@ -54,6 +55,7 @@ from .rs cimport (
     qpsi,
     form,
     SoilWaterEffect,
+    SoilTemperatureEffect,
 )
 from .state cimport cState, cVegetativeBranch, cFruitingBranch, cMainStemLeaf
 from .fruiting_site cimport FruitingSite, Leaf, cBoll, cBurr, SquareStruct, cPetiole
@@ -102,6 +104,8 @@ PetioleWeightPreFru = np.zeros(9, dtype=np.double)  # weight of prefruiting node
 PotGroLeafAreaPreFru = np.zeros(9, dtype=np.double)  # potentially added area of a prefruiting node leaf, dm2 day-1.
 PotGroLeafWeightPreFru = np.zeros(9, dtype=np.double)  # potentially added weight of a prefruiting node leaf, g day-1.
 PotGroPetioleWeightPreFru = np.zeros(9, dtype=np.double)  # potentially added weight of a prefruiting node petiole, g day-1.
+
+FreshOrganicNitrogen = np.zeros((40, 20), dtype=np.double)  # N in fresh organic matter in a soil cell, mg cm-3.
 
 SIMULATED_LAYER_DEPTH = np.ones(40) * 5
 SIMULATED_LAYER_DEPTH[:3] = 2
@@ -2117,7 +2121,7 @@ cdef class State:
             Vigil, M.F., Kissel, D.E., and Smith, S.J. 1991. Field crop
     recovery and modeling of nitrogen mineralized from labeled sorghum
     residues. Soil Sci. Soc. Am. J. 55:1031-1037."""
-    cdef void urea_hydrolysis(self, index):
+    def urea_hydrolysis(self, index):
         """Computes the hydrolysis of urea to ammonium in the soil.
 
         It is called by function SoilNitrogen(). It calls the function SoilWaterEffect().
@@ -2167,6 +2171,119 @@ cdef class State:
             hydrur = VolUreaNContent[l][k]
         VolUreaNContent[l][k] -= hydrur
         VolNh4NContent[l][k] += hydrur
+
+    def mineralize_nitrogen(self, index, start_date, row_space):
+        """Computes the mineralization of organic nitrogen in the soil, and the immobilization of mineral nitrogen by soil microorganisms. It is called by function SoilNitrogen().
+
+        It calls the following functions: SoilTemperatureEffect(), SoilWaterEffect().
+
+        The procedure is based on the CERES routines, as documented by Godwin and Jones (1991).
+
+        NOTE: CERES routines assume freshly incorporated organic matter consists of 20% carbohydrates, 70% cellulose, and 10% lignin, with maximum decay rates of 0.2, 0.05 and 0.0095, respectively. Quemada and Cabrera (1995) suggested decay rates of 0.14, 0.0034, and 0.00095 per day for carbohydrates, cellulose and lignin, respectively.
+
+        Assuming cotton stalks consist of 20% carbohydrates, 50% cellulose and 30% lignin - the average maximum decay rate of FreshOrganicMatter decay rate = 0.03 will be used here.
+        """
+        l, k = index
+        soil_temperature = self.soil_temperature[index]
+        fresh_organic_matter = self._[0].soil.cells[l][k].fresh_organic_matter
+        nitrate_nitrogen_content = self._[0].soil.cells[l][k].nitrate_nitrogen_content
+        water_content = self._[0].soil.cells[l][k].water_content
+        # The following constant parameters are used:
+        cdef double cnfresh = 25  # C/N ratio in fresh organic matter.
+        cdef double cnhum = 10  # C/N ratio in stabilized organic matter (humus).
+        cdef double cnmax = 13  # C/N ratio higher than this reduces rate of mineralization.
+        cdef double cparcnrf = 0.693  # constant parameter for computing cnRatioEffect.
+        cdef double cparHumusN = 0.20  # ratio of N released from fresh OM incorporated in the humus.
+        cdef double cparMinNH4 = 0.00025  # mimimum NH4 N remaining after mineralization.
+        cdef double decayRateFresh = 0.03  # decay rate constant for fresh organic matter.
+        cdef double decayRateHumus = 0.000083  # decay rate constant for humic organic matter.
+        # On the first day of simulation set initial values for N in fresh organic matter and in humus, assuming C/N ratios of cnfresh = 25 and cnhum = 10, respectively. Carbon in soil organic matter is 0.4 of its dry weight.
+        if self.date <= start_date:
+            FreshOrganicNitrogen[l][k] = fresh_organic_matter * 0.4 / cnfresh
+            HumusNitrogen[l][k] = HumusOrganicMatter[l][k] * 0.4 / cnhum
+        # This function will not be executed for soil cells with no organic matter in them.
+        if fresh_organic_matter <= 0 and HumusOrganicMatter[l][k] <= 0:
+            return
+
+        # **  C/N ratio in soil **
+        # The C/N ratio (cnRatio) is computed for the fresh organic matter and the nitrate and ammonium nitrogen in the soil. It is assumed that C/N ratios higher than cnmax reduce the rate of mineralization. Following the findings of Vigil et al. (1991) the value of cnmax is set to 13.
+        cdef double cnRatio = 1000  # C/N ratio in fresh organic matter and mineral N in soil.
+        cdef double cnRatioEffect = 1  # the effect of C/N ratio on rate of mineralization.
+        cdef double totalSoilN  # total N in the soil cell, excluding the stable humus fraction, mg/cm3
+        totalSoilN = FreshOrganicNitrogen[l][k] + nitrate_nitrogen_content + VolNh4NContent[l][k]
+        if totalSoilN > 0:
+            cnRatio = fresh_organic_matter * 0.4 / totalSoilN
+            if cnRatio >= 1000:
+                cnRatioEffect = 0
+            elif cnRatio > cnmax:
+                cnRatioEffect = exp(-cparcnrf * (cnRatio - cnmax) / cnmax)
+            else:
+                cnRatioEffect = 1
+
+        # **  Mineralization of fresh organic matter **
+        # The effects of soil moisture (wf) and of soil temperature (tfac) are computed.
+        cdef double wf = SoilWaterEffect(water_content, FieldCapacity[l], thetar[l], thts[l], 0.5)
+        cdef double tfac = SoilTemperatureEffect(soil_temperature - 273.161)
+        # The gross release of dry weight and of N from decomposition of fresh organic matter is computed.
+        cdef double grossReleaseN  # gross release of N from decomposition, mg/cm3
+        cdef double immobilizationRateN  # immobilization rate of N associated with decay of residues, mg/cm3 .
+        if fresh_organic_matter > 0.00001:
+        # The decayRateFresh constant (= 0.03) is modified by soil temperature, soil moisture, and the C/N ratio effect.
+            # the actual decay rate of fresh organic matter, day-1.
+            g1: float = tfac * wf * cnRatioEffect * decayRateFresh
+            # the gross release of dry weight from decomposition, mg/cm3
+            grossReleaseDW: float = g1 * fresh_organic_matter
+            grossReleaseN = g1 * FreshOrganicNitrogen[l][k]
+            # The amount of N required for microbial decay of a unit of fresh organic matter suggested in CERES is 0.02 (derived from:  C fraction in FreshOrganicMatter (=0.4) * biological efficiency of C turnover by microbes (=0.4) * N/C ratio in microbes (=0.125) ). However, Vigil et al. (1991) suggested that this value is 0.0165.
+            cparnreq = 0.0165  # The amount of N required for decay of fresh organic matter
+            # Substract from this the N ratio in the decaying FreshOrganicMatter, and multiply by grossReleaseDW to get the amount needed (immobilizationRateN) in mg cm-3. Negative value indicates that there is enough N for microbial decay.
+            immobilizationRateN = grossReleaseDW * (cparnreq - FreshOrganicNitrogen[l][k] / fresh_organic_matter)
+            # All computations assume that the amounts of VolNh4NContent and VNO3C will each not become lower than cparMinNH4 (= 0.00025) .
+            # the maximum possible value of immobilizationRateN, mg/cm3.
+            rnac1: float = VolNh4NContent[l][k] + nitrate_nitrogen_content - 2 * cparMinNH4
+            immobilizationRateN = min(max(immobilizationRateN, 0), rnac1)
+            # FreshOrganicMatter and FreshOrganicNitrogen (the N in it) are now updated.
+            fresh_organic_matter -= grossReleaseDW
+            FreshOrganicNitrogen[l][k] += immobilizationRateN - grossReleaseN
+        else:
+            grossReleaseN = 0
+            immobilizationRateN = 0
+
+        # **  Mineralization of humic organic matter **
+        # The mineralization of the humic fraction (rhmin) is now computed. decayRateHumus = 0.000083 is the humic fraction decay rate (day-1). It is modified by soil temperature and soil moisture.
+        # N mineralized from the stable humic fraction, mg/cm3 .
+        rhmin: float = HumusNitrogen[l][k] * decayRateHumus * tfac * wf
+        # rhmin is substacted from HumusNitrogen, and a corresponding amount of dry matter is substracted from HumusOrganicMatter (assuming C/N = cnhum = 10).
+        # It is assumed that 20% (=cparHumusN) of the N released from the fresh organic matter is incorporated in the humus, and a parallel amount of dry matter is also incorporated in it (assuming C/N = cnfresh = 25).
+        HumusNitrogen[l][k] -= rhmin + cparHumusN * grossReleaseN
+        HumusOrganicMatter[l][k] -= cnhum * rhmin / 0.4 + cparHumusN * cnfresh * grossReleaseN / 0.4
+        # 80% (1 - cparHumusN) of the N released from the fresh organic matter , the N released from the decay of the humus, and the immobilized N are used to compute netNReleased. Negative value of netNReleased indicates net N immobilization.
+        # the net N released from all organic sources (mg/cm3).
+        netNReleased: float = (1 - cparHumusN) * grossReleaseN + rhmin - immobilizationRateN
+        # If the net N released is positive, it is added to the NH4 fraction.
+        if netNReleased > 0:
+            VolNh4NContent[l][k] += netNReleased
+        # If net N released is negative (net immobilization), the NH4 fraction is reduced, but at least 0.25 ppm (=cparMinNH4 in mg cm-3) of NH4 N should remain. A matching amount of N is added to the organic N fraction.
+        # MineralizedOrganicN, the accumulated nitrogen released by mineralization in the slab is updated.
+        else:
+            addvnc: float = 0  # immobilised N added to the organic fraction.
+            nnom1: float = 0  # temporary storage of netNReleased (if N is also immobilized from NO3).
+            if VolNh4NContent[l][k] > cparMinNH4:
+                if abs(netNReleased) < (VolNh4NContent[l][k] - cparMinNH4):
+                    addvnc = -netNReleased
+                else:
+                    addvnc = VolNh4NContent[l][k] - cparMinNH4
+                VolNh4NContent[l][k] -= addvnc
+                FreshOrganicNitrogen[l][k] += addvnc
+                nnom1 = netNReleased + addvnc
+        # If immobilization is larger than the use of NH4 nitrogen, the NO3 fraction is reduced in a similar procedure.
+            if nnom1 < 0 and nitrate_nitrogen_content > cparMinNH4:
+                if abs(nnom1) < (nitrate_nitrogen_content - cparMinNH4):
+                    addvnc = -nnom1
+                else:
+                    addvnc = nitrate_nitrogen_content - cparMinNH4
+                nitrate_nitrogen_content -= addvnc
+                FreshOrganicNitrogen[l][k] += addvnc
 
     def apply_fertilizer(self, row_space, plant_population):
         """This function simulates the application of nitrogen fertilizer on each date of application."""
@@ -3917,12 +4034,12 @@ cdef class Simulation:
     def _soil_nitrogen(self, u):
         """This function computes the transformations of the nitrogen compounds in the soil."""
         state = self._current_state
-        # For each soil cell: call functions state.urea_hydrolysis(), MineralizeNitrogen(), Nitrification() and Denitrification().
+        # For each soil cell: call functions state.urea_hydrolysis(), mineralize_nitrogen(), Nitrification() and Denitrification().
         for l in range(nl):
             for k in range(nk):
                 if VolUreaNContent[l][k] > 0:
                     state.urea_hydrolysis((l, k))
-                MineralizeNitrogen(l, k, state.date.timetuple().tm_yday, self.start_date.timetuple().tm_yday, self.row_space, state.soil_temperature[l][k], self._sim.states[u].soil.cells[l][k].fresh_organic_matter, self._sim.states[u].soil.cells[l][k].nitrate_nitrogen_content, self._sim.states[u].soil.cells[l][k].water_content)
+                state.mineralize_nitrogen((l, k), self.start_date, self.row_space)
                 if VolNh4NContent[l][k] > 0.00001:
                     Nitrification(self._sim.states[u].soil.cells[l][k], l, k, SIMULATED_LAYER_DEPTH_CUMSUM[l], state.soil_temperature[l][k])
                 # Denitrification() is called if there are enough water and nitrates in the soil cell. cparmin is the minimum temperature C for denitrification.
