@@ -2598,7 +2598,64 @@ cdef class State:
                     if uptk[l][k] > 0:
                         # proportional allocation of TotalRequiredN to each cell
                         reqnc = self.total_required_nitrogen * uptk[l][k] / sumep
-                        NitrogenUptake(self._[0], self._[0].soil.cells[l][k], l, k, reqnc, row_space, per_plant_area)
+                        self.nitrogen_uptake((l, k), reqnc, row_space, per_plant_area)
+
+    def nitrogen_uptake(self, index, reqnc, row_space, per_plant_area):
+        """Computes the uptake of nitrate and ammonium N from a soil cell. It is called by WaterUptake().
+
+        Arguments
+        ---------
+        index
+            for ndarray indexing
+        reqnc
+            maximum N uptake (proportional to total N required for plant growth), g N per plant.
+        """
+        l, k = index
+        nitrate_nitrogen_content = self._[0].soil.cells[l][k].nitrate_nitrogen_content
+        water_content = self._[0].soil.cells[l][k].water_content
+        # Constant parameters:
+        halfn = 0.08  # the N concentration in soil water (mg cm-3) at which
+        # uptake is half of the possible rate.
+        cparupmax = 0.5  # constant parameter for computing upmax.
+        p1 = 100
+        p2 = 5  # constant parameters for computing AmmonNDissolved.
+
+        # coefficient used to convert g per plant to mg cm-3 units.
+        coeff: float = 10 * row_space / (per_plant_area * SIMULATED_LAYER_DEPTH[l] * wk(k, row_space))
+        # A Michaelis-Menten procedure is used to compute the rate of nitrate uptake from each cell. The maximum possible amount of uptake is reqnc (g N per plant), and the half of this rate occurs when the nitrate concentration in the soil solution is halfn (mg N per cm3 of soil water).
+        # Compute the uptake of nitrate from this soil cell, upno3c in g N per plant units.
+        # Define the maximum possible uptake, upmax, as a fraction of VolNo3NContent.
+        if nitrate_nitrogen_content > 0:
+            # uptake rate of nitrate, g N per plant per day
+            upno3c = reqnc * nitrate_nitrogen_content / (halfn * water_content + nitrate_nitrogen_content)
+            # maximum possible uptake rate, mg N per soil cell per day
+            upmax = cparupmax * nitrate_nitrogen_content
+            # Make sure that uptake will not exceed upmax and update VolNo3NContent and upno3c.
+            if (coeff * upno3c) < upmax:
+                self._[0].soil.cells[l][k].nitrate_nitrogen_content -= coeff * upno3c
+            else:
+                self._[0].soil.cells[l][k].nitrate_nitrogen_content -= upmax
+                upno3c = upmax / coeff
+            # upno3c is added to the total uptake by the plant (supplied_nitrate_nitrogen).
+            self.supplied_nitrate_nitrogen += upno3c
+        # Ammonium in the soil is in a dynamic equilibrium between the adsorbed and the soluble fractions. The parameters p1 and p2 are used to compute the dissolved concentration, AmmonNDissolved, of ammoniumnitrogen. bb, cc, ee are intermediate values for computing.
+        if VolNh4NContent[l][k] > 0:
+            bb = p1 + p2 * water_content - VolNh4NContent[l][k]
+            cc = p2 * water_content * VolNh4NContent[l][k]
+            ee = max(bb ** 2 + 4 * cc, 0)
+            AmmonNDissolved = (sqrt(ee) - bb) / 2  # ammonium N dissolved in soil water, mg cm-3 of soil
+            # Uptake of ammonium N is now computed from AmmonNDissolved , using the Michaelis-Menten method, as for nitrate. upnh4c is added to the total uptake supplied_ammonium_nitrogen.
+            if AmmonNDissolved > 0:
+                # uptake rate of ammonium, g N per plant per day
+                upnh4c = reqnc * AmmonNDissolved / (halfn * water_content + AmmonNDissolved)
+                # maximum possible uptake rate, mg N per soil cell per day
+                upmax = cparupmax * VolNh4NContent[l][k]
+                if (coeff * upnh4c) < upmax:
+                    VolNh4NContent[l][k] -= coeff * upnh4c
+                else:
+                    VolNh4NContent[l][k] -= upmax
+                    upnh4c = upmax / coeff
+                self.supplied_ammonium_nitrogen += upnh4c
 
     def gravity_flow(self, applywat):
         """This function computes the water redistribution in the soil or surface irrigation (by flooding or sprinklers). It is called by SoilProcedures(). It calls function Drain().

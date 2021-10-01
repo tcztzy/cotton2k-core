@@ -4,7 +4,6 @@
 // SoilProcedure_2
 void DripFlow(SoilCell[40][20], double, double);
 
-void NitrogenUptake(State &, SoilCell &, int, int, double, double, double);
 double Drain(SoilCell[40][20], double);
 void NitrogenFlow(int, double[], double[], double[], double[], double[]);
 void WaterFlux(double[], double[], double[], double[], double[], double[], int, int, int, long, int);

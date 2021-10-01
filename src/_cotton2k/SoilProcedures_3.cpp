@@ -1,7 +1,6 @@
 //  SoilProcedures_3.cpp
 //
 //   functions in this file:
-// NitrogenUptake()
 // WaterFlux()
 // WaterBalance()
 // NitrogenFlow()
@@ -12,76 +11,6 @@
 #include "Simulation.hpp"
 
 void WaterBalance(double[], double[], double [], int);
-
-///////////////////////////////////////////////////////////////////////////
-void NitrogenUptake(State &state, SoilCell &soil_cell, int l, int k, double reqnc, double row_space, double per_plant_area)
-//     The function NitrogenUptake() computes the uptake of nitrate and ammonium N
-//  from a soil cell. It is called by WaterUptake().
-//     The arguments of this function are:
-//        k, l - column and layer index of this cell.
-//        reqnc - maximum N uptake (proportional to total N
-//                required for plant growth), g N per plant.
-//     The following global variables are set here:
-//       VolNh4NContent, VolNo3NContent
-{
-//     Constant parameters:
-    const double halfn = 0.08;// the N concentration in soil water (mg cm-3) at which
-    // uptake is half of the possible rate.
-    const double cparupmax = 0.5;  // constant parameter for computing upmax.
-    const double p1 = 100, p2 = 5; // constant parameters for computing AmmonNDissolved.
-//
-    double coeff; // coefficient used to convert g per plant to mg cm-3 units.
-    coeff = 10 * row_space / (per_plant_area * dl(l) * wk(k, row_space));
-//     A Michaelis-Menten procedure is used to compute the rate of nitrate uptake from
-//  each cell. The maximum possible amount of uptake is reqnc (g N per plant), and
-//  the half of this rate occurs when the nitrate concentration in the soil solution is
-//  halfn (mg N per cm3 of soil water).
-//     Compute the uptake of nitrate from this soil cell, upno3c in g N per plant units.
-//  Define the maximum possible uptake, upmax, as a fraction of VolNo3NContent.
-    if (soil_cell.nitrate_nitrogen_content > 0) {
-        double upno3c; // uptake rate of nitrate, g N per plant per day
-        upno3c = reqnc * soil_cell.nitrate_nitrogen_content
-                 / (halfn * soil_cell.water_content + soil_cell.nitrate_nitrogen_content);
-        double upmax; // maximum possible uptake rate, mg N per soil cell per day
-        upmax = cparupmax * soil_cell.nitrate_nitrogen_content;
-//     Make sure that uptake will not exceed upmax and update VolNo3NContent and upno3c.
-        if ((coeff * upno3c) < upmax)
-            soil_cell.nitrate_nitrogen_content -= coeff * upno3c;
-        else {
-            soil_cell.nitrate_nitrogen_content -= upmax;
-            upno3c = upmax / coeff;
-        }
-//     upno3c is added to the total uptake by the plant (supplied_nitrate_nitrogen).
-        state.supplied_nitrate_nitrogen += upno3c;
-    }
-//     Ammonium in the soil is in a dynamic equilibrium between the adsorbed and the soluble
-//  fractions. The parameters p1 and p2 are used to compute the dissolved concentration,
-//  AmmonNDissolved, of ammoniumnitrogen. bb, cc, ee are intermediate values for computing.
-    if (VolNh4NContent[l][k] > 0) {
-        double bb = p1 + p2 * soil_cell.water_content - VolNh4NContent[l][k];
-        double cc = p2 * soil_cell.water_content * VolNh4NContent[l][k];
-        double ee = bb * bb + 4 * cc;
-        if (ee < 0)
-            ee = 0;
-        double AmmonNDissolved; // ammonium N dissolved in soil water, mg cm-3 of soil
-        AmmonNDissolved = 0.5 * (sqrt(ee) - bb);
-//     Uptake of ammonium N is now computed from AmmonNDissolved , using the Michaelis-Menten
-//  method, as for nitrate. upnh4c is added to the total uptake supplied_ammonium_nitrogen.
-        if (AmmonNDissolved > 0) {
-            double upnh4c; // uptake rate of ammonium, g N per plant per day
-            upnh4c = reqnc * AmmonNDissolved / (halfn * soil_cell.water_content + AmmonNDissolved);
-            double upmax; // maximum possible uptake rate, mg N per soil cell per day
-            upmax = cparupmax * VolNh4NContent[l][k];
-            if ((coeff * upnh4c) < upmax)
-                VolNh4NContent[l][k] -= coeff * upnh4c;
-            else {
-                VolNh4NContent[l][k] -= upmax;
-                upnh4c = upmax / coeff;
-            }
-            state.supplied_ammonium_nitrogen += upnh4c;
-        }
-    }
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 void WaterFlux(double q1[], double psi1[], double dd[], double qr1[],
