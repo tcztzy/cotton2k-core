@@ -2129,7 +2129,7 @@ cdef class State:
                     self.urea_hydrolysis((l, k))
                 self.mineralize_nitrogen((l, k), self._sim.start_date, self._sim.row_space)
                 if VolNh4NContent[l][k] > 0.00001:
-                    Nitrification(self._[0].soil.cells[l][k], l, k, SIMULATED_LAYER_DEPTH_CUMSUM[l], self.soil_temperature[l][k])
+                    self.nitrification((l, k))
                 # denitrification() is called if there are enough water and nitrates in the soil cell. cparmin is the minimum temperature C for denitrification.
                 cparmin = 5
                 if self._[0].soil.cells[l][k].nitrate_nitrogen_content > 0.001 and self._[0].soil.cells[l][k].water_content > FieldCapacity[l] and self.soil_temperature[l][k] >= (cparmin + 273.161):
@@ -2328,6 +2328,38 @@ cdef class State:
         dnrate: float = min(max(cpardenit * cw * self._[0].soil.cells[l][k].nitrate_nitrogen_content * fw * ft, 0), self._[0].soil.cells[l][k].nitrate_nitrogen_content - vno3min)
         # Update VolNo3NContent, and add the amount of nitrogen lost to SoilNitrogenLoss.
         self._[0].soil.cells[l][k].nitrate_nitrogen_content -= dnrate
+
+    def nitrification(self, index):
+        """This function computes the transformation of soil ammonia nitrogen to nitrate.
+        """
+        l, k = index
+        soil_temperature = self.soil_temperature[index]
+        # The following constant parameters are used:
+        cpardepth: float = 0.45
+        cparnit1: float = 24.635
+        cparnit2: float = 8227
+        cparsanc: float = 204  # this constant parameter is modified from kg/ha units in CERES to mg/cm3 units of VolNh4NContent (assuming 15 cm layers)
+        sanc: float  # effect of NH4 N in the soil on nitrification rate (0 to 1).
+        if VolNh4NContent[l][k] < 0.1:
+            sanc = 1 - exp(-cparsanc * VolNh4NContent[l][k])
+        else:
+            sanc = 1
+        # The rate of nitrification, con1, is a function of soil temperature. It is slightly modified from GOSSYM. it is transformed from immediate rate to a daily time step ratenit.
+        # The rate is modified by soil depth, assuming that for an increment of 30 cm depth, the rate is decreased by 55% (multiply by a power of cpardepth). It is also multiplied by the environmental limiting factors (sanc, SoilWaterEffect) to get the actual rate of nitrification.
+        # The maximum rate is assumed not higher than 10%.
+        # rate of nitrification as a function of temperature.
+        con1: float = exp(cparnit1 - cparnit2 / soil_temperature)
+        ratenit: float = 1 - exp(-con1)  # actual rate of nitrification (day-1).
+        # effect of soil depth on nitrification rate.
+        tff: float = max((SIMULATED_LAYER_DEPTH_CUMSUM[l] - 30) / 30, 0)
+        # Add the effects of NH4 in soil, soil water content, and depth of soil layer.
+        ratenit *= sanc * SoilWaterEffect(self._[0].soil.cells[l][k].water_content, FieldCapacity[l], thetar[l], thts[l], 1) * pow(cpardepth, tff)
+        ratenit = min(max(ratenit, 0), 0.10)
+        # Compute the actual amount of N nitrified, and update VolNh4NContent and VolNo3NContent.
+        # actual nitrification (mg n cm-3 day-1).
+        dnit: float = ratenit * VolNh4NContent[l][k]
+        VolNh4NContent[l][k] -= dnit
+        self._[0].soil.cells[l][k].nitrate_nitrogen_content += dnit
 
     def apply_fertilizer(self, row_space, plant_population):
         """This function simulates the application of nitrogen fertilizer on each date of application."""

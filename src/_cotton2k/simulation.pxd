@@ -31,9 +31,6 @@ cdef extern:
     double tdewhour(cSimulation &, uint32_t, double, double, double, double, double, double, double, double)
     double SimulateRunoff(cSimulation &, uint32_t, double, double, uint32_t)
 
-cdef extern from "SoilNitrogen.h":
-    void Nitrification(cSoilCell &, int, int, double, double)
-
 cdef extern from "SoilProcedures.h":
     void CapillaryFlow(cSimulation &, unsigned int, int)
     void DripFlow(cSoilCell[40][20], double, double)
