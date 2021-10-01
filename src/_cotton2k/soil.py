@@ -219,3 +219,34 @@ def SoilTemperatureEffect(tt: float) -> float:
     # NOTE: tfm = 0.5 for 29.66 C, tfm = 1 for 35 C, tfm = 2 for 40.34 C.
     tfm: float = tfpar1 * np.exp(tfpar2 * tt)
     return min(max(tfm, 0), 2)
+
+
+def SoilWaterEffect(
+    volumetric_water_content: float,
+    field_capacity: float,
+    volumetric_water_content_at_permanent_wilting_point: float,
+    volumetric_water_content_saturated: float,
+    xx: float,
+) -> float:
+    """Computes the effect of soil moisture on the rate of mineralization of organic
+    mineralizable nitrogen, and on the rates of urea hydrolysis and nitrification.
+
+    It is based on Godwin and Jones (1991).
+
+    The argument xx is 0.5 when used for mineralization and urea hydrolysis, or 1.0
+    when used for nitrification."""
+
+    # the effect of soil moisture on process rate.
+    if volumetric_water_content <= field_capacity:
+        # Soil water content less than field capacity:
+        wf = (
+            volumetric_water_content
+            - volumetric_water_content_at_permanent_wilting_point
+        ) / (field_capacity - volumetric_water_content_at_permanent_wilting_point)
+    else:
+        # Soil water content more than field capacity:
+        wf = 1 - xx * (volumetric_water_content - field_capacity) / (
+            volumetric_water_content_saturated - field_capacity
+        )
+
+    return max(wf, 0)

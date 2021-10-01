@@ -10,5 +10,4 @@ cdef extern:
     double psiq(double, double, double, double, double)
     double qpsi(double, double, double, double, double)
     double form(double, double, double)
-    double SoilWaterEffect(double, double, double, double, double)
     double SoilTemperatureEffect(double)
