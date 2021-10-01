@@ -3850,7 +3850,7 @@ cdef class Simulation:
             for k in range(nk):
                 if VolUreaNContent[l][k] > 0:
                     UreaHydrolysis(l, k, state.soil_temperature[l][k], self._sim.states[u].soil.cells[l][k].water_content, self._sim.states[u].soil.cells[l][k].fresh_organic_matter)
-                MineralizeNitrogen(self._sim.states[u].soil.cells[l][k], l, k, state.date.timetuple().tm_yday, self.start_date.timetuple().tm_yday, self.row_space, state.soil_temperature[l][k])
+                MineralizeNitrogen(l, k, state.date.timetuple().tm_yday, self.start_date.timetuple().tm_yday, self.row_space, state.soil_temperature[l][k], self._sim.states[u].soil.cells[l][k].fresh_organic_matter, self._sim.states[u].soil.cells[l][k].nitrate_nitrogen_content, self._sim.states[u].soil.cells[l][k].water_content)
                 if VolNh4NContent[l][k] > 0.00001:
                     Nitrification(self._sim.states[u].soil.cells[l][k], l, k, SIMULATED_LAYER_DEPTH_CUMSUM[l], state.soil_temperature[l][k])
                 # Denitrification() is called if there are enough water and nitrates in the soil cell. cparmin is the minimum temperature C for denitrification.

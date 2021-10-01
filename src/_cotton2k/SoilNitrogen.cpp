@@ -115,7 +115,7 @@ void UreaHydrolysis(int l, int k, double soil_temperature, double water_content,
 }
 
 ///////////////////////////////////////////
-void MineralizeNitrogen(SoilCell &soil_cell, int l, int k, const int &Daynum, const int &DayStart, double row_space, double soil_temperature)
+void MineralizeNitrogen(int l, int k, int Daynum, int DayStart, double row_space, double soil_temperature, double fresh_organic_matter, double nitrate_nitrogen_content, double water_content)
 //     This function computes the mineralization of organic nitrogen in the soil, and the
 //  immobilization of mineral nitrogen by soil microorganisms. It is called by function
 //  SoilNitrogen().
@@ -148,11 +148,11 @@ void MineralizeNitrogen(SoilCell &soil_cell, int l, int k, const int &Daynum, co
 //  matter and in humus, assuming C/N ratios of cnfresh = 25 and cnhum = 10,
 //  respectively. Carbon in soil organic matter is 0.4 of its dry weight.
     if (Daynum <= DayStart) {
-        FreshOrganicNitrogen[l][k] = soil_cell.fresh_organic_matter * 0.4 / cnfresh;
+        FreshOrganicNitrogen[l][k] = fresh_organic_matter * 0.4 / cnfresh;
         HumusNitrogen[l][k] = HumusOrganicMatter[l][k] * 0.4 / cnhum;
     }
 //     This function will not be executed for soil cells with no organic matter in them.
-    if (soil_cell.fresh_organic_matter <= 0 && HumusOrganicMatter[l][k] <= 0)
+    if (fresh_organic_matter <= 0 && HumusOrganicMatter[l][k] <= 0)
         return;
 //
 // **  C/N ratio in soil **
@@ -163,9 +163,9 @@ void MineralizeNitrogen(SoilCell &soil_cell, int l, int k, const int &Daynum, co
     double cnRatio = 1000;    // C/N ratio in fresh organic matter and mineral N in soil.
     double cnRatioEffect = 1; // the effect of C/N ratio on rate of mineralization.
     double totalSoilN;        // total N in the soil cell, excluding the stable humus fraction, mg/cm3
-    totalSoilN = FreshOrganicNitrogen[l][k] + soil_cell.nitrate_nitrogen_content + VolNh4NContent[l][k];
+    totalSoilN = FreshOrganicNitrogen[l][k] + nitrate_nitrogen_content + VolNh4NContent[l][k];
     if (totalSoilN > 0) {
-        cnRatio = soil_cell.fresh_organic_matter * 0.4 / totalSoilN;
+        cnRatio = fresh_organic_matter * 0.4 / totalSoilN;
         if (cnRatio >= 1000)
             cnRatioEffect = 0;
         else if (cnRatio > cnmax)
@@ -176,18 +176,18 @@ void MineralizeNitrogen(SoilCell &soil_cell, int l, int k, const int &Daynum, co
 //
 // **  Mineralization of fresh organic matter **
 //     The effects of soil moisture (wf) and of soil temperature (tfac) are computed.
-    double wf = SoilWaterEffect(soil_cell.water_content, FieldCapacity[l], thetar[l], thts[l], 0.5);
+    double wf = SoilWaterEffect(water_content, FieldCapacity[l], thetar[l], thts[l], 0.5);
     double tfac = SoilTemperatureEffect(soil_temperature - 273.161);
 //     The gross release of dry weight and of N from decomposition of fresh organic matter is computed.
     double grossReleaseN; // gross release of N from decomposition, mg/cm3
     double immobilizationRateN; // immobilization rate of N associated with decay of residues, mg/cm3 .
-    if (soil_cell.fresh_organic_matter > 0.00001) {
+    if (fresh_organic_matter > 0.00001) {
 //     The decayRateFresh constant (= 0.03) is modified by soil temperature, soil moisture,
 //  and the C/N ratio effect.
         double g1; // the actual decay rate of fresh organic matter, day-1.
         g1 = tfac * wf * cnRatioEffect * decayRateFresh;
         double grossReleaseDW; // the gross release of dry weight from decomposition, mg/cm3
-        grossReleaseDW = g1 * soil_cell.fresh_organic_matter;
+        grossReleaseDW = g1 * fresh_organic_matter;
         grossReleaseN = g1 * FreshOrganicNitrogen[l][k];
 //     The amount of N required for microbial decay of a unit of fresh organic matter suggested
 //  in CERES is 0.02 (derived from:  C fraction in FreshOrganicMatter (=0.4) * biological
@@ -198,17 +198,17 @@ void MineralizeNitrogen(SoilCell &soil_cell, int l, int k, const int &Daynum, co
 //  by grossReleaseDW to get the amount needed (immobilizationRateN) in mg cm-3. Negative value
 //  indicates that there is enough N for microbial decay.
         immobilizationRateN = grossReleaseDW
-                              * (cparnreq - FreshOrganicNitrogen[l][k] / soil_cell.fresh_organic_matter);
+                              * (cparnreq - FreshOrganicNitrogen[l][k] / fresh_organic_matter);
 //     All computations assume that the amounts of VolNh4NContent and VNO3C will
 //  each not become lower than cparMinNH4 (= 0.00025) .
         double rnac1; // the maximum possible value of immobilizationRateN, mg/cm3 .
-        rnac1 = VolNh4NContent[l][k] + soil_cell.nitrate_nitrogen_content - 2 * cparMinNH4;
+        rnac1 = VolNh4NContent[l][k] + nitrate_nitrogen_content - 2 * cparMinNH4;
         if (immobilizationRateN > rnac1)
             immobilizationRateN = rnac1;
         if (immobilizationRateN < 0)
             immobilizationRateN = 0;
 //     FreshOrganicMatter and FreshOrganicNitrogen (the N in it) are now updated.
-        soil_cell.fresh_organic_matter -= grossReleaseDW;
+        fresh_organic_matter -= grossReleaseDW;
         FreshOrganicNitrogen[l][k] += immobilizationRateN - grossReleaseN;
     } else {
         grossReleaseN = 0;
@@ -257,12 +257,12 @@ void MineralizeNitrogen(SoilCell &soil_cell, int l, int k, const int &Daynum, co
         }
 //     If immobilization is larger than the use of NH4 nitrogen, the NO3
 //  fraction is reduced in a similar procedure.
-        if (nnom1 < 0 && soil_cell.nitrate_nitrogen_content > cparMinNH4) {
-            if (fabs(nnom1) < (soil_cell.nitrate_nitrogen_content - cparMinNH4))
+        if (nnom1 < 0 && nitrate_nitrogen_content > cparMinNH4) {
+            if (fabs(nnom1) < (nitrate_nitrogen_content - cparMinNH4))
                 addvnc = -nnom1;
             else
-                addvnc = soil_cell.nitrate_nitrogen_content - cparMinNH4;
-            soil_cell.nitrate_nitrogen_content -= addvnc;
+                addvnc = nitrate_nitrogen_content - cparMinNH4;
+            nitrate_nitrogen_content -= addvnc;
             FreshOrganicNitrogen[l][k] += addvnc;
         }
     }
