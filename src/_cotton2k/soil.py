@@ -186,3 +186,36 @@ def PsiOnTranspiration(psi_average: float) -> float:
     """
     p = np.polynomial.Polynomial((20 ** 3, 3 * 20 ** 2, 3 * 20, 1)) / 14 ** 3
     return min(max(p(psi_average), 0.05), 1.0)
+
+
+def SoilTemperatureEffect(tt: float) -> float:
+    """Computes the effect of temperature on the rate of mineralization of organic
+    mineralizable nitrogen. It is based on GODWIN and JONES (1991).
+
+    Arguments
+    ---------
+    tt : float
+        soil temperature (C).
+
+    Examples
+    --------
+    >>> SoilTemperatureEffect(12)
+    0.050530155584212866
+    >>> SoilTemperatureEffect(18)
+    0.11009133047465763
+    >>> SoilTemperatureEffect(24)
+    0.23985877157019808
+    >>> SoilTemperatureEffect(30)
+    0.5225863839696988
+    >>> SoilTemperatureEffect(36)
+    1.1385721978093266
+    """
+    # The following constant parameters are used:
+    tfpar1 = 0.010645
+    tfpar2 = 0.12979
+    # The temperature function of CERES is replaced by the function suggested by
+    # Vigil and Kissel (1995):
+    #     tfm = 0.010645 * exp(0.12979 * tt)
+    # NOTE: tfm = 0.5 for 29.66 C, tfm = 1 for 35 C, tfm = 2 for 40.34 C.
+    tfm: float = tfpar1 * np.exp(tfpar2 * tt)
+    return min(max(tfm, 0), 2)

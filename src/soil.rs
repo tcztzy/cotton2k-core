@@ -129,28 +129,6 @@ extern "C" fn PsiOsmotic(q: f64, qsat: f64, ec: f64) -> f64
     }
 }
 
-/// This function computes the effect of temperature on the rate of mineralization of organic mineralizable nitrogen. It is based on GODWIN and JONES (1991).
-#[no_mangle]
-extern "C" fn SoilTemperatureEffect(tt: f64) -> f64
-// The following argument is used:  tt - soil temperature (C).
-{
-    // The following constant parameters are used:
-    let tfpar1 = 0.010645;
-    let tfpar2 = 0.12979;
-    // The temperature function of CERES is replaced by the function
-    // suggested by Vigil and Kissel (1995):
-    //   tfm = 0.010645 * exp(0.12979 * tt)
-    // Note: tfm = 0.5 for 29.66 C, tfm = 1 for 35 C, tfm = 2 for 40.34 C.
-    let tfm = tfpar1 * (tfpar2 * tt).exp();
-    if tfm < 0f64 {
-        0f64
-    } else if tfm > 2f64 {
-        2f64
-    } else {
-        tfm
-    }
-}
-
 #[no_mangle]
 extern "C" fn SoilWaterEffect(
     volumetric_water_content: f64,
