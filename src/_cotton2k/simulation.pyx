@@ -2121,6 +2121,21 @@ cdef class State:
             Vigil, M.F., Kissel, D.E., and Smith, S.J. 1991. Field crop
     recovery and modeling of nitrogen mineralized from labeled sorghum
     residues. Soil Sci. Soc. Am. J. 55:1031-1037."""
+    def soil_nitrogen(self):
+        """This function computes the transformations of the nitrogen compounds in the soil."""
+        # For each soil cell: call method urea_hydrolysis(), mineralize_nitrogen(), Nitrification() and denitrification().
+        for l in range(40):
+            for k in range(20):
+                if VolUreaNContent[l][k] > 0:
+                    self.urea_hydrolysis((l, k))
+                self.mineralize_nitrogen((l, k), self._sim.start_date, self._sim.row_space)
+                if VolNh4NContent[l][k] > 0.00001:
+                    Nitrification(self._[0].soil.cells[l][k], l, k, SIMULATED_LAYER_DEPTH_CUMSUM[l], self.soil_temperature[l][k])
+                # denitrification() is called if there are enough water and nitrates in the soil cell. cparmin is the minimum temperature C for denitrification.
+                cparmin = 5
+                if self._[0].soil.cells[l][k].nitrate_nitrogen_content > 0.001 and self._[0].soil.cells[l][k].water_content > FieldCapacity[l] and self.soil_temperature[l][k] >= (cparmin + 273.161):
+                    self.denitrification((l, k))
+
     def urea_hydrolysis(self, index):
         """Computes the hydrolysis of urea to ammonium in the soil.
 
@@ -4060,22 +4075,6 @@ cdef class Simulation:
         # When no water is added, there is only one iteration in this day.
         if WaterToApply + DripWaterAmount <= 0:
             CapillaryFlow(self._sim, u, 1)
-
-    def _soil_nitrogen(self, u):
-        """This function computes the transformations of the nitrogen compounds in the soil."""
-        state = self._current_state
-        # For each soil cell: call functions state.urea_hydrolysis(), mineralize_nitrogen(), Nitrification() and denitrification().
-        for l in range(nl):
-            for k in range(nk):
-                if VolUreaNContent[l][k] > 0:
-                    state.urea_hydrolysis((l, k))
-                state.mineralize_nitrogen((l, k), self.start_date, self.row_space)
-                if VolNh4NContent[l][k] > 0.00001:
-                    Nitrification(self._sim.states[u].soil.cells[l][k], l, k, SIMULATED_LAYER_DEPTH_CUMSUM[l], state.soil_temperature[l][k])
-                # denitrification() is called if there are enough water and nitrates in the soil cell. cparmin is the minimum temperature C for denitrification.
-                cparmin = 5
-                if self._sim.states[u].soil.cells[l][k].nitrate_nitrogen_content > 0.001 and self._sim.states[u].soil.cells[l][k].water_content > FieldCapacity[l] and state.soil_temperature[l][k] >= (cparmin + 273.161):
-                    state.denitrification((l, k))
 
     def _initialize_globals(self):
         # Define the numbers of rows and columns in the soil slab (nl, nk).

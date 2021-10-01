@@ -384,7 +384,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             u
         )  # executes all modules of soil and canopy temperature.
         self._soil_procedures(u)  # executes all other soil processes.
-        self._soil_nitrogen(u)  # computes nitrogen transformations in the soil.
+        state.soil_nitrogen()  # computes nitrogen transformations in the soil.
         # The following is executed each day after plant emergence:
         if (
             state.date >= self.emerge_date
