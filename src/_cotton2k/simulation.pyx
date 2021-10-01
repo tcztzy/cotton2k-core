@@ -2431,14 +2431,97 @@ cdef class State:
                 SoilPsi[l][k] = psi1[k] - PsiOsmotic(self._[0].soil.cells[l][k].water_content, thts[l], ElCondSatSoilToday)
                 self._[0].soil.cells[l][k].nitrate_nitrogen_content = nit[k]
                 VolUreaNContent[l][k] = nur[k]
-        # Call Drain() to move excess water down in the column and compute drainage out of the column. Update cumulative drainage.
+        # Call drain to move excess water down in the column and compute drainage out of the column. Update cumulative drainage.
         cdef double WaterDrainedOut = 0  # water drained out of the slab, mm.
-        WaterDrainedOut += Drain(self._[0].soil.cells, self._sim.row_space)
+        WaterDrainedOut += self.drain()
         # Compute the soil water potential for all soil cells.
         for l in range(40):
             j = SoilHorizonNum[l]
             for k in range(20):
                 SoilPsi[l][k] = psiq(self._[0].soil.cells[l][k].water_content, thad[l], thts[l], alpha[j], vanGenuchtenBeta[j]) - PsiOsmotic(self._[0].soil.cells[l][k].water_content, thts[l], ElCondSatSoilToday)
+
+    def drain(self) -> float:
+        """the gravity flow of water in the slab, and returns the drainage of water out of the slab. It is called from capillary_flow()."""
+        nlx: int = 40  # last soil layer for computing drainage.
+        cdef double oldvh2oc[20]  # stores previous values of cell.water_content.
+        cdef double nitconc  # nitrate N concentration in the soil solution.
+        cdef double nurconc  # urea N concentration in the soil solution.
+        # The following is executed if this is not the bottom layer.
+        for l in range(nlx - 1):
+            layer_depth_ratio: float = SIMULATED_LAYER_DEPTH[l] / SIMULATED_LAYER_DEPTH[l + 1]
+            # Compute the average water content (avwl) of layer l. Store the water content in array oldvh2oc.
+            avwl: float = 0  # average water content in a soil layer
+            for k in range(20):
+                avwl += self._[0].soil.cells[l][k].water_content * wk(k, self._sim.row_space) / self._sim.row_space
+                oldvh2oc[k] = self._[0].soil.cells[l][k].water_content
+            # Upper limit of water content in free drainage..
+            uplimit: float = MaxWaterCapacity[l]
+
+            # Check if the average water content exceeds uplimit for this layer, and if it does, compute amount (wmov) to be moved to the next layer from each cell.
+            wmov: float  # amount of water moving out of a cell.
+            if avwl > uplimit:
+                wmov = avwl - uplimit
+                wmov = wmov * layer_depth_ratio
+                for k in range(20):
+                    # Water content of all soil cells in this layer will be uplimit. the amount (qmv) to be added to each cell of the next layer is computed (corrected for non uniform column widths). The water content in the next layer is computed.
+                    self._[0].soil.cells[l][k].water_content = uplimit
+                    self._[0].soil.cells[l + 1][k].water_content += wmov * wk(k, self._sim.row_space) * nk / self._sim.row_space;
+                    # The concentrations of nitrate and urea N in the soil solution are computed and their amounts in this layer and in the next one are updated.
+                    qvout: float = (oldvh2oc[k] - uplimit)  # amount of water moving out of a cell.
+                    if qvout > 0:
+                        nitconc = self._[0].soil.cells[l][k].nitrate_nitrogen_content / oldvh2oc[k]
+                        if nitconc < 1.e-30:
+                            nitconc = 0
+                        nurconc = VolUreaNContent[l][k] / oldvh2oc[k]
+                        if nurconc < 1.e-30:
+                            nurconc = 0
+                        self._[0].soil.cells[l][k].nitrate_nitrogen_content = self._[0].soil.cells[l][k].water_content * nitconc
+                        VolUreaNContent[l][k] = self._[0].soil.cells[l][k].water_content * nurconc
+                        # Only a part ( NO3FlowFraction ) of N is moved with water draining.
+                        vno3mov: float = qvout * nitconc  # amount of nitrate N moving out of a cell.
+                        self._[0].soil.cells[l + 1][k].nitrate_nitrogen_content += NO3FlowFraction[l] * vno3mov * layer_depth_ratio
+                        self._[0].soil.cells[l][k].nitrate_nitrogen_content += (1 - NO3FlowFraction[l]) * vno3mov
+                        vnurmov: float = qvout * nurconc  # amount of urea N moving out of a cell.
+                        VolUreaNContent[l + 1][k] += NO3FlowFraction[l] * vnurmov * layer_depth_ratio
+                        VolUreaNContent[l][k] += (1 - NO3FlowFraction[l]) * vnurmov
+            else:  # If the average water content is not higher than uplimit, start another loop over columns.
+                for k in range(20):
+                    # Check each soil cell if water content exceeds uplimit,
+                    if self._[0].soil.cells[l][k].water_content > uplimit:
+                        wmov = self._[0].soil.cells[l][k].water_content - uplimit
+                        self._[0].soil.cells[l][k].water_content = uplimit
+                        self._[0].soil.cells[l + 1][k].water_content += wmov * layer_depth_ratio
+                        nitconc = self._[0].soil.cells[l][k].nitrate_nitrogen_content / oldvh2oc[k]
+                        if nitconc < 1.e-30:
+                            nitconc = 0
+                        nurconc = VolUreaNContent[l][k] / oldvh2oc[k]
+                        if nurconc < 1.e-30:
+                            nurconc = 0;
+                        self._[0].soil.cells[l][k].nitrate_nitrogen_content = self._[0].soil.cells[l][k].water_content * nitconc
+                        VolUreaNContent[l][k] = self._[0].soil.cells[l][k].water_content * nurconc
+
+                        self._[0].soil.cells[l + 1][k].nitrate_nitrogen_content += NO3FlowFraction[l] * wmov * nitconc * layer_depth_ratio
+                        VolUreaNContent[l + 1][k] += NO3FlowFraction[l] * wmov * nurconc * layer_depth_ratio
+                        self._[0].soil.cells[l][k].nitrate_nitrogen_content += (1 - NO3FlowFraction[l]) * wmov * nitconc
+                        VolUreaNContent[l][k] += (1 - NO3FlowFraction[l]) * wmov * nurconc
+        # For the lowermost soil layer, loop over columns:
+        # It is assumed that the maximum amount of water held at the lowest soil layer (nlx-1) of the slab is equal to FieldCapacity. If water content exceeds MaxWaterCapacity, compute the water drained out (Drainage), update water, nitrate and urea, compute nitrogen lost by drainage, and add it to the cumulative N loss SoilNitrogenLoss.
+        Drainage: float = 0  # drainage of water out of the slab, cm3 (return value)
+        for k in range(20):
+            if self._[0].soil.cells[nlx - 1][k].water_content > MaxWaterCapacity[nlx - 1]:
+                Drainage += (self._[0].soil.cells[nlx - 1][k].water_content - MaxWaterCapacity[nlx - 1]) * SIMULATED_LAYER_DEPTH[nlx - 1] * wk(k, self._sim.row_space)
+                nitconc = self._[0].soil.cells[nlx - 1][k].nitrate_nitrogen_content / oldvh2oc[k]
+                if nitconc < 1.e-30:
+                    nitconc = 0
+                nurconc = VolUreaNContent[nlx - 1][k] / oldvh2oc[k]
+                if nurconc < 1.e-30:
+                    nurconc = 0
+                # intermediate variable for computing N loss.
+                saven: float = (self._[0].soil.cells[nlx - 1][k].nitrate_nitrogen_content + VolUreaNContent[nlx - 1][k]) * SIMULATED_LAYER_DEPTH[nlx - 1] * wk(k, self._sim.row_space)
+                self._[0].soil.cells[nlx - 1][k].water_content = MaxWaterCapacity[nlx - 1]
+                self._[0].soil.cells[nlx - 1][k].nitrate_nitrogen_content = nitconc * MaxWaterCapacity[nlx - 1]
+                VolUreaNContent[nlx - 1][k] = nurconc * MaxWaterCapacity[nlx - 1]
+        return Drainage
 
     def apply_fertilizer(self, row_space, plant_population):
         """This function simulates the application of nitrogen fertilizer on each date of application."""
@@ -2658,7 +2741,7 @@ cdef class State:
                 self.supplied_ammonium_nitrogen += upnh4c
 
     def gravity_flow(self, applywat):
-        """This function computes the water redistribution in the soil or surface irrigation (by flooding or sprinklers). It is called by SoilProcedures(). It calls function Drain().
+        """This function computes the water redistribution in the soil or surface irrigation (by flooding or sprinklers). It is called by SoilProcedures(). It calls property drain.
 
         Arguments
         ---------
