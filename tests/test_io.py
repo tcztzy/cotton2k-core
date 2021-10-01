@@ -24,7 +24,7 @@ def test_write_output(sim: Simulation):
         elif i == 17:
             assert s.pre_fruiting_leaf_area == [
                 0,
-                0.04816026867751288,
+                0.04850721936815054,
                 0,
                 0,
                 0,
@@ -36,7 +36,7 @@ def test_write_output(sim: Simulation):
         elif i == 18:
             assert s.pre_fruiting_leaf_area == [
                 0,
-                0.05459330434057357,
+                0.05648645878260901,
                 0,
                 0,
                 0,
@@ -48,7 +48,7 @@ def test_write_output(sim: Simulation):
         elif i == 19:
             assert s.pre_fruiting_leaf_area == [
                 0,
-                0.06267057848700187,
+                0.06650513543951767,
                 0,
                 0,
                 0,
@@ -60,7 +60,7 @@ def test_write_output(sim: Simulation):
         elif i == 20:
             assert s.pre_fruiting_leaf_area == [
                 0,
-                0.06876004355246264,
+                0.07262529948471004,
                 0,
                 0,
                 0,
@@ -72,7 +72,7 @@ def test_write_output(sim: Simulation):
         elif i == 21:
             assert s.pre_fruiting_leaf_area == [
                 0,
-                0.07378000096358181,
+                0.07764525689582921,
                 0,
                 0,
                 0,

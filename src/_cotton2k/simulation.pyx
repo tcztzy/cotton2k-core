@@ -19,6 +19,8 @@ from _cotton2k.utils import date2doy, doy2date
 from _cotton2k.thermology import canopy_balance
 from .climate cimport ClimateStruct
 from .cxx cimport (
+    dclay,
+    dsand,
     cSimulation,
     SandVolumeFraction,
     ClayVolumeFraction,
@@ -1218,6 +1220,7 @@ cdef class State:
 
         It is executed once at the beginning of the simulation.
         """
+        global dclay, dsand
         cdef double bsand = 20    # heat conductivity of sand and silt (mcal cm-1 s-1 C-1).
         cdef double bclay = 7     # heat conductivity of clay (mcal cm-1 s-1 C-1).
         cdef double cka = 0.0615  # heat conductivity of air (mcal cm-1 s-1 C-1).
