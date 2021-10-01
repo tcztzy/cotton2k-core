@@ -32,7 +32,6 @@ cdef extern:
     double SimulateRunoff(cSimulation &, uint32_t, double, double, uint32_t)
 
 cdef extern from "SoilNitrogen.h":
-    void UreaHydrolysis(int, int, double, double, double)
     void MineralizeNitrogen(int, int, int, int, double, double, double, double, double)
     void Nitrification(cSoilCell &, int, int, double, double)
     void Denitrification(cSoilCell &, int, int, double, double)

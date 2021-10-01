@@ -53,6 +53,7 @@ from .rs cimport (
     psiq,
     qpsi,
     form,
+    SoilWaterEffect,
 )
 from .state cimport cState, cVegetativeBranch, cFruitingBranch, cMainStemLeaf
 from .fruiting_site cimport FruitingSite, Leaf, cBoll, cBurr, SquareStruct, cPetiole
@@ -2096,6 +2097,77 @@ cdef class State:
     #end phenology
 
     #begin soil
+    """\
+    References for soil nitrogen routines:
+    ======================================
+            Godwin, D.C. and Jones, C.A. 1991. Nitrogen dynamics
+    in soil - plant systems. In: J. Hanks and J.T. Ritchie (ed.)
+    Modeling Plant and Soil Systems, American Society of Agronomy,
+    Madison, WI, USA, pp 287-321.
+            Quemada, M., and Cabrera, M.L. 1995. CERES-N model predictions
+    of nitrogen mineralized from cover crop residues. Soil  Sci. Soc.
+    Am. J. 59:1059-1065.
+            Rolston, D.E., Sharpley, A.N., Toy, D.W., Hoffman, D.L., and
+    Broadbent, F.E. 1980. Denitrification as affected by irrigation
+    frequency of a field soil. EPA-600/2-80-06. U.S. Environmental
+    Protection Agency, Ada, OK.
+            Vigil, M.F., and Kissel, D.E. 1995. Rate of nitrogen mineralized
+    from incorporated crop residues as influenced by temperarure. Soil
+    Sci. Soc. Am. J. 59:1636-1644.
+            Vigil, M.F., Kissel, D.E., and Smith, S.J. 1991. Field crop
+    recovery and modeling of nitrogen mineralized from labeled sorghum
+    residues. Soil Sci. Soc. Am. J. 55:1031-1037."""
+    cdef void urea_hydrolysis(self, index):
+        """Computes the hydrolysis of urea to ammonium in the soil.
+
+        It is called by function SoilNitrogen(). It calls the function SoilWaterEffect().
+
+        The following procedure is based on the CERES routine, as documented by Godwin and Jones (1991).
+
+
+        NOTE: Since COTTON2K does not require soil pH in the input, the CERES rate equation was modified as follows:
+
+        ak is a function of soil organic matter, with two site-dependent parameters cak1 and cak2. Their values are functions of the prevalent pH:
+            cak1 = -1.12 + 0.203 * pH
+            cak2 = 0.524 - 0.062 * pH
+        Some examples of these values:
+                pH      cak1     cak2
+            6.8      .2604    .1024
+            7.2      .3416    .0776
+            7.6      .4228    .0528
+        The values for pH 7.2 are used.
+        """
+        soil_temperature = self.soil_temperature[index]
+        l, k = index
+        water_content = self._[0].soil.cells[l][k].water_content
+        fresh_organic_matter = self._[0].soil.cells[l][k].fresh_organic_matter
+        # The following constant parameters are used:
+        cdef double cak1 = 0.3416
+        cdef double cak2 = 0.0776  # constant parameters for computing ak from organic carbon.
+        cdef double stf1 = 40.0
+        cdef double stf2 = 0.20  # constant parameters for computing stf.
+        cdef double swf1 = 0.20  # constant parameter for computing swf.
+        # Compute the organic carbon in the soil (converted from mg / cm3 to % by weight) for the sum of stable and fresh organic matter, assuming 0.4 carbon content in soil organic matter.
+        cdef int j = SoilHorizonNum[l]  # profile horizon number for this soil layer.
+        cdef double oc  # organic carbon in the soil (% by weight).
+        oc = 0.4 * (fresh_organic_matter + HumusOrganicMatter[l][k]) * 0.1 / BulkDensity[j]
+        # Compute the potential rate of hydrolysis of urea. It is assumed that the potential rate will not be lower than ak0 = 0.25 .
+        cdef double ak  # potential rate of urea hydrolysis (day-1).
+        ak = max(cak1 + cak2 * oc, 0.25)
+        # Compute the effect of soil moisture using function SoilWaterEffect on the rate of urea hydrolysis. The constant swf1 is added to the soil moisture function for mineralization,
+        cdef double swf  # soil moisture effect on rate of urea hydrolysis.
+        swf = min(max(SoilWaterEffect(water_content, FieldCapacity[l], thetar[l], thts[l], 0.5) + swf1, 0), 1)
+        # Compute the effect of soil temperature. The following parameters are used for the temperature function: stf1, stf2.
+        cdef double stf  # soil temperature effect on rate of urea hydrolysis.
+        stf = min(max((soil_temperature - 273.161) / stf1 + stf2, 0), 1)
+        # Compute the actual amount of urea hydrolized, and update VolUreaNContent and VolNh4NContent.
+        cdef double hydrur  # amount of urea hydrolized, mg N cm-3 day-1.
+        hydrur = ak * swf * stf * VolUreaNContent[l][k]
+        if hydrur > VolUreaNContent[l][k]:
+            hydrur = VolUreaNContent[l][k]
+        VolUreaNContent[l][k] -= hydrur
+        VolNh4NContent[l][k] += hydrur
+
     def apply_fertilizer(self, row_space, plant_population):
         """This function simulates the application of nitrogen fertilizer on each date of application."""
         cdef double ferc = 0.01  # constant used to convert kgs per ha to mg cm-2
@@ -3845,11 +3917,11 @@ cdef class Simulation:
     def _soil_nitrogen(self, u):
         """This function computes the transformations of the nitrogen compounds in the soil."""
         state = self._current_state
-        # For each soil cell: call functions UreaHydrolysis(), MineralizeNitrogen(), Nitrification() and Denitrification().
+        # For each soil cell: call functions state.urea_hydrolysis(), MineralizeNitrogen(), Nitrification() and Denitrification().
         for l in range(nl):
             for k in range(nk):
                 if VolUreaNContent[l][k] > 0:
-                    UreaHydrolysis(l, k, state.soil_temperature[l][k], self._sim.states[u].soil.cells[l][k].water_content, self._sim.states[u].soil.cells[l][k].fresh_organic_matter)
+                    state.urea_hydrolysis((l, k))
                 MineralizeNitrogen(l, k, state.date.timetuple().tm_yday, self.start_date.timetuple().tm_yday, self.row_space, state.soil_temperature[l][k], self._sim.states[u].soil.cells[l][k].fresh_organic_matter, self._sim.states[u].soil.cells[l][k].nitrate_nitrogen_content, self._sim.states[u].soil.cells[l][k].water_content)
                 if VolNh4NContent[l][k] > 0.00001:
                     Nitrification(self._sim.states[u].soil.cells[l][k], l, k, SIMULATED_LAYER_DEPTH_CUMSUM[l], state.soil_temperature[l][k])
