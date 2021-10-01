@@ -34,7 +34,6 @@ cdef extern:
 cdef extern from "SoilProcedures.h":
     void DripFlow(cSoilCell[40][20], double, double)
     void NitrogenFlow(int, double[], double[], double[], double[], double[])
-    void WaterFlux(double[], double[], double[], double[], double[], double[], int, int, int, long, int);
 
 cdef extern from "SoilTemperature.h":
     void SoilHeatFlux(cState &, double, int, int, int, int, double)
