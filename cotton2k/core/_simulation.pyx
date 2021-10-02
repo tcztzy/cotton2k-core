@@ -1,3 +1,5 @@
+# cython: language_level=3
+# distutils: language = c++
 from enum import Enum, IntEnum, auto
 from datetime import date, timedelta
 from math import sin, cos, acos, sqrt, pi, atan
@@ -12,12 +14,12 @@ cimport numpy
 import numpy as np
 from scipy.interpolate import interp2d
 
-from _cotton2k.climate import compute_day_length, compute_incoming_long_wave_radiation, radiation, delta, gamma, refalbed, clcor, cloudcov, sunangle, clearskyemiss, dayrh, VaporPressure, tdewest, compute_hourly_wind_speed
-from _cotton2k.fruit import TemperatureOnFruitGrowthRate
-from _cotton2k.leaf import temperature_on_leaf_growth_rate, leaf_resistance_for_transpiration
-from _cotton2k.soil import compute_soil_surface_albedo, compute_incoming_short_wave_radiation, root_psi, SoilTemOnRootGrowth, SoilAirOnRootGrowth, SoilNitrateOnRootGrowth, PsiOnTranspiration, SoilTemperatureEffect, SoilWaterEffect, wcond, qpsi, psiq, SoilMechanicResistance, PsiOsmotic, form
-from _cotton2k.utils import date2doy, doy2date
-from _cotton2k.thermology import canopy_balance
+from .climate import compute_day_length, compute_incoming_long_wave_radiation, radiation, delta, gamma, refalbed, clcor, cloudcov, sunangle, clearskyemiss, dayrh, VaporPressure, tdewest, compute_hourly_wind_speed
+from .fruit import TemperatureOnFruitGrowthRate
+from .leaf import temperature_on_leaf_growth_rate, leaf_resistance_for_transpiration
+from .soil import compute_soil_surface_albedo, compute_incoming_short_wave_radiation, root_psi, SoilTemOnRootGrowth, SoilAirOnRootGrowth, SoilNitrateOnRootGrowth, PsiOnTranspiration, SoilTemperatureEffect, SoilWaterEffect, wcond, qpsi, psiq, SoilMechanicResistance, PsiOsmotic, form
+from .utils import date2doy, doy2date
+from .thermology import canopy_balance
 ctypedef struct ClimateStruct:
     double Rad
     double Tmax
@@ -1981,7 +1983,7 @@ cdef class State:
             [self.cells[l][k].water_content for k in range(20)]
             for l in range(40)
         ], dtype=np.double) / bulk_density[:, None]
-        soil_imp = np.genfromtxt(Path(__file__).parent.parent / "cotton2k" / "core" / "soil_imp.csv", delimiter=",")
+        soil_imp = np.genfromtxt(Path(__file__).parent / "soil_imp.csv", delimiter=",")
         f = interp2d(soil_imp[0, 1:], soil_imp[1:, 0], soil_imp[1:, 1:])
         self.root_impedance = np.array([
             [f(bulk_density[l], water_content[l][k]) for k in range(20)]

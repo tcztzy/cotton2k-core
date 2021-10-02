@@ -1,6 +1,6 @@
 from datetime import date
 
-from _cotton2k.utils import date2doy, doy2date
+from cotton2k.core.utils import date2doy, doy2date
 
 
 def test_date2doy():

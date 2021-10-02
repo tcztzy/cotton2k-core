@@ -1,4 +1,3 @@
-# pylint: disable=no-name-in-module, import-error
 from __future__ import annotations
 
 import datetime
@@ -8,10 +7,10 @@ from typing import Any, Union
 
 import numpy as np
 
-from _cotton2k import Climate, SoilInit  # type: ignore[import]
-from _cotton2k.simulation import Simulation as CySimulation  # type: ignore[import]
-from _cotton2k.simulation import State as CyState
-
+from ._simulation import Climate  # pylint: disable=E0611
+from ._simulation import SoilInit  # pylint: disable=E0611
+from ._simulation import Simulation as CySimulation  # pylint: disable=E0611
+from ._simulation import State as CyState  # pylint: disable=E0611
 from .meteorology import METEOROLOGY
 from .nitrogen import PlantNitrogen
 from .phenology import Phenology, Stage

@@ -1,6 +1,6 @@
 {
     "$schema": "http://json-schema.org/draft-07/schema",
-    "$id": "https://raw.githubusercontent.com/tcztzy/cotton2k/master/src/cotton2k/cotton2k.schema.json",
+    "$id": "https://raw.githubusercontent.com/tcztzy/cotton2k-core/master/cotton2k/core/cotton2k.schema.json",
     "description": "Cotton2K model input JSON schema",
     "type": "object",
     "required": [

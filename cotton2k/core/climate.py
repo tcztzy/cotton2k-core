@@ -5,7 +5,7 @@ from math import acos, cos, degrees, exp, pi, radians, sin, tan
 import numpy as np
 from scipy import constants
 
-from _cotton2k.utils import date2doy
+from .utils import date2doy
 
 TZ_WIDTH = 15  # timezone width in degree
 

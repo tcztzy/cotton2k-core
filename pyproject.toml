@@ -58,5 +58,5 @@ overrides = [{ module = ["pint.*", "scipy.*"], ignore_missing_imports = true }]
 
 [tool.pytest.ini_options]
 minversion = "6.0"
-addopts = "--doctest-modules --cov=cotton2k.core --cov=_cotton2k"
+addopts = "--doctest-modules --cov=cotton2k.core"
 doctest_optionflags = "NUMBER"
