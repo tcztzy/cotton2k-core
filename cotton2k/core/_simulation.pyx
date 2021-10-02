@@ -285,9 +285,9 @@ cdef water_flux(double q1[], double psi1[], double dd[], double qr1[], double qs
         dy[i] = 0.5 * (dd[i - 1] + dd[i])
         if cond[i - 1] <= condmin and cond[i] <= condmin:
             avcond[i] = condmin
-        elif cond[i - 1] <= condmin and cond[i] > condmin:
+        elif cond[i - 1] <= condmin < cond[i]:
             avcond[i] = 2 * condmin * cond[i] / (condmin + cond[i])
-        elif cond[i] <= condmin and cond[i - 1] > condmin:
+        elif cond[i] <= condmin < cond[i - 1]:
             avcond[i] = 2 * condmin * cond[i - 1] / (condmin + cond[i - 1])
         else:
             avcond[i] = 2 * cond[i - 1] * cond[i] / (cond[i - 1] + cond[i])
@@ -322,9 +322,9 @@ cdef water_flux(double q1[], double psi1[], double dd[], double qr1[], double qs
         # difference of soil water content (v/v) between adjacent cells.
         deltq: float = qx[i - 1] - qx[i]
         if abs(dqq1) > abs(0.25 * deltq):
-            if deltq > 0 and dqq1 < 0:
+            if deltq > 0 > dqq1:
                 dqq1 = 0
-            elif deltq < 0 and dqq1 > 0:
+            elif deltq < 0 < dqq1:
                 dqq1 = 0
             else:
                 dqq1 = 0.25 * deltq
@@ -342,9 +342,9 @@ cdef water_flux(double q1[], double psi1[], double dd[], double qr1[], double qs
             dumm1 = conmax * dy[i + 1]
         dqq2: float = (1 - RatioImplicit) * deltpsi * dumm1  # water added to cell i from cell (i+1)
         if abs(dqq2) > abs(0.25 * deltq):
-            if deltq > 0 and dqq2 < 0:
+            if deltq > 0 > dqq2:
                 dqq2 = 0
-            elif deltq < 0 and dqq2 > 0:
+            elif deltq < 0 < dqq2:
                 dqq2 = 0
             else:
                 dqq2 = 0.25 * deltq
@@ -495,7 +495,7 @@ cdef double ThermalCondSoil(double q0, double t0, int l0):
     cdef double bb  # effect of temperature on heat conductivity of air saturated with water vapor.
     if tcel <= 36:
         bb = 0.06188
-    elif tcel > 36 and tcel <= 40:
+    elif 36 < tcel <= 40:
         bb = 0.06188 + (tcel - 36) * (0.05790 - 0.06188) / (40 - 36)
     else:
         bb = 0.05790
