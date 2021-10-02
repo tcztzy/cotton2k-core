@@ -49,6 +49,7 @@ def test_json(tmp_path: Path) -> Path:
                 "skip_row_width": 0.00,
                 "plants_per_meter": 10,
                 "cultivar_parameters": [
+                    0,
                     0.050,
                     0.28,
                     0.012,

@@ -228,10 +228,9 @@ cdef double SandVolumeFraction[40]  # fraction by volume of sand plus silt in th
 cdef double FieldCapacity[40]  # volumetric water content of soil at field capacity for each soil layer, cm3 cm-3.
 cdef double PoreSpace[40]  # pore space of soil, volume fraction.
 cdef double HeatCapacitySoilSolid[40]  # heat capacity of the solid phase of the soil.
-ctypedef struct cSimulation "Simulation":
-    double row_space
-    double plant_population
-    double cultivar_parameters[61]
+
+
+ctypedef struct cSimulation:
     ClimateStruct climate[400]
     Irrigation irrigation[150]
     cState states[200]
@@ -3996,11 +3995,6 @@ def SensibleHeatTransfer(tsf, tenviron, height, wndcanp) -> float:
 
 cdef class Simulation:
     cdef cSimulation _sim
-    cdef public unsigned int year
-    cdef public unsigned int version
-    cdef public double latitude
-    cdef public double longitude
-    cdef public double elevation  # meter
     cdef uint32_t _emerge_day
     cdef uint32_t _start_day
     cdef uint32_t _stop_day
@@ -4011,22 +4005,30 @@ cdef class Simulation:
     cdef uint32_t _first_square_day
     cdef public numpy.ndarray column_width
     cdef public numpy.ndarray column_width_cumsum
+    cdef public unsigned int emerge_switch
+    cdef public unsigned int version
+    cdef public unsigned int year
     cdef public uint32_t plant_row_column  # column number to the left of plant row location.
+    cdef public double cultivar_parameters[51]
+    cdef public double density_factor  # empirical plant density factor.
+    cdef public double elevation  # meter
+    cdef public double latitude
+    cdef public double longitude
     cdef public double max_leaf_area_index
     cdef public double ptsred  # The effect of moisture stress on the photosynthetic rate
-    cdef public double density_factor  # empirical plant density factor.
+    cdef public double plant_population  # plant population, plants per hectar.
+    cdef public double plants_per_meter  # average number of plants pre meter of row.
+    cdef public double per_plant_area  # average soil surface area per plant, dm2
+    cdef public double row_space  # average row spacing, cm.
+    cdef public double skip_row_width  # the smaller distance between skip rows, cm
+    cdef public State _current_state
     cdef double defkgh  # amount of defoliant applied, kg per ha
     cdef double tdfkgh  # total cumulative amount of defoliant
     cdef bool_t idsw  # switch indicating if predicted defoliation date was defined.
-    cdef public double skip_row_width  # the smaller distance between skip rows, cm
-    cdef public double plants_per_meter  # average number of plants pre meter of row.
-    cdef public double per_plant_area  # average soil surface area per plant, dm2
     # switch affecting the method of computing soil temperature.
     # 0 = one dimensional (no horizontal flux) - used to predict emergence when emergence date is not known;
     # 1 = one dimensional - used before emergence when emergence date is given;
     # 2 = two dimensional - used after emergence.
-    cdef public unsigned int emerge_switch
-    cdef public State _current_state
     relative_radiation_received_by_a_soil_column = np.ones(20)  # the relative radiation received by a soil column, as affected by shading by plant canopy.
 
     def __init__(self, version=0x0400, **kwargs):
@@ -4110,31 +4112,6 @@ cdef class Simulation:
     def site_parameters(self, parameters):
         for i, p in enumerate(parameters):
             SitePar[i + 1] = p
-
-    @property
-    def cultivar_parameters(self):
-        return self._sim.cultivar_parameters
-
-    @cultivar_parameters.setter
-    def cultivar_parameters(self, parameters):
-        for i, p in enumerate(parameters):
-            self._sim.cultivar_parameters[i + 1] = p
-
-    @property
-    def row_space(self):
-        return self._sim.row_space
-
-    @row_space.setter
-    def row_space(self, value):
-        self._sim.row_space = value or 0
-
-    @property
-    def plant_population(self):
-        return self._sim.plant_population
-
-    @plant_population.setter
-    def plant_population(self, value):
-        self._sim.plant_population = value
 
     @property
     def first_square_date(self):
