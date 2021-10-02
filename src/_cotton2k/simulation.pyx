@@ -39,11 +39,6 @@ from .cxx cimport (
     HumusNitrogen,
 )
 from .irrigation cimport Irrigation
-from .rs cimport (
-    SlabLoc,
-    wk,
-    dl,
-)
 from .state cimport cState, cVegetativeBranch, cFruitingBranch, cMainStemLeaf
 from .fruiting_site cimport FruitingSite, Leaf, cBoll, cBurr, SquareStruct, cPetiole
 
@@ -937,184 +932,6 @@ cdef class Hour:
 cdef double[3] cgind = [1, 1, 0.10]  # the index for the capability of growth of class I roots (0 to 1).
 
 
-cdef void DripFlow(cSoilCell soil_cells[40][20], double Drip, double row_space):
-    """omputes the water redistribution in the soil after irrigation by a drip system. It also computes the resulting redistribution of nitrate and urea N.
-//  It is called by SoilProcedures() noitr times per day. It calls function CellDistrib().
-//     The following argument is used:
-//  Drip - amount of irrigation applied by the drip method, mm.
-//
-//     The following global variables are referenced:
-//       dl, LocationColumnDrip, LocationLayerDrip, MaxWaterCapacity,
-//       nk, nl, NO3FlowFraction, PoreSpace, wk
-//
-//     The following global variables are set:
-//       CumWaterDrained, SoilNitrogenLoss, VolNo3NContent, VolUreaNContent
-    """
-    cdef double dripw[40]  # amount of water applied, or going from one ring of
-    # soil cells to the next one, cm3. (array)
-    cdef double dripn[40]  # amount of nitrate N applied, or going from one ring of soil
-    # soil cells to the next one, mg. (array)
-    cdef double dripu[40]  # amount of urea N applied, or going from one ring of soil
-    # soil cells to the next one, mg. (array)
-    for i in range(40):
-        dripw[i] = 0
-        dripn[i] = 0
-        dripu[i] = 0
-    # Incoming flow of water (Drip, in mm) is converted to dripw(0), in cm3 per slab.
-    dripw[0] = Drip * row_space * 0.10
-    # Wetting the cell in which the emitter is located.
-    cdef double h2odef  # the difference between the maximum water capacity (at a water content of uplimit) of this ring of soil cell, and the actual water content, cm3.
-    cdef int l0 = LocationLayerDrip  #  layer where the drip emitter is situated
-    cdef int k0 = LocationColumnDrip  #  column where the drip emitter is situated
-    # SoilCell &soil_cell = soil_cells[l0][k0]
-    # It is assumed that wetting cannot exceed MaxWaterCapacity of this cell. Compute h2odef, the amount of water needed to saturate this cell.
-    h2odef = (MaxWaterCapacity[l0] - soil_cells[l0][k0].water_content) * dl(l0) * wk(k0, row_space)
-    # If maximum water capacity is not exceeded - update cell.water_content of this cell and exit the function.
-    if dripw[0] <= h2odef:
-        soil_cells[l0][k0].water_content += dripw[0] / (dl(l0) * wk(k0, row_space))
-        return
-    # If maximum water capacity is exceeded - calculate the excess of water flowing out of this cell (in cm3 per slab) as dripw[1]. The next ring of cells (kr=1) will receive it as incoming water flow.
-    dripw[1] = dripw[0] - h2odef
-    # Compute the movement of nitrate N to the next ring
-    cdef double cnw = 0  #  concentration of nitrate N in the outflowing water
-    if soil_cells[l0][k0].nitrate_nitrogen_content > 1.e-30:
-        cnw = soil_cells[l0][k0].nitrate_nitrogen_content / (soil_cells[l0][k0].water_content + dripw[0] / (dl(l0) * wk(k0, row_space)))
-        # cnw is multiplied by dripw[1] to get dripn[1], the amount of nitrate N going out to the next ring of cells. It is assumed, however, that not more than a proportion (NO3FlowFraction) of the nitrate N in this cell can be removed in one iteration.
-        if (cnw * MaxWaterCapacity[l0]) < (NO3FlowFraction[l0] * soil_cells[l0][k0].nitrate_nitrogen_content):
-            dripn[1] = NO3FlowFraction[l0] * soil_cells[l0][k0].nitrate_nitrogen_content * dl(l0) * wk(k0, row_space)
-            soil_cells[l0][k0].nitrate_nitrogen_content = (1 - NO3FlowFraction[l0]) * soil_cells[l0][k0].nitrate_nitrogen_content
-        else:
-            dripn[1] = dripw[1] * cnw
-            soil_cells[l0][k0].nitrate_nitrogen_content = MaxWaterCapacity[l0] * cnw
-
-    # The movement of urea N to the next ring is computed similarly.
-    cdef double cuw = 0  # concentration of urea N in the outflowing water
-    if VolUreaNContent[l0][k0] > 1.e-30:
-        cuw = VolUreaNContent[l0][k0] / (soil_cells[l0][k0].water_content + dripw[0] / (dl(l0) * wk(k0, row_space)))
-        if (cuw * MaxWaterCapacity[l0]) < (NO3FlowFraction[l0] * VolUreaNContent[l0][k0]):
-            dripu[1] = NO3FlowFraction[l0] * VolUreaNContent[l0][k0] * dl(l0) * wk(k0, row_space)
-            VolUreaNContent[l0][k0] = (1 - NO3FlowFraction[l0]) * VolUreaNContent[l0][k0]
-        else:
-            dripu[1] = dripw[1] * cuw
-            VolUreaNContent[l0][k0] = MaxWaterCapacity[l0] * cuw
-    cdef double defcit[40][20]  # array of the difference between water capacity and actual water content in each cell of the ring
-    # Set cell.water_content of the cell in which the drip is located to MaxWaterCapacity.
-    soil_cells[l0][k0].water_content = MaxWaterCapacity[l0]
-    # Loop of concentric rings of cells, starting from ring 1.
-    # Assign zero to the sums sv, st, sn, sn1, su and su1.
-    for kr in range(1, 40):
-        uplimit: float  # upper limit of soil water content in a soil cell
-        sv = 0  # sum of actual water content in a ring of cells, cm3
-        st = 0  # sum of total water capacity in a ring of cells, cm3
-        sn = 0  # sum of nitrate N content in a ring of cells, mg.
-        sn1 = 0  # sum of movable nitrate N content in a ring of cells, mg
-        su = 0  # sum of urea N content in a ring of cells, mg
-        su1 = 0  # sum of movable urea N content in a ring of cells, mg
-        radius = 6 * kr  # radius (cm) of the wetting ring
-        dist: float# distance (cm) of a cell center from drip location
-        # Loop over all soil cells
-        for l in range(1, 40):
-            # Upper limit of water content is the porespace volume in layers below the water table, MaxWaterCapacity in other layers.
-            uplimit = MaxWaterCapacity[l]
-            for k in range(20):
-                # Compute the sums sv, st, sn, sn1, su and su1 within the radius limits of this ring. The array defcit is the sum of difference between uplimit and cell.water_content of each cell.
-                dist = CellDistance(l, k, l0, k0, row_space)
-                if radius >= dist > (radius - 6):
-                    sv += soil_cells[l][k].water_content * dl(l) * wk(k, row_space)
-                    st += uplimit * dl(l) * wk(k, row_space)
-                    sn += soil_cells[l][k].nitrate_nitrogen_content * dl(l) * wk(k, row_space)
-                    sn1 += soil_cells[l][k].nitrate_nitrogen_content * dl(l) * wk(k, row_space) * NO3FlowFraction[l]
-                    su += VolUreaNContent[l][k] * dl(l) * wk(k, row_space)
-                    su1 += VolUreaNContent[l][k] * dl(l) * wk(k, row_space) * NO3FlowFraction[l]
-                    defcit[l][k] = uplimit - soil_cells[l][k].water_content
-                else:
-                    defcit[l][k] = 0
-        # Compute the amount of water needed to saturate all the cells in this ring (h2odef).
-        h2odef = st - sv
-        # Test if the amount of incoming flow, dripw(kr), is greater than  h2odef.
-        if dripw[kr] <= h2odef:
-            # In this case, this will be the last wetted ring.
-            # Update cell.water_content in this ring, by wetting each cell in proportion to its defcit. Update VolNo3NContent and VolUreaNContent of the cells in this ring by the same proportion. this is executed for all the cells in the ring.
-            for l in range(1, 40):
-                for k in range(20):
-                    dist = CellDistance(l, k, l0, k0, row_space)
-                    if radius >= dist > (radius - 6):
-                        soil_cells[l][k].water_content += dripw[kr] * defcit[l][k] / h2odef
-                        soil_cells[l][k].nitrate_nitrogen_content += dripn[kr] * defcit[l][k] / h2odef
-                        VolUreaNContent[l][k] += dripu[kr] * defcit[l][k] / h2odef
-            return
-        # If dripw(kr) is greater than h2odef, calculate cnw and cuw as the concentration of nitrate and urea N in the total water of this ring after receiving the incoming water and nitrogen.
-        cnw = (sn + dripn[kr]) / (sv + dripw[kr])
-        cuw = (su + dripu[kr]) / (sv + dripw[kr])
-        drwout = dripw[kr] - h2odef  # the amount of water going out of a ring, cm3.
-        # Compute the nitrate and urea N going out of this ring, and their amount lost from this ring. It is assumed that not more than a certain part of the total nitrate or urea N (previously computed as sn1 an su1) can be lost from a ring in one iteration. drnout and xnloss are adjusted accordingly. druout and xuloss are computed similarly for urea N.
-        drnout = drwout * cnw  # the amount of nitrate N going out of a ring, mg
-        xnloss = 0  # the amount of nitrate N lost from a ring, mg
-        if drnout > dripn[kr]:
-            xnloss = drnout - dripn[kr]
-            if xnloss > sn1:
-                xnloss = sn1
-                drnout = dripn[kr] + xnloss
-        druout = drwout * cuw  # the amount of urea N going out of a ring, mg
-        xuloss = 0  # the amount of urea N lost from a ring, mg
-        if druout > dripu[kr]:
-            xuloss = druout - dripu[kr]
-            if xuloss > su1:
-                xuloss = su1
-                druout = dripu[kr] + xuloss
-        # For all the cells in the ring, as in the 1st cell, saturate cell.water_content to uplimit, and update VolNo3NContent and VolUreaNContent.
-        for l in range(1, 40):
-            uplimit = MaxWaterCapacity[l]
-
-            for k in range(20):
-                dist = CellDistance(l, k, l0, k0, row_space)
-                if radius >= dist > (radius - 6):
-                    soil_cells[l][k].water_content = uplimit
-                    if xnloss <= 0:
-                        soil_cells[l][k].nitrate_nitrogen_content = uplimit * cnw
-                    else:
-                        soil_cells[l][k].nitrate_nitrogen_content = soil_cells[l][k].nitrate_nitrogen_content * (1. - xnloss / sn)
-                    if xuloss <= 0:
-                        VolUreaNContent[l][k] = uplimit * cuw
-                    else:
-                        VolUreaNContent[l][k] = VolUreaNContent[l][k] * (1. - xuloss / su)
-        # The outflow of water, nitrate and urea from this ring will be the inflow into the next ring.
-        if kr < (nl - l0 - 1) and kr < maxl - 1:
-            dripw[kr + 1] = drwout
-            dripn[kr + 1] = drnout
-            dripu[kr + 1] = druout
-        else:
-            # If this is the last ring, the outflowing water will be added to the drainage, CumWaterDrained, the outflowing nitrogen to SoilNitrogenLoss.
-            return
-        # Repeat all these procedures for the next ring.
-
-
-cdef double CellDistance(int l, int k, int l0, int k0, double row_space):
-    """This function computes the distance between the centers of cells l,k an l0,k0"""
-    # Compute vertical distance between centers of l and l0
-    xl = 0  # vertical distance (cm) between cells
-    if l > l0:
-        for il in range(l0, l + 1):
-            xl += dl(il)
-        xl -= (dl(l) + dl(l0)) * 0.5
-    elif l < l0:
-        for il in range(l0, l - 1, -1):
-            xl += dl(il)
-        xl -= (dl(l) + dl(l0)) * 0.5
-    # Compute horizontal distance between centers of k and k0
-    xk = 0  # horizontal distance (cm) between cells
-    if k > k0:
-        for ik in range(k0, k + 1):
-            xk += wk(ik, row_space)
-        xk -= (wk(k, row_space) + wk(k0, row_space)) * 0.5
-    elif k < k0:
-        for ik in range(k0, k - 1, -1):
-            xk += wk(ik, row_space)
-        xk -= (wk(k, row_space) + wk(k0, row_space)) * 0.5
-    # Compute diagonal distance between centers of cells
-    return sqrt(xl * xl + xk * xk)
-
-
 cdef void NitrogenFlow(int nn, double q01[], double q1[], double dd[], double nit[], double nur[]):
     """Computes the movement of nitrate and urea between the soil cells, within a soil column or within a soil layer, as a result of water flux.
 
@@ -1752,7 +1569,7 @@ cdef class State:
                 if self.root_weight_capable_uptake[l, k] >= vpsil[10]:
                     psinum += min(self.root_weight_capable_uptake[l, k], vpsil[11])
                     sumlv += min(self.root_weight_capable_uptake[l, k], vpsil[11]) * cmg
-                    rootvol += SIMULATED_LAYER_DEPTH[l] * wk(k, row_space)
+                    rootvol += SIMULATED_LAYER_DEPTH[l] * self._sim.column_width[k]
                     if SoilPsi[l][k] <= vpsil[1]:
                         rrl = vpsil[2] / cmg
                     else:
@@ -2150,7 +1967,7 @@ cdef class State:
         # soil cell, when a lateral root grows into it.
         # On its initiation, lateral root length is assumed to be equal to the width of a soil column soil cell at the location of the taproot.
         if self.rlat1[l] <= 0:
-            self.rlat1[l] = wk(plant_row_column, row_space)
+            self.rlat1[l] = self._sim.column_width[plant_row_column]
         cdef double stday  # daily average soil temperature (C) at root tip.
         stday = self.soil_temperature[l][plant_row_column] - 273.161
         cdef double temprg  # the effect of soil temperature on root growth.
@@ -2159,7 +1976,7 @@ cdef class State:
         cdef int ktip = 0  # column with the tips of the laterals to the left
         cdef double sumwk = 0  # summation of columns width
         for k in reversed(range(plant_row_column + 1)):
-            sumwk += wk(k, row_space)
+            sumwk += self._sim.column_width[k]
             if sumwk >= self.rlat1[l]:
                 ktip = k
                 break
@@ -2191,7 +2008,7 @@ cdef class State:
         # On its initiation, lateral root length is assumed to be equal to the width of a soil column soil cell at the location of the taproot.
         cdef int klocp1 = plant_row_column + 1
         if self.rlat2[l] <= 0:
-            self.rlat2[l] = wk(klocp1, row_space)
+            self.rlat2[l] = self._sim.column_width[klocp1]
         cdef double stday  # daily average soil temperature (C) at root tip.
         stday = self.soil_temperature[l][klocp1] - 273.161
         cdef double temprg  # the effect of soil temperature on root growth.
@@ -2200,7 +2017,7 @@ cdef class State:
         cdef int ktip = 0  # column with the tips of the laterals to the right
         cdef double sumwk = 0
         for k in range(klocp1, nk):
-            sumwk += wk(k, row_space)
+            sumwk += self._sim.column_width[k]
             if sumwk >= self.rlat2[l]:
                 ktip = k
                 break
@@ -2968,7 +2785,7 @@ cdef class State:
                 pp1[k] = PoreSpace[l]
                 nit[k] = self._[0].soil.cells[l][k].nitrate_nitrogen_content
                 nur[k] = VolUreaNContent[l][k]
-                wk1[k] = wk(k, self._sim.row_space)
+                wk1[k] = self._sim.column_width[k]
             # Call subroutines water_flux(), and NitrogenFlow() to compute water nitrate and urea transport in the layer.
             water_flux(q1, psi1, wk1, qr1, qs1, pp1, nk, iv, l, self.numiter, noitr)
             NitrogenFlow(nk, q01, q1, wk1, nit, nur)
@@ -2999,7 +2816,7 @@ cdef class State:
             # Compute the average water content (avwl) of layer l. Store the water content in array oldvh2oc.
             avwl: float = 0  # average water content in a soil layer
             for k in range(20):
-                avwl += self._[0].soil.cells[l][k].water_content * wk(k, self._sim.row_space) / self._sim.row_space
+                avwl += self._[0].soil.cells[l][k].water_content * self._sim.column_width[k] / self._sim.row_space
                 oldvh2oc[k] = self._[0].soil.cells[l][k].water_content
             # Upper limit of water content in free drainage..
             uplimit: float = MaxWaterCapacity[l]
@@ -3012,7 +2829,7 @@ cdef class State:
                 for k in range(20):
                     # Water content of all soil cells in this layer will be uplimit. the amount (qmv) to be added to each cell of the next layer is computed (corrected for non uniform column widths). The water content in the next layer is computed.
                     self._[0].soil.cells[l][k].water_content = uplimit
-                    self._[0].soil.cells[l + 1][k].water_content += wmov * wk(k, self._sim.row_space) * nk / self._sim.row_space;
+                    self._[0].soil.cells[l + 1][k].water_content += wmov * self._sim.column_width[k] * nk / self._sim.row_space
                     # The concentrations of nitrate and urea N in the soil solution are computed and their amounts in this layer and in the next one are updated.
                     qvout: float = (oldvh2oc[k] - uplimit)  # amount of water moving out of a cell.
                     if qvout > 0:
@@ -3056,7 +2873,7 @@ cdef class State:
         Drainage: float = 0  # drainage of water out of the slab, cm3 (return value)
         for k in range(20):
             if self._[0].soil.cells[nlx - 1][k].water_content > MaxWaterCapacity[nlx - 1]:
-                Drainage += (self._[0].soil.cells[nlx - 1][k].water_content - MaxWaterCapacity[nlx - 1]) * SIMULATED_LAYER_DEPTH[nlx - 1] * wk(k, self._sim.row_space)
+                Drainage += (self._[0].soil.cells[nlx - 1][k].water_content - MaxWaterCapacity[nlx - 1]) * SIMULATED_LAYER_DEPTH[nlx - 1] * self._sim.column_width[k]
                 nitconc = self._[0].soil.cells[nlx - 1][k].nitrate_nitrogen_content / oldvh2oc[k]
                 if nitconc < 1.e-30:
                     nitconc = 0
@@ -3064,11 +2881,177 @@ cdef class State:
                 if nurconc < 1.e-30:
                     nurconc = 0
                 # intermediate variable for computing N loss.
-                saven: float = (self._[0].soil.cells[nlx - 1][k].nitrate_nitrogen_content + VolUreaNContent[nlx - 1][k]) * SIMULATED_LAYER_DEPTH[nlx - 1] * wk(k, self._sim.row_space)
+                saven: float = (self._[0].soil.cells[nlx - 1][k].nitrate_nitrogen_content + VolUreaNContent[nlx - 1][k]) * SIMULATED_LAYER_DEPTH[nlx - 1] * self._sim.column_width[k]
                 self._[0].soil.cells[nlx - 1][k].water_content = MaxWaterCapacity[nlx - 1]
                 self._[0].soil.cells[nlx - 1][k].nitrate_nitrogen_content = nitconc * MaxWaterCapacity[nlx - 1]
                 VolUreaNContent[nlx - 1][k] = nurconc * MaxWaterCapacity[nlx - 1]
         return Drainage
+
+    cdef void DripFlow(self, double Drip, double row_space):
+        """omputes the water redistribution in the soil after irrigation by a drip system. It also computes the resulting redistribution of nitrate and urea N.
+    //  It is called by SoilProcedures() noitr times per day. It calls function CellDistrib().
+    //     The following argument is used:
+    //  Drip - amount of irrigation applied by the drip method, mm.
+    //
+    //     The following global variables are referenced:
+    //       dl, LocationColumnDrip, LocationLayerDrip, MaxWaterCapacity,
+    //       nk, nl, NO3FlowFraction, PoreSpace, wk
+    //
+    //     The following global variables are set:
+    //       CumWaterDrained, SoilNitrogenLoss, VolNo3NContent, VolUreaNContent
+        """
+        cdef double dripw[40]  # amount of water applied, or going from one ring of
+        # soil cells to the next one, cm3. (array)
+        cdef double dripn[40]  # amount of nitrate N applied, or going from one ring of soil
+        # soil cells to the next one, mg. (array)
+        cdef double dripu[40]  # amount of urea N applied, or going from one ring of soil
+        # soil cells to the next one, mg. (array)
+        for i in range(40):
+            dripw[i] = 0
+            dripn[i] = 0
+            dripu[i] = 0
+        # Incoming flow of water (Drip, in mm) is converted to dripw(0), in cm3 per slab.
+        dripw[0] = Drip * row_space * 0.10
+        # Wetting the cell in which the emitter is located.
+        cdef double h2odef  # the difference between the maximum water capacity (at a water content of uplimit) of this ring of soil cell, and the actual water content, cm3.
+        cdef int l0 = LocationLayerDrip  #  layer where the drip emitter is situated
+        cdef int k0 = LocationColumnDrip  #  column where the drip emitter is situated
+        # SoilCell &soil_cell = soil_cells[l0][k0]
+        # It is assumed that wetting cannot exceed MaxWaterCapacity of this cell. Compute h2odef, the amount of water needed to saturate this cell.
+        h2odef = (MaxWaterCapacity[l0] - self._[0].soil.cells[l0][k0].water_content) * SIMULATED_LAYER_DEPTH[l0] * self._sim.column_width[k0]
+        # If maximum water capacity is not exceeded - update cell.water_content of this cell and exit the function.
+        if dripw[0] <= h2odef:
+            self._[0].soil.cells[l0][k0].water_content += dripw[0] / (SIMULATED_LAYER_DEPTH[l0] * self._sim.column_width[k0])
+            return
+        # If maximum water capacity is exceeded - calculate the excess of water flowing out of this cell (in cm3 per slab) as dripw[1]. The next ring of cells (kr=1) will receive it as incoming water flow.
+        dripw[1] = dripw[0] - h2odef
+        # Compute the movement of nitrate N to the next ring
+        cdef double cnw = 0  #  concentration of nitrate N in the outflowing water
+        if self._[0].soil.cells[l0][k0].nitrate_nitrogen_content > 1.e-30:
+            cnw = self._[0].soil.cells[l0][k0].nitrate_nitrogen_content / (
+                        self._[0].soil.cells[l0][k0].water_content + dripw[0] / (SIMULATED_LAYER_DEPTH[l0] * self._sim.column_width[k0]))
+            # cnw is multiplied by dripw[1] to get dripn[1], the amount of nitrate N going out to the next ring of cells. It is assumed, however, that not more than a proportion (NO3FlowFraction) of the nitrate N in this cell can be removed in one iteration.
+            if (cnw * MaxWaterCapacity[l0]) < (NO3FlowFraction[l0] * self._[0].soil.cells[l0][k0].nitrate_nitrogen_content):
+                dripn[1] = NO3FlowFraction[l0] * self._[0].soil.cells[l0][k0].nitrate_nitrogen_content * SIMULATED_LAYER_DEPTH[
+                    l0] * self._sim.column_width[k0]
+                self._[0].soil.cells[l0][k0].nitrate_nitrogen_content = (1 - NO3FlowFraction[l0]) * self._[0].soil.cells[l0][
+                    k0].nitrate_nitrogen_content
+            else:
+                dripn[1] = dripw[1] * cnw
+                self._[0].soil.cells[l0][k0].nitrate_nitrogen_content = MaxWaterCapacity[l0] * cnw
+
+        # The movement of urea N to the next ring is computed similarly.
+        cdef double cuw = 0  # concentration of urea N in the outflowing water
+        if VolUreaNContent[l0][k0] > 1.e-30:
+            cuw = VolUreaNContent[l0][k0] / (
+                        self._[0].soil.cells[l0][k0].water_content + dripw[0] / (SIMULATED_LAYER_DEPTH[l0] * self._sim.column_width[k0]))
+            if (cuw * MaxWaterCapacity[l0]) < (NO3FlowFraction[l0] * VolUreaNContent[l0][k0]):
+                dripu[1] = NO3FlowFraction[l0] * VolUreaNContent[l0][k0] * SIMULATED_LAYER_DEPTH[l0] * self._sim.column_width[k0]
+                VolUreaNContent[l0][k0] = (1 - NO3FlowFraction[l0]) * VolUreaNContent[l0][k0]
+            else:
+                dripu[1] = dripw[1] * cuw
+                VolUreaNContent[l0][k0] = MaxWaterCapacity[l0] * cuw
+        cdef double defcit[40][20]  # array of the difference between water capacity and actual water content in each cell of the ring
+        # Set cell.water_content of the cell in which the drip is located to MaxWaterCapacity.
+        self._[0].soil.cells[l0][k0].water_content = MaxWaterCapacity[l0]
+        # Loop of concentric rings of cells, starting from ring 1.
+        # Assign zero to the sums sv, st, sn, sn1, su and su1.
+        for kr in range(1, 40):
+            uplimit: float  # upper limit of soil water content in a soil cell
+            sv = 0  # sum of actual water content in a ring of cells, cm3
+            st = 0  # sum of total water capacity in a ring of cells, cm3
+            sn = 0  # sum of nitrate N content in a ring of cells, mg.
+            sn1 = 0  # sum of movable nitrate N content in a ring of cells, mg
+            su = 0  # sum of urea N content in a ring of cells, mg
+            su1 = 0  # sum of movable urea N content in a ring of cells, mg
+            radius = 6 * kr  # radius (cm) of the wetting ring
+            dist: float  # distance (cm) of a cell center from drip location
+            # Loop over all soil cells
+            for l in range(1, 40):
+                # Upper limit of water content is the porespace volume in layers below the water table, MaxWaterCapacity in other layers.
+                uplimit = MaxWaterCapacity[l]
+                for k in range(20):
+                    # Compute the sums sv, st, sn, sn1, su and su1 within the radius limits of this ring. The array defcit is the sum of difference between uplimit and cell.water_content of each cell.
+                    dist = self.cell_distance(l, k, l0, k0)
+                    if radius >= dist > (radius - 6):
+                        sv += self._[0].soil.cells[l][k].water_content * SIMULATED_LAYER_DEPTH[l] * self._sim.column_width[k]
+                        st += uplimit * SIMULATED_LAYER_DEPTH[l] * self._sim.column_width[k]
+                        sn += self._[0].soil.cells[l][k].nitrate_nitrogen_content * SIMULATED_LAYER_DEPTH[l] * self._sim.column_width[k]
+                        sn1 += self._[0].soil.cells[l][k].nitrate_nitrogen_content * SIMULATED_LAYER_DEPTH[l] * self._sim.column_width[k] * \
+                               NO3FlowFraction[l]
+                        su += VolUreaNContent[l][k] * SIMULATED_LAYER_DEPTH[l] * self._sim.column_width[k]
+                        su1 += VolUreaNContent[l][k] * SIMULATED_LAYER_DEPTH[l] * self._sim.column_width[k] * NO3FlowFraction[l]
+                        defcit[l][k] = uplimit - self._[0].soil.cells[l][k].water_content
+                    else:
+                        defcit[l][k] = 0
+            # Compute the amount of water needed to saturate all the cells in this ring (h2odef).
+            h2odef = st - sv
+            # Test if the amount of incoming flow, dripw(kr), is greater than  h2odef.
+            if dripw[kr] <= h2odef:
+                # In this case, this will be the last wetted ring.
+                # Update cell.water_content in this ring, by wetting each cell in proportion to its defcit. Update VolNo3NContent and VolUreaNContent of the cells in this ring by the same proportion. this is executed for all the cells in the ring.
+                for l in range(1, 40):
+                    for k in range(20):
+                        dist = self.cell_distance(l, k, l0, k0)
+                        if radius >= dist > (radius - 6):
+                            self._[0].soil.cells[l][k].water_content += dripw[kr] * defcit[l][k] / h2odef
+                            self._[0].soil.cells[l][k].nitrate_nitrogen_content += dripn[kr] * defcit[l][k] / h2odef
+                            VolUreaNContent[l][k] += dripu[kr] * defcit[l][k] / h2odef
+                return
+            # If dripw(kr) is greater than h2odef, calculate cnw and cuw as the concentration of nitrate and urea N in the total water of this ring after receiving the incoming water and nitrogen.
+            cnw = (sn + dripn[kr]) / (sv + dripw[kr])
+            cuw = (su + dripu[kr]) / (sv + dripw[kr])
+            drwout = dripw[kr] - h2odef  # the amount of water going out of a ring, cm3.
+            # Compute the nitrate and urea N going out of this ring, and their amount lost from this ring. It is assumed that not more than a certain part of the total nitrate or urea N (previously computed as sn1 an su1) can be lost from a ring in one iteration. drnout and xnloss are adjusted accordingly. druout and xuloss are computed similarly for urea N.
+            drnout = drwout * cnw  # the amount of nitrate N going out of a ring, mg
+            xnloss = 0  # the amount of nitrate N lost from a ring, mg
+            if drnout > dripn[kr]:
+                xnloss = drnout - dripn[kr]
+                if xnloss > sn1:
+                    xnloss = sn1
+                    drnout = dripn[kr] + xnloss
+            druout = drwout * cuw  # the amount of urea N going out of a ring, mg
+            xuloss = 0  # the amount of urea N lost from a ring, mg
+            if druout > dripu[kr]:
+                xuloss = druout - dripu[kr]
+                if xuloss > su1:
+                    xuloss = su1
+                    druout = dripu[kr] + xuloss
+            # For all the cells in the ring, as in the 1st cell, saturate cell.water_content to uplimit, and update VolNo3NContent and VolUreaNContent.
+            for l in range(1, 40):
+                uplimit = MaxWaterCapacity[l]
+
+                for k in range(20):
+                    dist = self.cell_distance(l, k, l0, k0)
+                    if radius >= dist > (radius - 6):
+                        self._[0].soil.cells[l][k].water_content = uplimit
+                        if xnloss <= 0:
+                            self._[0].soil.cells[l][k].nitrate_nitrogen_content = uplimit * cnw
+                        else:
+                            self._[0].soil.cells[l][k].nitrate_nitrogen_content = self._[0].soil.cells[l][k].nitrate_nitrogen_content * (
+                                        1. - xnloss / sn)
+                        if xuloss <= 0:
+                            VolUreaNContent[l][k] = uplimit * cuw
+                        else:
+                            VolUreaNContent[l][k] = VolUreaNContent[l][k] * (1. - xuloss / su)
+            # The outflow of water, nitrate and urea from this ring will be the inflow into the next ring.
+            if kr < (nl - l0 - 1) and kr < maxl - 1:
+                dripw[kr + 1] = drwout
+                dripn[kr + 1] = drnout
+                dripu[kr + 1] = druout
+            else:
+                # If this is the last ring, the outflowing water will be added to the drainage, CumWaterDrained, the outflowing nitrogen to SoilNitrogenLoss.
+                return
+            # Repeat all these procedures for the next ring.
+
+    def cell_distance(self, int l, int k, int l0, int k0):
+        """This function computes the distance between the centers of cells l,k an l0,k0"""
+        # Compute vertical distance between centers of l and l0
+        x = SIMULATED_LAYER_DEPTH_CUMSUM[l] - SIMULATED_LAYER_DEPTH[l] / 2
+        x0 = SIMULATED_LAYER_DEPTH_CUMSUM[l0] - SIMULATED_LAYER_DEPTH[l0] / 2
+        y = self._sim.column_width_cumsum[k] - self._sim.column_width[k]
+        y0 = self._sim.column_width_cumsum[k0] - self._sim.column_width[k0]
+        return np.linalg.norm((x - x0, y - y0))
 
     def apply_fertilizer(self, row_space, plant_population):
         """This function simulates the application of nitrogen fertilizer on each date of application."""
@@ -3107,7 +3090,7 @@ cdef class State:
                     side_dressed_layer_depth = SIMULATED_LAYER_DEPTH[lsdr]
                     n00 = 1  # number of soil soil cells in which side-dressed fertilizer is incorporated.
                     # If the volume of this soil cell is less than 100 cm3, it is assumed that the fertilizer is also incorporated in the soil cells below and to the sides of it.
-                    if side_dressed_layer_depth * wk(ksdr, row_space) < 100:
+                    if side_dressed_layer_depth * self._sim.column_width[ksdr] < 100:
                         if ksdr < nk - 1:
                             n00 += 1
                         if ksdr > 0:
@@ -3121,33 +3104,33 @@ cdef class State:
                     # amount of urea N added to the soil by sidedressing (mg per cell)
                     addnur = NFertilizer[i].amtura * ferc * row_space / n00
                     # Update the nitrogen contents of these soil cells.
-                    self.cells[lsdr][ksdr].nitrate_nitrogen_content += addnit / (side_dressed_layer_depth * wk(ksdr, row_space))
-                    VolNh4NContent[lsdr][ksdr] += addamm / (side_dressed_layer_depth * wk(ksdr, row_space))
-                    VolUreaNContent[lsdr][ksdr] += addnur / (side_dressed_layer_depth * wk(ksdr, row_space))
-                    if side_dressed_layer_depth * wk(ksdr, row_space) < 100:
+                    self.cells[lsdr][ksdr].nitrate_nitrogen_content += addnit / (side_dressed_layer_depth * self._sim.column_width[ksdr])
+                    VolNh4NContent[lsdr][ksdr] += addamm / (side_dressed_layer_depth * self._sim.column_width[ksdr])
+                    VolUreaNContent[lsdr][ksdr] += addnur / (side_dressed_layer_depth * self._sim.column_width[ksdr])
+                    if side_dressed_layer_depth * self._sim.column_width[ksdr] < 100:
                         if ksdr < nk - 1:
                             kp1 = ksdr + 1  # column to the right of ksdr.
-                            self.cells[lsdr][kp1].nitrate_nitrogen_content += addnit / (side_dressed_layer_depth * wk(kp1, row_space))
-                            VolNh4NContent[lsdr][kp1] += addamm / (side_dressed_layer_depth * wk(kp1, row_space))
-                            VolUreaNContent[lsdr][kp1] += addnur / (side_dressed_layer_depth * wk(kp1, row_space))
+                            self.cells[lsdr][kp1].nitrate_nitrogen_content += addnit / (side_dressed_layer_depth * self._sim.column_width[kp1])
+                            VolNh4NContent[lsdr][kp1] += addamm / (side_dressed_layer_depth * self._sim.column_width[kp1])
+                            VolUreaNContent[lsdr][kp1] += addnur / (side_dressed_layer_depth * self._sim.column_width[kp1])
                         if ksdr > 0:
                             km1 = ksdr - 1  # column to the left of ksdr.
-                            self.cells[lsdr][km1].nitrate_nitrogen_content += addnit / (side_dressed_layer_depth * wk(km1, row_space))
-                            VolNh4NContent[lsdr][km1] += addamm / (side_dressed_layer_depth * wk(km1, row_space))
-                            VolUreaNContent[lsdr][km1] += addnur / (side_dressed_layer_depth * wk(km1, row_space))
+                            self.cells[lsdr][km1].nitrate_nitrogen_content += addnit / (side_dressed_layer_depth * self._sim.column_width[km1])
+                            VolNh4NContent[lsdr][km1] += addamm / (side_dressed_layer_depth * self._sim.column_width[km1])
+                            VolUreaNContent[lsdr][km1] += addnur / (side_dressed_layer_depth * self._sim.column_width[km1])
                         if lsdr < nl - 1:
                             lp1 = lsdr + 1
                             depth = SIMULATED_LAYER_DEPTH[lp1]
-                            self.cells[lp1][ksdr].nitrate_nitrogen_content += addnit / (depth * wk(ksdr, row_space))
-                            VolNh4NContent[lp1][ksdr] += addamm / (depth * wk(ksdr, row_space))
-                            VolUreaNContent[lp1][ksdr] += addnur / (depth * wk(ksdr, row_space))
+                            self.cells[lp1][ksdr].nitrate_nitrogen_content += addnit / (depth * self._sim.column_width[ksdr])
+                            VolNh4NContent[lp1][ksdr] += addamm / (depth * self._sim.column_width[ksdr])
+                            VolUreaNContent[lp1][ksdr] += addnur / (depth * self._sim.column_width[ksdr])
                 # If this is FERTIGATION (N fertilizer applied in drip irrigation):
                 elif NFertilizer[i].mthfrt == 3:
                     # Convert amounts added to mg cm-3, and update the nitrogen content of the soil cell in which the drip outlet is situated.
                     depth = SIMULATED_LAYER_DEPTH[LocationLayerDrip]
-                    VolNh4NContent[LocationLayerDrip][LocationColumnDrip] += NFertilizer[i].amtamm * ferc * row_space / (depth * wk(LocationColumnDrip, row_space))
-                    self.cells[LocationLayerDrip][LocationColumnDrip].nitrate_nitrogen_content += NFertilizer[i].amtnit * ferc * row_space / (depth * wk(LocationColumnDrip, row_space))
-                    VolUreaNContent[LocationLayerDrip][LocationColumnDrip] += NFertilizer[i].amtura * ferc * row_space / (depth * wk(LocationColumnDrip, row_space))
+                    VolNh4NContent[LocationLayerDrip][LocationColumnDrip] += NFertilizer[i].amtamm * ferc * row_space / (depth * self._sim.column_width[LocationColumnDrip])
+                    self.cells[LocationLayerDrip][LocationColumnDrip].nitrate_nitrogen_content += NFertilizer[i].amtnit * ferc * row_space / (depth * self._sim.column_width[LocationColumnDrip])
+                    VolUreaNContent[LocationLayerDrip][LocationColumnDrip] += NFertilizer[i].amtura * ferc * row_space / (depth * self._sim.column_width[LocationColumnDrip])
 
     cdef public long soil_heat_flux_numiter  # number of this iteration.
 
@@ -3187,11 +3170,11 @@ cdef class State:
                 l = i
                 q1[i] = self._[0].soil.cells[i][n0].water_content
                 ts1[i] = SoilTemp[i][n0]
-                dz[i] = dl(i)
+                dz[i] = SIMULATED_LAYER_DEPTH[i]
             else:
                 q1[i] = self._[0].soil.cells[n0][i].water_content
                 ts1[i] = SoilTemp[n0][i]
-                dz[i] = wk(i, row_space)
+                dz[i] = self._sim.column_width[i]
             hcap[i] = HeatCapacitySoilSolid[l] + q1[i] + (PoreSpace[l] - q1[i]) * ca
             asoi[i] = ThermalCondSoil(q1[i], ts1[i], l) / hcap[i]
         # The numerical solution of the flow equation is a combination of the implicit method (weighted by beta1) and the explicit method (weighted by 1-beta1).
@@ -3314,13 +3297,13 @@ cdef class State:
                         upth2o = Transp * upf[l][k] / upf.sum()  # transpiration from a soil cell, cm3 per day
                         # Update cell.water_content, storing its previous value as vh2ocx.
                         vh2ocx = self.cells[l][k].water_content  # previous value of water_content of this cell
-                        self.cells[l][k].water_content -= upth2o / (SIMULATED_LAYER_DEPTH[l] * wk(k, row_space))
+                        self.cells[l][k].water_content -= upth2o / (SIMULATED_LAYER_DEPTH[l] * self._sim.column_width[k])
                         # If the new value of cell.water_content is less than the permanent wilting point, modify the value of upth2o so that water_content will be equal to it.
                         if self.cells[l][k].water_content < thetar[l]:
                             self.cells[l][k].water_content = thetar[l]
 
                             # Compute the difference due to this correction and add it to difupt.
-                            xupt = (vh2ocx - thetar[l]) * SIMULATED_LAYER_DEPTH[l] * wk(k, row_space)  # intermediate computation of upth2o
+                            xupt = (vh2ocx - thetar[l]) * SIMULATED_LAYER_DEPTH[l] * self._sim.column_width[k]  # intermediate computation of upth2o
                             difupt += upth2o - xupt
                             upth2o = xupt
                         upth2o = max(upth2o, 0)
@@ -3381,7 +3364,7 @@ cdef class State:
         p2 = 5  # constant parameters for computing AmmonNDissolved.
 
         # coefficient used to convert g per plant to mg cm-3 units.
-        coeff: float = 10 * row_space / (per_plant_area * SIMULATED_LAYER_DEPTH[l] * wk(k, row_space))
+        coeff: float = 10 * row_space / (per_plant_area * SIMULATED_LAYER_DEPTH[l] * self._sim.column_width[k])
         # A Michaelis-Menten procedure is used to compute the rate of nitrate uptake from each cell. The maximum possible amount of uptake is reqnc (g N per plant), and the half of this rate occurs when the nitrate concentration in the soil solution is halfn (mg N per cm3 of soil water).
         # Compute the uptake of nitrate from this soil cell, upno3c in g N per plant units.
         # Define the maximum possible uptake, upmax, as a fraction of VolNo3NContent.
@@ -3446,8 +3429,8 @@ cdef class State:
                 # Check that RootWtCapblUptake in any cell is more than a minimum value vrcumin.
                 if self.root_weight_capable_uptake[l, k] >= vrcumin:
                     # Compute sumwat as the weighted sum of the water content, and psinum as the sum of these weights. Weighting is by root weight capable of uptake, or if it exceeds a maximum value (vrcumax) this maximum value is used for weighting.
-                    sumwat[j] += self.cells[l][k].water_content * SIMULATED_LAYER_DEPTH[l] * wk(k, row_space) * min(self.root_weight_capable_uptake[l, k], vrcumax)
-                    psinum[j] += SIMULATED_LAYER_DEPTH[l] * wk(k, row_space) * min(self.root_weight_capable_uptake[l, k], vrcumax)
+                    sumwat[j] += self.cells[l][k].water_content * SIMULATED_LAYER_DEPTH[l] * self._sim.column_width[k] * min(self.root_weight_capable_uptake[l, k], vrcumax)
+                    psinum[j] += SIMULATED_LAYER_DEPTH[l] * self._sim.column_width[k] * min(self.root_weight_capable_uptake[l, k], vrcumax)
         sumpsi = 0  # weighted sum of avgpsi
         sumnum = 0  # sum of weighting coefficients for computing AverageSoilPsi.
         for j in range(9):
@@ -3887,6 +3870,8 @@ cdef class Simulation:
     cdef uint32_t _defoliate_day
     cdef uint32_t _first_bloom_day
     cdef uint32_t _first_square_day
+    cdef public numpy.ndarray column_width
+    cdef public numpy.ndarray column_width_cumsum
     cdef public uint32_t plant_row_column  # column number to the left of plant row location.
     cdef public double max_leaf_area_index
     cdef public double ptsred  # The effect of moisture stress on the photosynthetic rate
@@ -4418,12 +4403,12 @@ cdef class Simulation:
                 # The potential evaporation rate (escol1k) from a column is the sum of the radiation component of the Penman equation(es1hour), multiplied by the relative radiation reaching this column, and the wind and vapor deficit component of the Penman equation (es2hour).
                 # potential evaporation fron soil surface of a column, mm per hour.
                 escol1k = state.hours[ihr].et1 * self.relative_radiation_received_by_a_soil_column[k] + state.hours[ihr].et2
-                es += escol1k * wk(k, self.row_space)
+                es += escol1k * self.column_width[k]
                 # Compute actual evaporation from soil surface. update cell.water_content of the soil soil cell, and add to daily sum of actual evaporation.
                 evapmax = 0.9 * (state._[0].soil.cells[0][k].water_content - thad[0]) * 10 * SIMULATED_LAYER_DEPTH[0]  # maximum possible evaporatio from a soil cell near the surface.
                 escol1k = min(evapmax, escol1k)
                 state._[0].soil.cells[0][k].water_content -= 0.1 * escol1k / SIMULATED_LAYER_DEPTH[0]
-                state.actual_soil_evaporation += escol1k * wk(k, self.row_space)
+                state.actual_soil_evaporation += escol1k * self.column_width[k]
                 ess = escol1k / dlt
                 # Call self._energy_balance to compute soil surface and canopy temperature.
                 self._energy_balance(u, ihr, k, ess, etp1)
@@ -4476,8 +4461,8 @@ cdef class Simulation:
                     self.emerge_switch = 2
         # At the end of the day compute actual daily evaporation and its cumulative sum.
         if kk == 1:
-            es /= wk(1, self.row_space)
-            state.actual_soil_evaporation /= wk(1, self.row_space)
+            es /= self.column_width[1]
+            state.actual_soil_evaporation /= self.column_width[1]
         else:
             es /= self.row_space
             state.actual_soil_evaporation /= self.row_space
@@ -4993,12 +4978,12 @@ cdef class Simulation:
         if DripWaterAmount > 0:
             # For drip irrigation.
             # The number of iterations is computed from the volume of the soil cell in which the water is applied.
-            noitr = <int>(cpardrip * DripWaterAmount / (SIMULATED_LAYER_DEPTH[LocationLayerDrip] * wk(LocationColumnDrip, self.row_space)) + 1)
+            noitr = <int>(cpardrip * DripWaterAmount / (SIMULATED_LAYER_DEPTH[LocationLayerDrip] * self.column_width[LocationColumnDrip]) + 1)
             # the amount of water applied, mm per iteration.
             applywat = DripWaterAmount / noitr
             # If water is applied, DripFlow() is called followed by CapillaryFlow().
             for iter in range(noitr):
-                DripFlow(state._[0].soil.cells, applywat, self.row_space)
+                state.drip_flow(applywat, self.row_space)
                 state.capillary_flow(noitr)
         # When no water is added, there is only one iteration in this day.
         if WaterToApply + DripWaterAmount <= 0:
@@ -5028,8 +5013,8 @@ cdef class Simulation:
                 # If this is a drip irrigation, convert distances to soil
                 # layer and column numbers by calling SlabLoc.
                 if irrigation.method == 2:
-                    irrigation.LocationColumnDrip = SlabLoc(isdhrz, self.row_space)
-                    irrigation.LocationLayerDrip = SlabLoc(isddph, 0)
+                    irrigation.LocationColumnDrip = self.slab_location(isdhrz, self.row_space)
+                    irrigation.LocationLayerDrip = self.slab_location(isddph)
                 self._sim.irrigation[NumIrrigations] = irrigation
                 NumIrrigations += 1
             elif i["type"] == "fertilization":
@@ -5043,8 +5028,8 @@ cdef class Simulation:
                 isddph = i.get("drip_depth",
                             0)  # vertical placement of DRIP, cm from soil surface.
                 if nf.mthfrt == 1 or nf.mthfrt == 3:
-                    nf.ksdr = SlabLoc(isdhrz, self.row_space)
-                    nf.lsdr = SlabLoc(isddph, 0)
+                    nf.ksdr = self.slab_location(isdhrz, self.row_space)
+                    nf.lsdr = self.slab_location(isddph)
                 else:
                     nf.ksdr = 0
                     nf.lsdr = 0
@@ -5060,3 +5045,24 @@ cdef class Simulation:
 
     def _initialize_soil_data(self):
         self._current_state.initialize_soil_data()
+
+    def slab_location(self, isd, row_space=0):
+        """Computes the layer (lsdr) or column (ksdr) where the emitter of drip irrigation, or the fertilizer side - dressing is located. It is called from ReadAgriculturalInput().
+
+        Arguments
+        ---------
+        isd
+            horizontal or vertical distance
+        """
+        # horizontal
+        if row_space > 0:
+            # Define the column of this location
+            for w in range(20):
+                if self.column_width_cumsum[w] >= isd:
+                    return w
+        else:
+            # Define the layer of this location
+            for l in range(40):
+                if SIMULATED_LAYER_DEPTH_CUMSUM[l] >= isd:
+                    return l
+        return 0

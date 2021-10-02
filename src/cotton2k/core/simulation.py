@@ -296,6 +296,10 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             # pylint: disable=attribute-defined-outside-init
             self.row_space = (self.row_space + self.skip_row_width) / 2
             plant_location = self.skip_row_width / 2
+        # pylint: disable=attribute-defined-outside-init
+        self.column_width = np.ones(20) * self.row_space / 20
+        # pylint: disable=attribute-defined-outside-init
+        self.column_width_cumsum = self.column_width.cumsum()
         # Compute plant_population - number of plants per hectar, and per_plant_area --
         # the average surface area per plant, in dm2, and the empirical plant density
         # factor (density_factor). This factor will be used to express the effect of
