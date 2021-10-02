@@ -1257,9 +1257,13 @@ cdef class State:
     def number_of_open_bolls(self) -> float:
         return self.fruiting_nodes_fraction[self.fruiting_nodes_stage == Stage.MatureBoll].sum()
 
+    cdef public double _leaf_nitrogen_concentration
+
     @property
     def leaf_nitrogen_concentration(self):
-        return self.leaf_nitrogen / self.leaf_weight
+        if self.leaf_weight > 0.00001:
+            self._leaf_nitrogen_concentration = self.leaf_nitrogen / self.leaf_weight
+        return self._leaf_nitrogen_concentration
 
     @property
     def leaf_weight_area_ratio(self):
@@ -3008,7 +3012,7 @@ cdef class State:
                 VolUreaNContent[nlx - 1][k] = nurconc * MaxWaterCapacity[nlx - 1]
         return Drainage
 
-    cdef void DripFlow(self, double Drip, double row_space):
+    def drip_flow(self, double Drip, double row_space):
         """omputes the water redistribution in the soil after irrigation by a drip system. It also computes the resulting redistribution of nitrate and urea N.
     //  It is called by SoilProcedures() noitr times per day. It calls function CellDistrib().
     //     The following argument is used:
@@ -5070,7 +5074,7 @@ cdef class Simulation:
             noitr = <int>(cpardrip * DripWaterAmount / (SIMULATED_LAYER_DEPTH[LocationLayerDrip] * self.column_width[LocationColumnDrip]) + 1)
             # the amount of water applied, mm per iteration.
             applywat = DripWaterAmount / noitr
-            # If water is applied, DripFlow() is called followed by CapillaryFlow().
+            # If water is applied, drip_flow() is called followed by CapillaryFlow().
             for iter in range(noitr):
                 state.drip_flow(applywat, self.row_space)
                 state.capillary_flow(noitr)

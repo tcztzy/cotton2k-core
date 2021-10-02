@@ -210,6 +210,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
         post = self._state(i + 1)
         post.date = pre.date + datetime.timedelta(days=1)
         for attr in (
+            "_leaf_nitrogen_concentration",
             "pre_fruiting_nodes_age",
             "average_min_leaf_water_potential",
             "carbon_allocated_for_root_growth",
