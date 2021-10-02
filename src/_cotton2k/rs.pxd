@@ -5,7 +5,3 @@ cdef extern:
     double wk(unsigned int, double)
     double dl(unsigned int)
     int SlabLoc(int, double)
-    double SoilMechanicResistance(double)
-    double PsiOsmotic(double, double, double)
-    double form(double, double, double)
-    double SoilTemperatureEffect(double)
