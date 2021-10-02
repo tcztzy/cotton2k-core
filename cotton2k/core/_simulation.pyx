@@ -146,7 +146,6 @@ cdef NitrogenFertilizer NFertilizer[150]
 cdef int NumNitApps  # number of applications of nitrogen fertilizer.
 cdef int NumIrrigations  # number of irrigations.
 cdef double SoilPsi[40][20]  # matric water potential of a soil cell, bars.
-cdef int SoilHorizonNum[40]  # the soil horizon number associated with each soil layer in the slab.
 cdef double AverageSoilPsi  # average soil matric water potential, bars, computed as the weighted average of the root zone.
 cdef double thts[40]  # saturated volumetric water content of each soil layer, cm3 cm-3.
 cdef int LocationColumnDrip  # number of column in which the drip emitter is located
@@ -171,6 +170,7 @@ NumSheddingTags = 0  # number of 'box-car' units used for moving values in array
 SOIL = np.array([], dtype=[
     ("depth", np.double),  # depth from soil surface to the end of horizon layers, cm.
 ])
+SoilHorizonNum = np.zeros(40)  # the soil horizon number associated with each soil layer in the slab.
 cdef double condfc[9]  # hydraulic conductivity at field capacity of horizon layers, cm per day.
 cdef double h2oint[14]  # initial soil water content, percent of field capacity,
 # defined by input for consecutive 15 cm soil layers.
@@ -3809,14 +3809,12 @@ cdef class State:
 
     def initialize_soil_data(self):
         """Computes and sets the initial soil data. It is executed once at the beginning of the simulation, after the soil hydraulic data file has been read. It is called by ReadInput()."""
+        global SoilHorizonNum
         cdef double sumdl = 0  # depth to the bottom this layer (cm);
         cdef double rm = 2.65  # density of the solid fraction of the soil (g / cm3)
         cdef double bdl[40]  # array of bulk density of soil layers
-        for l in range(40):
-            # Using the depth of each horizon layer, the horizon number (SoilHorizonNum) is computed for each soil layer.
-            sumdl = SIMULATED_LAYER_DEPTH_CUMSUM[l]
-            j = np.searchsorted(SOIL["depth"], sumdl)
-            SoilHorizonNum[l] = j
+        SoilHorizonNum = np.searchsorted(SOIL["depth"], SIMULATED_LAYER_DEPTH_CUMSUM)
+        for l, j in enumerate(SoilHorizonNum):
             # bdl, thad, thts are defined for each soil layer, using the respective input variables BulkDensity, airdr, thetas.
             # FieldCapacity, MaxWaterCapacity and thetar are computed for each layer, as water content (cm3 cm-3) of each layer corresponding to matric potentials of psisfc (for field capacity), psidra (for free drainage) and -15 bars (for permanent wilting point), respectively, using function qpsi.
             # pore space volume (PoreSpace) is also computed for each layer.
