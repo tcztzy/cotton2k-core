@@ -298,3 +298,39 @@ def wcond(  # pylint: disable=too-many-arguments
     acoeff = (1.0 - sweff ** gaminv) ** gama  # intermediate variable
     bcoeff = (1.0 - acoeff) ** 2  # intermediate variable
     return np.sqrt(sweff) * bcoeff * saturated_hyd_cond
+
+
+def qpsi(psi: float, qr: float, qsat: float, alpha: float, beta: float) -> float:
+    """This function computes soil water content (cm3 cm-3) for a given value of matrix
+    potential, using the Van-Genuchten equation.
+
+    Arguments
+    ---------
+    psi
+        soil water matrix potential (bars).
+    qr
+        residual water content, cm3 cm-3.
+    qsat
+        saturated water content, cm3 cm-3.
+    alpha, beta
+        parameters of the van-genuchten equation.
+
+    Returns
+    -------
+
+    """
+    # For very high values of PSI, saturated water content is assumed.
+    # For very low values of PSI, air-dry water content is assumed.
+    if psi >= -0.00001:
+        return qsat
+    if psi <= -500000:
+        return qr
+    # The soil water matric potential is transformed from bars (psi) to cm in positive
+    # value (psix).
+    psix = 1000 * abs(psi + 0.00001)
+    # The following equation is used (in FORTRAN notation):
+    #   QPSI = QR + (QSAT-QR) / (1 + (ALPHA*PSIX)**BETA)**(1-1/BETA)
+    gama = 1 - 1 / beta
+    term = 1 + (alpha * psix) ** beta  # intermediate variable
+    swfun = qr + (qsat - qr) / term ** gama  # computed water content
+    return max(qr + 0.0001, swfun)
