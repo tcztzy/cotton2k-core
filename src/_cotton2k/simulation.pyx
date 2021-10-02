@@ -1,3 +1,4 @@
+from enum import Enum, auto
 from datetime import date, timedelta
 from math import sin, cos, acos, sqrt, pi, atan
 from pathlib import Path
@@ -103,6 +104,15 @@ cdef double SandVolumeFraction[40]  # fraction by volume of sand plus silt in th
 cdef double FieldCapacity[40]  # volumetric water content of soil at field capacity for each soil layer, cm3 cm-3.
 cdef double PoreSpace[40]  # pore space of soil, volume fraction.
 cdef double HeatCapacitySoilSolid[40]  # heat capacity of the solid phase of the soil.
+
+"""Computes the hourly values of dew point temperature from average dew-point and the daily estimated range. This range is computed as a regression on maximum and minimum temperatures."""
+
+
+
+class SoilRunoff(Enum):
+    Low = auto()
+    Moderate = auto()
+    High = auto()
 
 
 cdef water_flux(double q1[], double psi1[], double dd[], double qr1[], double qs1[], double pp1[], int nn, int iv, int ll, long numiter, int noitr):
@@ -4633,7 +4643,7 @@ cdef class Simulation:
         # Note: this is modified from the original GOSSYM - RRUNOFF routine. It is called here for rainfall only, but it is not activated when irrigation is applied.
         cdef double runoffToday = 0  # amount of runoff today, mm
         if rainToday >= 2.0:
-            runoffToday = SimulateRunoff(self._sim, u, SandVolumeFraction[0], ClayVolumeFraction[0], NumIrrigations)
+            runoffToday = self.simulate_runoff(u, SandVolumeFraction[0], ClayVolumeFraction[0], NumIrrigations)
             if runoffToday < rainToday:
                 rainToday -= runoffToday
             else:
@@ -4653,7 +4663,7 @@ cdef class Simulation:
             sinb = sd + cd * cos(pi * (ti - state.solar_noon) / 12)
             hour.radiation = radiation(radsum, sinb, c11)
             hour.temperature = self.daytmp(u, ti, SitePar[8], sunr, suns)
-            hour.dew_point = tdewhour(self._sim, u, ti, hour.temperature, sunr, state.solar_noon, SitePar[8], SitePar[12], SitePar[13], SitePar[14])
+            hour.dew_point = self.tdewhour(u, ti, hour.temperature, sunr, state.solar_noon, SitePar[8], SitePar[12], SitePar[13], SitePar[14])
             hour.humidity = dayrh(hour.temperature, hour.dew_point)
             hour.wind_speed = compute_hourly_wind_speed(ti, self._sim.climate[u].Wind * 1000 / 86400, t1, t2, t3, wnytf)
         # Compute average daily temperature, using function AverageAirTemperatures.
@@ -5066,3 +5076,130 @@ cdef class Simulation:
                 if SIMULATED_LAYER_DEPTH_CUMSUM[l] >= isd:
                     return l
         return 0
+
+    def simulate_runoff(
+        self,
+        u,
+        SandVolumeFraction,
+        ClayVolumeFraction,
+        NumIrrigations,
+    ):
+        """This function is called from DayClim() and is executed on each day with raifall more
+    //  than 2 mm. It computes the runoff and the retained portion of the rainfall. Note: This
+    //  function is based on the code of GOSSYM. No changes have been made from the original GOSSYM
+    //  code (except translation to C++). It has not been validated by actual field measurement.
+    //     It calculates the portion of rainfall that is lost to runoff, and reduces rainfall to the
+    //  amount which is actually infiltrated into the soil. It uses the soil conservation service
+    //  method of estimating runoff.
+    //     References:
+    //  - Brady, Nyle C. 1984. The nature and properties of soils, 9th ed. Macmillan Publishing Co.
+    //  - Schwab, Frevert, Edminster, and Barnes. 1981. Soil and water conservation engineering,
+    //  3rd ed. John Wiley & Sons, Inc.
+    //
+    //     The following global variables are referenced here:
+    //  ClayVolumeFraction, Irrig (structure), NumIrrigations, SandVolumeFraction.
+    //     The argument used here:  rain = today,s rainfall.
+    //     The return value:  the amount of water (mm) lost by runoff."""
+        iGroup: SoilRunoff
+        d01: float  # Adjustment of curve number for soil groups A,B,C.
+
+        # Infiltration rate is estimated from the percent sand and percent clay in the Ap layer.
+        # If clay content is greater than 35%, the soil is assumed to have a higher runoff potential,
+        # if clay content is less than 15% and sand is greater than 70%, a lower runoff potential is
+        # assumed. Other soils (loams) assumed moderate runoff potential. No 'impermeable' (group D)
+        # soils are assumed.  References: Schwab, Brady.
+
+        if SandVolumeFraction > 0.70 and ClayVolumeFraction < 0.15:
+            # Soil group A = 1, low runoff potential
+            iGroup = SoilRunoff.Low
+            d01 = 1.0
+        elif ClayVolumeFraction > 0.35:
+            # Soil group C = 3, high runoff potential
+            iGroup = SoilRunoff.High
+            d01 = 1.14
+        else:
+            # Soil group B = 2, moderate runoff potential
+            iGroup = SoilRunoff.Moderate
+            d01 = 1.09
+        # Loop to accumulate 5-day antecedent rainfall (mm) which will affect the soil's ability to accept new rainfall. This also includes all irrigations.
+        i01 = u - 5
+        if i01 < 0:
+            i01 = 0
+        PreviousWetting = 0  # five day total (before this day) of rain and irrigation, mm
+        for Dayn in range(i01, u):
+            amtirr = 0  # mm water applied on this day by irrigation
+            for i in range(NumIrrigations):
+                if Dayn == self._sim.irrigation[i].day:
+                    amtirr = self._sim.irrigation[i].amount
+            PreviousWetting += amtirr + self._sim.climate[Dayn].Rain
+
+        d02: float  # Adjusting curve number for antecedent rainfall conditions.
+        if PreviousWetting < 3:
+            # low moisture, low runoff potential.
+            d02 = {
+                SoilRunoff.Low: 0.71,
+                SoilRunoff.Moderate: 0.78,
+                SoilRunoff.High: 0.83
+            }[iGroup]
+        elif PreviousWetting > 53:
+            # wet conditions, high runoff potential.
+            d02 = {
+                SoilRunoff.Low: 1.24,
+                SoilRunoff.Moderate: 1.15,
+                SoilRunoff.High: 1.10,
+            }[iGroup]
+        else:
+            # moderate conditions
+            d02 = 1.00
+        # Assuming straight rows, and good cropping practice:
+        crvnum = 78.0  # Runoff curve number, unadjusted for moisture and soil type.
+        crvnum *= d01 * d02  # adjusted curve number
+        d03 = 25400 / crvnum - 254  # maximum potential difference between rainfall and runoff.
+
+        rain = self._sim.climate[u].Rain
+        if rain <= 0.2 * d03:
+            return 0
+        else:
+            return (rain - 0.2 * d03) ** 2 / (rain + 0.8 * d03)
+
+    def tdewhour(
+        self,
+        u,
+        time,
+        temperature,
+        sunrise,
+        solar_noon,
+        site8,
+        site12,
+        site13,
+        site14,
+    ):
+        im1 = max(u - 1, 0)  # day of year yesterday
+        yesterday = self._sim.climate[im1]
+        today = self._sim.climate[u]
+        ip1 = u + 1  # day of year tomorrow
+        tomorrow = self._sim.climate[ip1]
+        tdmin: float  # minimum of dew point temperature.
+        tdrange: float  # range of dew point temperature.
+        hmax = solar_noon + site8  # time of maximum air temperature
+        if time <= sunrise:
+            # from midnight to sunrise
+            tdrange = site12 + site13 * yesterday["Tmax"] + site14 * today["Tmin"]
+            if tdrange < 0:
+                tdrange = 0
+            tdmin = yesterday["Tdew"] - tdrange / 2
+            return tdmin + tdrange * (temperature - today["Tmin"]) / (yesterday["Tmax"] - today["Tmin"])
+        elif time <= hmax:
+            # from sunrise to hmax
+            tdrange = site12 + site13 * today["Tmax"] + site14 * today["Tmin"]
+            if tdrange < 0:
+                tdrange = 0
+            tdmin = today["Tdew"] - tdrange / 2
+            return tdmin + tdrange * (temperature - today["Tmin"]) / (today["Tmax"] - today["Tmin"])
+        else:
+            # from hmax to midnight
+            tdrange = site12 + site13 * today["Tmax"] + site14 * tomorrow["Tmin"]
+            if tdrange < 0:
+                tdrange = 0
+            tdmin = tomorrow["Tdew"] - tdrange / 2
+            return tdmin + tdrange * (temperature - tomorrow["Tmin"]) / (today["Tmax"] - tomorrow["Tmin"])

@@ -1,6 +1,5 @@
 import logging
 import os
-import subprocess
 from collections import defaultdict
 from glob import glob
 from multiprocessing import cpu_count
@@ -14,16 +13,14 @@ log = logging.getLogger("COTTON2K")
 
 extra_compile_args = defaultdict(lambda: ["-std=c++20"])
 extra_compile_args["msvc"] = ["/std:c++latest"]
-libraries = defaultdict(lambda: ["cotton2k"])
+libraries = defaultdict(lambda: [])
 libraries["nt"].extend(["ws2_32", "userenv", "advapi32"])
 
 
 class cotton2k_build_ext(build_ext):
     def build_extensions(self):
-        subprocess.run(["cargo", "build", "--release"])
         args = extra_compile_args[self.compiler.compiler_type]
         for ext in self.extensions:
-            ext.library_dirs = [os.path.join("target", "release")]
             ext.extra_compile_args = args
         super().build_extensions()
 
