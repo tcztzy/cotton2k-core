@@ -128,7 +128,6 @@ cdef int maxl = 40
 cdef int maxk = 20
 cdef int nl
 cdef int nk
-cdef double SitePar[21]  # array of site specific constant parameters.
 cdef double RatioImplicit  # the ratio for the implicit numerical solution of the water transport equation (used in FLUXI and in SFLUX.
 cdef double conmax  # the maximum value for non-dimensional hydraulic conductivity
 cdef double airdr[9]  # volumetric water content of soil at "air-dry" for each soil horizon, cm3 cm-3.
@@ -617,7 +616,7 @@ cdef class Climate:
     cdef unsigned int days
     cdef unsigned int current
 
-    def __init__(self, start_date, climate):
+    def __init__(self, start_date, climate, site5, site6):
         self.start_day = date2doy(start_date)
         self.current = self.start_day
         self.days = len(climate)
@@ -630,7 +629,7 @@ cdef class Climate:
             self.climate[i].Rain = daily_climate["rain"]
             self.climate[i].Tdew = daily_climate.get("dewpoint",
                                                      tdewest(daily_climate["max"],
-                                                             SitePar[5], SitePar[6]))
+                                                             site5, site6))
 
     def __getitem__(self, key):
         if isinstance(key, slice):
@@ -4010,6 +4009,7 @@ cdef class Simulation:
     cdef public double plants_per_meter  # average number of plants pre meter of row.
     cdef public double per_plant_area  # average soil surface area per plant, dm2
     cdef public double row_space  # average row spacing, cm.
+    cdef public double site_parameters[17]
     cdef public double skip_row_width  # the smaller distance between skip rows, cm
     cdef public State _current_state
     cdef double defkgh  # amount of defoliant applied, kg per ha
@@ -4093,15 +4093,6 @@ cdef class Simulation:
         if not isinstance(d, date):
             d = date.fromisoformat(d)
         self._topping_day = d.toordinal()
-
-    @property
-    def site_parameters(self):
-        return SitePar
-
-    @site_parameters.setter
-    def site_parameters(self, parameters):
-        for i, p in enumerate(parameters):
-            SitePar[i + 1] = p
 
     @property
     def first_square_date(self):
@@ -4392,7 +4383,7 @@ cdef class Simulation:
             tsi1 += self.climate[i]["Tmax"] + self.climate[i]["Tmin"]
         tsi1 /= 10
         # The temperature of the last soil layer (lower boundary) is computed as a sinusoidal function of day of year, with site-specific parameters.
-        state0.deep_soil_temperature = SitePar[9] + SitePar[10] * sin(2 * pi * (self.start_date.timetuple().tm_yday - SitePar[11]) / 365) + 273.161
+        state0.deep_soil_temperature = self.site_parameters[9] + self.site_parameters[10] * sin(2 * pi * (self.start_date.timetuple().tm_yday - self.site_parameters[11]) / 365) + 273.161
         # SoilTemp is assigned to all columns, converted to degrees K.
         tsi1 += 273.161
         for l in range(40):
@@ -4465,7 +4456,7 @@ cdef class Simulation:
         """
         state = self._current_state
         # Compute dts, the daily change in deep soil temperature (C), as a site-dependent function of Daynum.
-        cdef double dts = 2 * pi * SitePar[10] / 365 * cos(2 * pi * (state.date.timetuple().tm_yday - SitePar[11]) / 365)
+        cdef double dts = 2 * pi * self.site_parameters[10] / 365 * cos(2 * pi * (state.date.timetuple().tm_yday - self.site_parameters[11]) / 365)
         # Define iter1 and dlt for hourly time step.
         cdef int iter1 = 24  # number of iterations per day.
         cdef double dlt = 3600  # time (seconds) of one iteration.
@@ -4747,25 +4738,25 @@ cdef class Simulation:
             self._sim.climate[u].Rain = rainToday
         self._sim.states[u].runoff = runoffToday
         # Parameters for the daily wind function are now computed:
-        cdef double t1 = sunr + SitePar[1]  # the hour at which wind begins to blow (SitePar(1) hours after sunrise).
-        cdef double t2 = state.solar_noon + SitePar[
+        cdef double t1 = sunr + self.site_parameters[1]  # the hour at which wind begins to blow (SitePar(1) hours after sunrise).
+        cdef double t2 = state.solar_noon + self.site_parameters[
             2]  # the hour at which wind speed is maximum (SitePar(2) hours after solar noon).
-        cdef double t3 = suns + SitePar[3]  # the hour at which wind stops to blow (SitePar(3) hours after sunset).
-        cdef double wnytf = SitePar[4]  # used for estimating night time wind (from time t3 to time t1 next day).
+        cdef double t3 = suns + self.site_parameters[3]  # the hour at which wind stops to blow (SitePar(3) hours after sunset).
+        cdef double wnytf = self.site_parameters[4]  # used for estimating night time wind (from time t3 to time t1 next day).
 
         for ihr in range(24):
             hour = state.hours[ihr]
             ti = ihr + 0.5
             sinb = sd + cd * cos(pi * (ti - state.solar_noon) / 12)
             hour.radiation = radiation(radsum, sinb, c11)
-            hour.temperature = self.daytmp(u, ti, SitePar[8], sunr, suns)
-            hour.dew_point = self.tdewhour(u, ti, hour.temperature, sunr, state.solar_noon, SitePar[8], SitePar[12], SitePar[13], SitePar[14])
+            hour.temperature = self.daytmp(u, ti, self.site_parameters[8], sunr, suns)
+            hour.dew_point = self.tdewhour(u, ti, hour.temperature, sunr, state.solar_noon, self.site_parameters[8], self.site_parameters[12], self.site_parameters[13], self.site_parameters[14])
             hour.humidity = dayrh(hour.temperature, hour.dew_point)
             hour.wind_speed = compute_hourly_wind_speed(ti, self._sim.climate[u].Wind * 1000 / 86400, t1, t2, t3, wnytf)
         # Compute average daily temperature, using function AverageAirTemperatures.
         state.calculate_average_temperatures()
         # Compute potential evapotranspiration.
-        state.compute_evapotranspiration(self.latitude, self.elevation, declination, tmpisr, SitePar[7])
+        state.compute_evapotranspiration(self.latitude, self.elevation, declination, tmpisr, self.site_parameters[7])
 
     def _stress(self, u):
         state = self._current_state

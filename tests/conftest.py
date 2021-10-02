@@ -28,6 +28,7 @@ def test_json(tmp_path: Path) -> Path:
                 "latitude": 32,
                 "elevation": 50,
                 "site_parameters": [
+                    0,
                     1.0,
                     4.0,
                     2.0,

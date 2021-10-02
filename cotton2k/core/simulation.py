@@ -202,7 +202,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             for i, c in enumerate(kwargs["climate"])
         }
         climate_start_date = kwargs.pop("climate_start_date", 0)
-        self.climate = Climate(climate_start_date, kwargs.pop("climate"))[self.start_date :]  # type: ignore[misc]  # pylint: disable=line-too-long
+        self.climate = Climate(climate_start_date, kwargs.pop("climate"), self.site_parameters[5], self.site_parameters[5])[self.start_date :]  # type: ignore[misc]  # pylint: disable=line-too-long
 
     def state(self, i):
         if isinstance(i, datetime.date):
