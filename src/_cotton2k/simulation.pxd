@@ -29,6 +29,3 @@ from .soil cimport cSoilCell, cSoil
 cdef extern:
     double tdewhour(cSimulation &, uint32_t, double, double, double, double, double, double, double, double)
     double SimulateRunoff(cSimulation &, uint32_t, double, double, uint32_t)
-
-cdef extern from "SoilProcedures.h":
-    void DripFlow(cSoilCell[40][20], double, double)

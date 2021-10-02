@@ -6,7 +6,6 @@ cdef extern:
     double dl(unsigned int)
     int SlabLoc(int, double)
     double SoilMechanicResistance(double)
-    double wcond(double, double, double, double, double, double)
     double PsiOsmotic(double, double, double)
     double psiq(double, double, double, double, double)
     double qpsi(double, double, double, double, double)

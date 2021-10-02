@@ -250,3 +250,51 @@ def SoilWaterEffect(
         )
 
     return max(wf, 0)
+
+
+def wcond(  # pylint: disable=too-many-arguments
+    q: float,
+    qr: float,
+    qsat: float,
+    beta: float,
+    saturated_hyd_cond: float,
+    pore_space: float,
+) -> float:
+    """Computes soil water hydraulic conductivity for a given value of soil water
+    content, using the Van-Genuchten equation. The units of the computed conductivity
+    are the same as the given saturated conductivity (`SaturatedHydCond`).
+
+    Arguments
+    ---------
+    beta
+        parameter of the van-genuchten equation.
+    saturated_hyd_cond
+        saturated hydraulic conductivity (at qsat).
+    pore_space
+        pore space volume.
+    q
+        soil water content, cm3 cm-3.
+    qr
+        residual water content, cm3 cm-3.
+    qsat
+        saturated water content, cm3 cm-3.
+    """
+    # For very low values of water content (near the residual water content) wcond is 0
+    if (q - qr) < 0.0001:
+        return 0
+    # Water content for saturated conductivity is minimum of PoreSpace and qsat.
+
+    # For very high values of water content (exceeding the saturated water content or
+    # pore space) conductivity is SaturatedHydCond.
+    xsat = min(qsat, pore_space)
+    if q >= xsat:
+        return saturated_hyd_cond
+    # The following equation is used (in FORTRAN notation):
+    #   WCOND = CONDSAT * ((Q-QR)/(XSAT-QR))**0.5
+    #           * (1-(1-((Q-QR)/(XSAT-QR))**(1/GAMA))**GAMA)**2
+    gama = 1 - 1 / beta
+    gaminv = 1 / gama
+    sweff = (q - qr) / (xsat - qr)  # intermediate variable (effective water content).
+    acoeff = (1.0 - sweff ** gaminv) ** gama  # intermediate variable
+    bcoeff = (1.0 - acoeff) ** 2  # intermediate variable
+    return np.sqrt(sweff) * bcoeff * saturated_hyd_cond
