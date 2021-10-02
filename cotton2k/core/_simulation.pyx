@@ -1,6 +1,6 @@
 # cython: language_level=3
 # distutils: language = c++
-from enum import Enum, IntEnum, auto
+from enum import Enum, auto
 from datetime import date, timedelta
 from math import sin, cos, acos, sqrt, pi, atan
 from pathlib import Path
@@ -16,6 +16,7 @@ from scipy.interpolate import interp2d
 
 from .climate import compute_day_length, compute_incoming_long_wave_radiation, radiation, delta, gamma, refalbed, clcor, cloudcov, sunangle, clearskyemiss, dayrh, VaporPressure, tdewest, compute_hourly_wind_speed
 from .fruit import TemperatureOnFruitGrowthRate
+from .phenology import Stage
 from .leaf import temperature_on_leaf_growth_rate, leaf_resistance_for_transpiration
 from .soil import compute_soil_surface_albedo, compute_incoming_short_wave_radiation, root_psi, SoilTemOnRootGrowth, SoilAirOnRootGrowth, SoilNitrateOnRootGrowth, PsiOnTranspiration, SoilTemperatureEffect, SoilWaterEffect, wcond, qpsi, psiq, SoilMechanicResistance, PsiOsmotic, form
 from .utils import date2doy, doy2date
@@ -35,17 +36,6 @@ ctypedef struct cSoilCell:
 
 ctypedef struct cSoil:
     cSoilCell cells[40][20]
-
-class Stage(IntEnum):
-    """code indicating the developmental state of each fruiting site"""
-    NotYetFormed = 0
-    Square = 1
-    GreenBoll = 2  # not susceptible to shedding
-    MatureBoll = 3
-    AbscisedAsBoll = 4
-    AbscisedAsSquare = 5
-    AbscisedAsFlower = 6
-    YoungGreenBoll = 7  # susceptible to shedding
 
 ctypedef struct Leaf:
     double age  # leaf age at each fruiting site, physiological days.

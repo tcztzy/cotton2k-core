@@ -35,14 +35,16 @@ days_to_first_square = DaysToFirstSquare()
 
 
 class Stage(IntEnum):
+    """code indicating the developmental state of each fruiting site"""
+
     NotYetFormed = 0
     Square = 1
-    GreenBoll = 2
+    GreenBoll = 2  # not susceptible to shedding
     MatureBoll = 3
     AbscisedAsBoll = 4
     AbscisedAsSquare = 5
     AbscisedAsFlower = 6
-    YoungGreenBoll = 7
+    YoungGreenBoll = 7  # susceptible to shedding
 
 
 # pylint: disable=E1101,E0203,R0902,R0912,R0913,R0914,W0201
