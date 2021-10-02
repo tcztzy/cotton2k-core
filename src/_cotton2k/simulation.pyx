@@ -1,4 +1,4 @@
-from enum import Enum, auto
+from enum import Enum, IntEnum, auto
 from datetime import date, timedelta
 from math import sin, cos, acos, sqrt, pi, atan
 from pathlib import Path
@@ -18,31 +18,155 @@ from _cotton2k.leaf import temperature_on_leaf_growth_rate, leaf_resistance_for_
 from _cotton2k.soil import compute_soil_surface_albedo, compute_incoming_short_wave_radiation, root_psi, SoilTemOnRootGrowth, SoilAirOnRootGrowth, SoilNitrateOnRootGrowth, PsiOnTranspiration, SoilTemperatureEffect, SoilWaterEffect, wcond, qpsi, psiq, SoilMechanicResistance, PsiOsmotic, form
 from _cotton2k.utils import date2doy, doy2date
 from _cotton2k.thermology import canopy_balance
-from .climate cimport ClimateStruct
-from .cxx cimport (
-    cSimulation,
-    ElCondSatSoilToday,
-    LocationColumnDrip,
-    LocationLayerDrip,
-    PotGroAllSquares,
-    PotGroAllBolls,
-    PotGroAllBurrs,
-    SoilPsi,
-    SoilHorizonNum,
-    AverageSoilPsi,
-    VolNh4NContent,
-    VolUreaNContent,
-    thts,
-    thetar,
-    HumusOrganicMatter,
-    NO3FlowFraction,
-    MaxWaterCapacity,
-    HumusNitrogen,
-)
-from .irrigation cimport Irrigation
-from .state cimport cState, cVegetativeBranch, cFruitingBranch, cMainStemLeaf
-from .fruiting_site cimport FruitingSite, Leaf, cBoll, cBurr, SquareStruct, cPetiole
+ctypedef struct ClimateStruct:
+    double Rad
+    double Tmax
+    double Tmin
+    double Rain
+    double Wind
+    double Tdew
 
+ctypedef struct cSoilCell:
+    double nitrate_nitrogen_content  # volumetric water content of a soil cell, cm3 cm-3.
+    double fresh_organic_matter  # fresh organic matter in the soil, mg / cm3.
+    double water_content  # volumetric nitrate nitrogen content of a soil cell, mg N cm-3.
+
+ctypedef struct cSoil:
+    cSoilCell cells[40][20]
+
+class Stage(IntEnum):
+    """code indicating the developmental state of each fruiting site"""
+    NotYetFormed = 0
+    Square = 1
+    GreenBoll = 2  # not susceptible to shedding
+    MatureBoll = 3
+    AbscisedAsBoll = 4
+    AbscisedAsSquare = 5
+    AbscisedAsFlower = 6
+    YoungGreenBoll = 7  # susceptible to shedding
+
+ctypedef struct Leaf:
+    double age  # leaf age at each fruiting site, physiological days.
+    double potential_growth  # potential growth in area of an individual fruiting node leaf, dm2 day-1.
+    double area  # leaf area at each fruiting site, dm2.
+    double weight  # leaf weight at each fruiting site, g.
+ctypedef struct SquareStruct:
+    double potential_growth  # potential growth in weight of an individual fruiting node squares, g day-1.
+    double weight  # weight of each square, g per plant.
+ctypedef struct cBoll:
+    double age  # age of each boll, physiological days from flowering.
+    double potential_growth  # potential growth in weight of an individual fruiting node bolls, g day-1.
+ctypedef struct cBurr:
+    double potential_growth  # potential growth rate of burrs in an individual boll, g day-1.
+    double weight  # weight of burrs for each site, g per plant.
+ctypedef struct cPetiole:
+    double potential_growth  # potential growth in weight of an individual fruiting node petiole, g day-1.
+    double weight  # petiole weight at each fruiting site, g.
+ctypedef struct FruitingSite:
+    double age  # age of each fruiting site, physiological days from square initiation.
+    double average_temperature  # running average temperature of each node.
+    Leaf leaf
+    SquareStruct square
+    cBoll boll
+    cBurr burr
+    cPetiole petiole
+
+ctypedef struct cMainStemLeaf:
+    double leaf_area
+    double leaf_weight  # mainstem leaf weight at each node, g.
+    double petiole_weight  # weight of mainstem leaf petiole at each node, g.
+    double potential_growth_for_leaf_area  # potential growth in area of an individual main stem node leaf, dm2 day-1.
+    double potential_growth_for_leaf_weight  # potential growth in weight of an individual main stem node leaf, g day-1.
+    double potential_growth_for_petiole_weight  # potential growth in weight of an individual main stem node petiole, g day-1.
+
+ctypedef struct cFruitingBranch:
+    unsigned int number_of_fruiting_nodes  # number of nodes on each fruiting branch.
+    double delay_for_new_node  # cumulative effect of stresses on delaying the formation of a new node on a fruiting branch.
+    cMainStemLeaf main_stem_leaf
+    FruitingSite nodes[5]
+
+ctypedef struct cVegetativeBranch:
+    unsigned int number_of_fruiting_branches  # number of fruiting branches at each vegetative branch.
+    cFruitingBranch fruiting_branches[30]
+
+ctypedef struct cState:
+    double day_length  # day length, in hours
+    double runoff
+    double solar_noon
+    double leaf_weight_area_ratio  # temperature dependent factor for converting leaf area to leaf weight during the day, g dm-1
+    double petiole_nitrogen_concentration  # average nitrogen concentration in petioles.
+    double seed_nitrogen_concentration  # average nitrogen concentration in seeds.
+    double seed_nitrogen  # total seed nitrogen, g per plant.
+    double root_nitrogen_concentration  # average nitrogen concentration in roots.
+    double root_nitrogen  # total root nitrogen, g per plant.
+    double square_nitrogen_concentration  # average concentration of nitrogen in the squares.
+    double burr_nitrogen_concentration  # average nitrogen concentration in burrs.
+    double burr_nitrogen  # nitrogen in burrs, g per plant.
+    double square_nitrogen  # total nitrogen in the squares, g per plant
+    double stem_nitrogen_concentration  # ratio of stem nitrogen to dry matter.
+    double stem_nitrogen  # total stem nitrogen, g per plant
+    double fruit_growth_ratio  # ratio between actual and potential square and boll growth.
+    double deep_soil_temperature  # boundary soil temperature of deepest layer (K)
+    double total_actual_leaf_growth  # actual growth rate of all the leaves, g plant-1 day-1.
+    double total_actual_petiole_growth  # actual growth rate of all the petioles, g plant-1 day-1.
+    double actual_burr_growth  # total actual growth of burrs in bolls, g plant-1 day-1.
+    double supplied_nitrate_nitrogen  # uptake of nitrate by the plant from the soil, mg N per slab per day.
+    double supplied_ammonium_nitrogen  # uptake of ammonia N by the plant from the soil, mg N per slab per day.
+    double petiole_nitrogen  # total petiole nitrogen, g per plant.
+    double petiole_nitrate_nitrogen_concentration  # average nitrate nitrogen concentration in petioles.
+    int number_of_pre_fruiting_nodes  # number of prefruiting nodes, per plant.
+    double delay_for_new_branch[3]
+    cVegetativeBranch vegetative_branches[3]
+    cSoil soil
+ctypedef struct Irrigation:
+    int day  # date of application (DOY)
+    int method  # index of irrigation method ( 0 = sprinkler; 1 = furrow; 2 = drip)
+    int LocationColumnDrip  # horizontal placement of side-dressed fertilizer, cm.
+    int LocationLayerDrip  # vertical placement of side-dressed fertilizer, cm.
+    double amount  # water applied, mm.
+ctypedef struct NitrogenFertilizer:  # nitrogen fertilizer application information for each day.
+    int day  # date of application (DOY)
+    int mthfrt  # method of application ( 0 = broadcast; 1 = sidedress; 2 = foliar; 3 = drip fertigation);
+    int ksdr  # horizontal placement of side-dressed fertilizer, cm.
+    int lsdr  # vertical placement of side-dressed fertilizer, cm.
+    double amtamm  # ammonium N applied, kg N per ha;
+    double amtnit  # nitrate N applied, kg N per ha;
+    double amtura  # urea N applied, kg N per ha;
+cdef int maxl = 40
+cdef int maxk = 20
+cdef int nl
+cdef int nk
+cdef double SitePar[21]  # array of site specific constant parameters.
+cdef double RatioImplicit  # the ratio for the implicit numerical solution of the water transport equation (used in FLUXI and in SFLUX.
+cdef double conmax  # the maximum value for non-dimensional hydraulic conductivity
+cdef double airdr[9]  # volumetric water content of soil at "air-dry" for each soil horizon, cm3 cm-3.
+cdef double thetas[9]  # volumetric saturated water content of soil horizon, cm3 cm-3.
+cdef double alpha[9]  # parameter of the Van Genuchten equation.
+cdef double vanGenuchtenBeta[9]  # parameter of the Van Genuchten equation.
+cdef double SaturatedHydCond[9]  # saturated hydraulic conductivity, cm per day.
+cdef double BulkDensity[9]  # bulk density of soil in a horizon, g cm-3.
+cdef double thad[40]  # residual volumetric water content of soil layers (at air-dry condition), cm3 cm-3.
+cdef double SoilTemp[40][20]  # hourly soil temperature oK.
+cdef double PotGroAllSquares  # sum of potential growth rates of all squares, g plant-1 day-1.
+cdef double PotGroAllBolls  # sum of potential growth rates of seedcotton in all bolls, g plant-1 day-1.
+cdef double PotGroAllBurrs  # sum of potential growth rates of burrs in all bolls, g plant-1 day-1.
+cdef NitrogenFertilizer NFertilizer[150]
+cdef int NumNitApps  # number of applications of nitrogen fertilizer.
+cdef int NumIrrigations  # number of irrigations.
+cdef double SoilPsi[40][20]  # matric water potential of a soil cell, bars.
+cdef int SoilHorizonNum[40]  # the soil horizon number associated with each soil layer in the slab.
+cdef double AverageSoilPsi  # average soil matric water potential, bars, computed as the weighted average of the root zone.
+cdef double thts[40]  # saturated volumetric water content of each soil layer, cm3 cm-3.
+cdef int LocationColumnDrip  # number of column in which the drip emitter is located
+cdef int LocationLayerDrip  # number of layer in which the drip emitter is located.
+cdef double VolNh4NContent[40][20]  # volumetric ammonium nitrogen content of a soil cell, mg N cm-3.
+cdef double VolUreaNContent[40][20]  # volumetric urea nitrogen content of a soil cell, mg N cm-3.
+cdef double ElCondSatSoilToday  # electrical conductivity of saturated extract (mmho/cm) on this day.
+cdef double thetar[40]  # volumetric water content of soil layers at permanent wilting point (-15 bars), cm3 cm-3.
+cdef double HumusOrganicMatter[40][20]  # humus fraction of soil organic matter, mg/cm3.
+cdef double NO3FlowFraction[40]  # fraction of nitrate that can move to the next layer.
+cdef double MaxWaterCapacity[40]  # volumetric water content of a soil layer at maximum capacity, before drainage, cm3 cm-3.
+cdef double HumusNitrogen[40][20]  # N in stable humic fraction material in a soil cells, mg/cm3.
 
 cdef int LateralRootFlag[40] # flags indicating presence of lateral roots in soil layers: 0 = no lateral roots are possible. 1 = lateral roots may be initiated. 2 = lateral roots have been initiated.
 
@@ -97,15 +221,20 @@ SIMULATED_LAYER_DEPTH[-2:] = 10
 SIMULATED_LAYER_DEPTH_CUMSUM = np.cumsum(SIMULATED_LAYER_DEPTH)
 cdef double dclay  # aggregation factor for clay in water.
 cdef double dsand  # aggregation factor for sand in water.
-cdef double HeatCondDrySoil[maxl]  # the heat conductivity of dry soil.
+cdef double HeatCondDrySoil[40]  # the heat conductivity of dry soil.
 cdef double MarginalWaterContent[40]  # marginal soil water content (as a function of soil texture) for computing soil heat conductivity.
 cdef double ClayVolumeFraction[40]  # fraction by volume of clay in the soil.
 cdef double SandVolumeFraction[40]  # fraction by volume of sand plus silt in the soil.
 cdef double FieldCapacity[40]  # volumetric water content of soil at field capacity for each soil layer, cm3 cm-3.
 cdef double PoreSpace[40]  # pore space of soil, volume fraction.
 cdef double HeatCapacitySoilSolid[40]  # heat capacity of the solid phase of the soil.
-
-"""Computes the hourly values of dew point temperature from average dew-point and the daily estimated range. This range is computed as a regression on maximum and minimum temperatures."""
+ctypedef struct cSimulation "Simulation":
+    double row_space
+    double plant_population
+    double cultivar_parameters[61]
+    ClimateStruct climate[400]
+    Irrigation irrigation[150]
+    cState states[200]
 
 
 
@@ -5174,6 +5303,7 @@ cdef class Simulation:
         site13,
         site14,
     ):
+        """Computes the hourly values of dew point temperature from average dew-point and the daily estimated range. This range is computed as a regression on maximum and minimum temperatures."""
         im1 = max(u - 1, 0)  # day of year yesterday
         yesterday = self._sim.climate[im1]
         today = self._sim.climate[u]
