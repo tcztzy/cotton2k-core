@@ -7,6 +7,5 @@ cdef extern:
     int SlabLoc(int, double)
     double SoilMechanicResistance(double)
     double PsiOsmotic(double, double, double)
-    double psiq(double, double, double, double, double)
     double form(double, double, double)
     double SoilTemperatureEffect(double)

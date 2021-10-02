@@ -334,3 +334,40 @@ def qpsi(psi: float, qr: float, qsat: float, alpha: float, beta: float) -> float
     term = 1 + (alpha * psix) ** beta  # intermediate variable
     swfun = qr + (qsat - qr) / term ** gama  # computed water content
     return max(qr + 0.0001, swfun)
+
+
+def psiq(q: float, qr: float, qsat: float, alpha: float, beta: float) -> float:
+    """Computes soil water matric potential (in bars) for a given value of soil water
+    content, using the Van-Genuchten equation.
+
+    Arguments
+    ---------
+    q
+        soil water content, cm3 cm-3.
+    qr
+        residual water content, cm3 cm-3.
+    qsat
+        saturated water content, cm3 cm-3.
+    alpha, beta
+        parameters of the van-genuchten equation.
+
+    Returns
+    -------
+    float
+    """
+    # For very low values of water content (near the residual water content) psiq is
+    # -500000 bars, and for saturated or higher water content psiq is -0.00001 bars.
+    if (q - qr) < 0.00001:
+        return -500000
+    if q >= qsat:
+        return -0.00001
+    # The following equation is used (FORTRAN notation):
+    #   PSIX = (((QSAT-QR) / (Q-QR))**(1/GAMA) - 1) **(1/BETA) / ALPHA
+    gama = 1 - 1 / beta
+    gaminv = 1 / gama
+    term = ((qsat - qr) / (q - qr)) ** gaminv  # intermediate variable
+    psix = (term - 1) ** (1 / beta) / alpha
+    psix = max(psix, 0.01)
+    # psix (in cm) is converted to bars (negative value).
+    psix = (0.01 - psix) * 0.001
+    return min(max(psix, -500000), -0.00001)
