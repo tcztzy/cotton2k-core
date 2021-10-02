@@ -943,6 +943,59 @@ cdef class Hour:
 cdef double[3] cgind = [1, 1, 0.10]  # the index for the capability of growth of class I roots (0 to 1).
 
 
+cdef void NitrogenFlow(int nn, double q01[], double q1[], double dd[], double nit[], double nur[]):
+    """Computes the movement of nitrate and urea between the soil cells, within a soil column or within a soil layer, as a result of water flux.
+
+    It is assumed that there is only a passive movement of nitrate and urea (i.e., with the movement of water).
+
+    Arguments
+    ---------
+    dd
+        one dimensional array of layer or column widths.
+    nit
+        one dimensional array of a layer or a column of VolNo3NContent.
+    nn
+        the number of cells in this layer or column.
+    nur
+        one dimensional array of a layer or a column of VolUreaNContent.
+    q01
+        one dimensional array of a layer or a column of the previous values of cell.water_content.
+    q1
+        one dimensional array of a layer or a column of cell.water_content."""
+    # Zeroise very small values to prevent underflow.
+    for i in range(nn):
+        if nur[i] < 1e-20:
+            nur[i] = 0
+        if nit[i] < 1e-20:
+            nit[i] = 0
+    # Declare and zeroise arrays.
+    qdn = np.zeros(40, dtype=np.double)  # amount of nitrate N moving to the previous cell.
+    qup = np.zeros(40, dtype=np.double)  # amount of nitrate N moving to the following cell.
+    udn = np.zeros(40, dtype=np.double)  # amount of urea N moving to the previous cell.
+    uup = np.zeros(40, dtype=np.double)  # amount of urea N moving to the following cell.
+    for i in range(nn):
+        # The amout of water in each soil cell before (aq0) and after (aq1) water movement is computed from the previous values of water content (q01), the present values (q1), and layer thickness. The associated transfer of soluble nitrate N (qup and qdn) and urea N (uup and udn) is now computed. qup and uup are upward movement (from cell i+1 to i), qdn and udn are downward movement (from cell i-1 to i).
+        aq0 = q01[i] * dd[i]  # previous amount of water in cell i
+        aq1 = q1[i] * dd[i]  # amount of water in cell i now
+        if i == 0:
+            qup[i] = 0
+            uup[i] = 0
+        else:
+            qup[i] = -qdn[i - 1]
+            uup[i] = -udn[i - 1]
+
+        if i == nn - 1:
+            qdn[i] = 0
+            udn[i] = 0
+        else:
+            qdn[i] = min(max((aq1 - aq0) * nit[i + 1] / q01[i + 1], -0.2 * nit[i] * dd[i]), 0.2 * nit[i + 1] * dd[i + 1])
+            udn[i] = min(max((aq1 - aq0) * nur[i + 1] / q01[i + 1], -0.2 * nur[i] * dd[i]), 0.2 * nur[i + 1] * dd[i + 1])
+    # Loop over all cells to update nit and nur arrays.
+    for i in range(nn):
+        nit[i] += (qdn[i] + qup[i]) / dd[i]
+        nur[i] += (udn[i] + uup[i]) / dd[i]
+
+
 cdef class State:
     cdef cState *_
     cdef Simulation _sim
