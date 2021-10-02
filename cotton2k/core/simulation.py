@@ -153,17 +153,12 @@ class State(
         if l < 0:
             return 0
         if l == 0:
-            return self.vegetative_branches[0].fruiting_branches[0].nodes[0].age
+            return self.fruiting_nodes_age[0, 0, 0]
         if l == 1:
             return (
-                self.vegetative_branches[0].fruiting_branches[0].nodes[0].age * 2
-                + self.vegetative_branches[0].fruiting_branches[1].nodes[0].age
+                self.fruiting_nodes_age[0, 0, 0] * 2 + self.fruiting_nodes_age[0, 1, 0]
             ) / 3
-        return (
-            self.vegetative_branches[0].fruiting_branches[l].nodes[0].age
-            + self.vegetative_branches[0].fruiting_branches[l - 1].nodes[0].age
-            + self.vegetative_branches[0].fruiting_branches[l - 2].nodes[0].age
-        ) / 3
+        return (self.fruiting_nodes_age[0, l - 2 : l + 1, 0]).mean()
 
     @property
     def root_weight(self):
@@ -249,6 +244,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             "taproot_length",
             "total_required_nitrogen",
             # ndarrays
+            "fruiting_nodes_age",
             "fruiting_nodes_boll_weight",
             "fruiting_nodes_fraction",
             "fruiting_nodes_ginning_percent",

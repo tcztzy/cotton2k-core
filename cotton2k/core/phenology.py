@@ -53,6 +53,7 @@ class Phenology:
     average_temperature: float
     date: datetime.date
     day_inc: float
+    fruiting_nodes_age: npt.NDArray[np.double]
     fruiting_nodes_boll_cumulative_temperature: npt.NDArray[np.double]
     fruiting_nodes_boll_weight: npt.NDArray[np.double]
     fruiting_nodes_fraction: npt.NDArray[np.double]
@@ -259,16 +260,17 @@ class Phenology:
         ageinc = max(ageinc, vfrsite[7])
         # Compute average temperature of this site since formation.
         site.average_temperature = (
-            site.average_temperature * site.age + self.average_temperature * ageinc
-        ) / (site.age + ageinc)
+            site.average_temperature * self.fruiting_nodes_age[k, l, m]
+            + self.average_temperature * ageinc
+        ) / (self.fruiting_nodes_age[k, l, m] + ageinc)
         # Update the age of this node, AgeOfSite(k,l,m), by adding ageinc.
-        site.age += ageinc
+        self.fruiting_nodes_age[k, l, m] += ageinc
         # The following is executed if this node is a square (Stage.Sqaure):
         # If square is old enough, make it a green boll: initialize the computations of
         # average boll temperature (boltmp) and boll age (AgeOfBoll). Stage will now be
         # Stage.YoungGreenBoll.
         if self.fruiting_nodes_stage[k, l, m] == Stage.Square:
-            if site.age >= vfrsite[8]:
+            if self.fruiting_nodes_age[k, l, m] >= vfrsite[8]:
                 self.fruiting_nodes_boll_cumulative_temperature[
                     k, l, m
                 ] = self.average_temperature
@@ -336,7 +338,7 @@ class Phenology:
         # branch with TimeToNextVegBranch plus DaysTo1stSqare and the delays caused by
         # stresses, in order to decide if a new vegetative branch is to be formed.
         if (
-            node.age
+            self.fruiting_nodes_age[self.number_of_vegetative_branches - 1, 0, 0]
             < TimeToNextVegBranch
             + self.phenological_delay_for_vegetative_by_carbon_stress
             + self.phenological_delay_by_nitrogen_stress
@@ -430,7 +432,10 @@ class Phenology:
         )
         # Check if the the age of the last fruiting branch exceeds TimeToNextFruBranch.
         # If so, form the new fruiting branch:
-        if last_fruiting_branch.nodes[0].age < TimeToNextFruBranch:
+        if (
+            self.fruiting_nodes_age[k, vb.number_of_fruiting_branches - 1, 0]
+            < TimeToNextFruBranch
+        ):
             return
         # Increment NumFruitBranches, define newbr, and assign 1 to NumNodes,
         # FruitFraction and FruitingCode.
@@ -516,7 +521,10 @@ class Phenology:
         # Check if the the age of the last node on the fruiting branch exceeds
         # TimeToNextFruNode.
         # If so, form the new node:
-        if fb.nodes[nnid].age < TimeToNextFruNode or len(fb.nodes) >= 5:
+        if (
+            self.fruiting_nodes_age[k, l, nnid] < TimeToNextFruNode
+            or len(fb.nodes) >= 5
+        ):
             return
         # Increment NumNodes, define newnod, and assign 1 to FruitFraction and
         # FruitingCode.

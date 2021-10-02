@@ -55,7 +55,6 @@ ctypedef struct cPetiole:
     double potential_growth  # potential growth in weight of an individual fruiting node petiole, g day-1.
     double weight  # petiole weight at each fruiting site, g.
 ctypedef struct FruitingSite:
-    double age  # age of each fruiting site, physiological days from square initiation.
     double average_temperature  # running average temperature of each node.
     Leaf leaf
     SquareStruct square
@@ -868,14 +867,6 @@ cdef class FruitingNode:
         self._[0].average_temperature = value
 
     @property
-    def age(self):
-        return self._[0].age
-
-    @age.setter
-    def age(self, value):
-        self._[0].age = value
-
-    @property
     def leaf(self):
         return NodeLeaf.from_ptr(&self._.leaf)
 
@@ -1122,6 +1113,7 @@ cdef class State:
     cdef public numpy.ndarray root_growth_factor  # root growth correction factor in a soil cell (0 to 1).
     cdef public numpy.ndarray root_weights
     cdef public numpy.ndarray root_weight_capable_uptake  # root weight capable of uptake, in g per soil cell.
+    cdef public numpy.ndarray fruiting_nodes_age  # age of each fruiting site, physiological days from square initiation.
     cdef public numpy.ndarray fruiting_nodes_boll_weight  # weight of seedcotton for each site, g per plant.
     cdef public numpy.ndarray fruiting_nodes_fraction  # fraction of fruit remaining at each fruiting site (0 to 1).
     cdef public numpy.ndarray fruiting_nodes_stage
@@ -2342,11 +2334,11 @@ cdef class State:
         for k in range(self.number_of_vegetative_branches):
             for l in range(self.vegetative_branches[k].number_of_fruiting_branches):
                 if self.vegetative_branches[k].fruiting_branches[l].main_stem_leaf.weight > 0:
-                    leaves.append((self.vegetative_branches[k].fruiting_branches[l].nodes[0].age, k, l, 66))
+                    leaves.append((self.fruiting_nodes_age[k, l, 0], k, l, 66))
                     # 66 indicates this leaf is at the base of the fruiting branch
                 for m in range(self.vegetative_branches[k].fruiting_branches[l].number_of_fruiting_nodes):
                     if self.vegetative_branches[k].fruiting_branches[l].nodes[m].leaf.weight > 0:
-                        leaves.append((self.vegetative_branches[k].fruiting_branches[l].nodes[m].age, k, l, m))
+                        leaves.append((self.fruiting_nodes_age[k, l, m], k, l, m))
         # Compute the number of leaves to be shed on this day (numLeavesToShed).
         numLeavesToShed = int(len(leaves) * PercentDefoliation / 100)  # the computed number of leaves to be shed.
         # Execute leaf shedding according to leaf age.
@@ -2459,11 +2451,11 @@ cdef class State:
         shedt = 0  # total shedding ratio, caused by various stresses.
         # (1) Squares (FruitingCode = 1).
         if self.fruiting_nodes_stage[k, l, m] == Stage.Square:
-            if site.age < vabsc[3]:
+            if self.fruiting_nodes_age[k, l, m] < vabsc[3]:
                 pabs = 0  # No abscission of very young squares (AgeOfSite less than vabsc(3))
             else:
                 # square age after becoming susceptible to shedding.
-                xsqage = site.age - vabsc[3]
+                xsqage = self.fruiting_nodes_age[k, l, m] - vabsc[3]
                 if xsqage >= vabsc[0]:
                     pabs = VarPar[46]  # Old squares have a constant probability of shedding.
                 else:
@@ -4195,6 +4187,7 @@ cdef class Simulation:
         state0.supplied_nitrate_nitrogen = 0
         state0.petiole_nitrate_nitrogen_concentration = 0
         state0.delay_of_new_fruiting_branch = [0, 0, 0]
+        state0.fruiting_nodes_age = np.zeros((3, 30, 5), dtype=np.double)
         state0.fruiting_nodes_boll_weight = np.zeros((3, 30, 5), dtype=np.double)
         state0.fruiting_nodes_fraction = np.zeros((3, 30, 5), dtype=np.double)
         state0.fruiting_nodes_stage = np.zeros((3, 30, 5), dtype=np.int_)
@@ -4219,7 +4212,6 @@ cdef class Simulation:
                 )
                 for m in range(5):
                     state0._[0].vegetative_branches[k].fruiting_branches[l].nodes[m] = dict(
-                        age=0,
                         average_temperature=0,
                         leaf=dict(
                             age=0,
@@ -4828,7 +4820,7 @@ cdef class Simulation:
                     if state.fruiting_nodes_stage[k, l, m] == Stage.Square:
                         # ratesqr is the rate of square growth, g per square per day.
                         # The routine for this is derived from GOSSYM, and so are the parameters used.
-                        ratesqr = tfrt * vpotfrt[3] * exp(-vpotfrt[2] + vpotfrt[3] * self._sim.states[u].vegetative_branches[k].fruiting_branches[l].nodes[m].age)
+                        ratesqr = tfrt * vpotfrt[3] * exp(-vpotfrt[2] + vpotfrt[3] * state.fruiting_nodes_age[k, l, m])
                         self._sim.states[u].vegetative_branches[k].fruiting_branches[l].nodes[m].square.potential_growth = ratesqr * state.fruiting_nodes_fraction[k, l, m]
                         PotGroAllSquares += self._sim.states[u].vegetative_branches[k].fruiting_branches[l].nodes[m].square.potential_growth
                     # Growth of seedcotton is simulated separately from the growth of burrs. The logistic function is used to simulate growth of seedcotton. The constants of this function for cultivar 'Acala-SJ2', are based on the data of Marani (1979); they are derived from calibration for other cultivars
