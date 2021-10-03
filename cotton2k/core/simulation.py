@@ -209,9 +209,9 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
         return self.states[i]
 
     def _copy_state(self, i):
-        super()._copy_state(i)
         pre = self._current_state
-        post = self._state(i + 1)
+        post = CyState(self, self.version)
+        super()._copy_state(pre, post)
         post.date = pre.date + datetime.timedelta(days=1)
         for attr in (
             "_leaf_nitrogen_concentration",
@@ -330,7 +330,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
                 )
 
     def initialize_state0(self):
-        self._current_state = self._state(0)
+        self._current_state = CyState(self, self.version)
         super()._init_state()
         self.states = [State(self._current_state, self)]
 
