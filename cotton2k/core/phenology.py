@@ -679,7 +679,7 @@ class Phenology:
         if self.leaf_area_index <= 0.0001:
             return
         # Compute droplf as a function of LeafAreaIndex.
-        p0 = 140 if self.version < 0x500 else 100
+        p0 = 140
         p1 = -1
         droplf = p0 + p1 * self.leaf_area_index  # leaf age until its abscission.
         # Simulate the physiological abscission of prefruiting node leaves.
