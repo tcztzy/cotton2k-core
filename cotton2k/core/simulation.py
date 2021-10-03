@@ -11,7 +11,7 @@ from ._simulation import Climate  # pylint: disable=E0611
 from ._simulation import SoilInit  # pylint: disable=E0611
 from ._simulation import Simulation as CySimulation  # pylint: disable=E0611
 from ._simulation import State as CyState  # pylint: disable=E0611
-from .meteorology import METEOROLOGY
+from .meteorology import METEOROLOGY, Meteorology
 from .nitrogen import PlantNitrogen
 from .phenology import Phenology, Stage
 from .photo import Photosynthesis
@@ -20,7 +20,7 @@ from .stem import StemGrowth
 
 
 class State(
-    Photosynthesis, Phenology, PlantNitrogen, RootGrowth, StemGrowth
+    Meteorology, Photosynthesis, Phenology, PlantNitrogen, RootGrowth, StemGrowth
 ):  # pylint: disable=too-many-instance-attributes
     _: CyState
     sim: "Simulation"
@@ -48,7 +48,10 @@ class State(
         try:
             return getattr(self._, name)
         except AttributeError:
-            return getattr(self, name)
+            try:
+                return getattr(self._sim, name)
+            except AttributeError:
+                return getattr(self, name)
 
     def __setattr__(self, name: str, value: Any) -> None:
         if name in ("_", "_sim"):
@@ -381,7 +384,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             state.light_interception = 0
             self.relative_radiation_received_by_a_soil_column[:] = 1
         # The following functions are executed each day (also before emergence).
-        self._daily_climate(u)  # computes climate variables for today.
+        state.daily_meteorology()  # computes climate variables for today.
         self._soil_temperature(
             u
         )  # executes all modules of soil and canopy temperature.

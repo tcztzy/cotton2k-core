@@ -4686,74 +4686,6 @@ cdef class Simulation:
             + (sst - tomorrow["Tmin"]) * exp((suns - ti) / tcoef)
         ) / (1 - exp((state.day_length - 24) / tcoef))
 
-    def _daily_climate(self, u):
-        state = self._current_state
-        cdef double declination  # daily declination angle, in radians
-        cdef double sunr  # time of sunrise, hours.
-        cdef double suns  # time of sunset, hours.
-        cdef double tmpisr  # extraterrestrial radiation, \frac{W}{m^2}
-        hour = timedelta(hours=1)
-        result = compute_day_length((self.latitude, self.longitude), state.date)
-        declination = result["declination"]
-        zero = result["sunr"].replace(hour=0, minute=0, second=0, microsecond=0)
-        sunr = (result["sunr"] - zero) / hour
-        suns = (result["suns"] - zero) / hour
-        tmpisr = result["tmpisr"]
-        state.solar_noon = (result["solar_noon"] - zero) / hour
-        state.day_length = result["day_length"] / hour
-
-        cdef double xlat = self.latitude * pi / 180  # latitude converted to radians.
-        cdef double cd = cos(xlat) * cos(declination)  # amplitude of the sine of the solar height.
-        cdef double sd = sin(xlat) * sin(declination)  # seasonal offset of the sine of the solar height.
-        # The computation of the daily integral of global radiation (from sunrise to sunset) is based on Spitters et al. (1986).
-        cdef double c11 = 0.4  # constant parameter
-        cdef double radsum
-        if abs(sd / cd) >= 1:
-            radsum = 0
-        else:
-            # dsbe is the integral of sinb * (1 + c11 * sinb) from sunrise to sunset.
-            dsbe = acos(-sd / cd) * 24 / pi * (sd + c11 * sd * sd + 0.5 * c11 * cd * cd) + 12 * (
-                    cd * (2 + 3 * c11 * sd)) * sqrt(1 - (sd / cd) * (sd / cd)) / pi
-            # The daily radiation integral is computed for later use in function Radiation.
-            # Daily radiation intedral is converted from langleys to Watt m - 2, and divided by dsbe.
-            # 11.630287 = 1000000 / 3600 / 23.884
-            radsum = self._sim.climate[u].Rad * 11.630287 / dsbe
-        cdef double rainToday
-        rainToday = self._sim.climate[u].Rain  # the amount of rain today, mm
-        # Set 'pollination switch' for rainy days (as in GOSSYM).
-        state.pollination_switch = rainToday < 2.5
-        # Call SimulateRunoff() only if the daily rainfall is more than 2 mm.
-        # Note: this is modified from the original GOSSYM - RRUNOFF routine. It is called here for rainfall only, but it is not activated when irrigation is applied.
-        cdef double runoffToday = 0  # amount of runoff today, mm
-        if rainToday >= 2.0:
-            runoffToday = self.simulate_runoff(u, SandVolumeFraction[0], ClayVolumeFraction[0], NumIrrigations)
-            if runoffToday < rainToday:
-                rainToday -= runoffToday
-            else:
-                rainToday = 0
-            self._sim.climate[u].Rain = rainToday
-        self._sim.states[u].runoff = runoffToday
-        # Parameters for the daily wind function are now computed:
-        cdef double t1 = sunr + self.site_parameters[1]  # the hour at which wind begins to blow (SitePar(1) hours after sunrise).
-        cdef double t2 = state.solar_noon + self.site_parameters[
-            2]  # the hour at which wind speed is maximum (SitePar(2) hours after solar noon).
-        cdef double t3 = suns + self.site_parameters[3]  # the hour at which wind stops to blow (SitePar(3) hours after sunset).
-        cdef double wnytf = self.site_parameters[4]  # used for estimating night time wind (from time t3 to time t1 next day).
-
-        for ihr in range(24):
-            hour = state.hours[ihr]
-            ti = ihr + 0.5
-            sinb = sd + cd * cos(pi * (ti - state.solar_noon) / 12)
-            hour.radiation = radiation(radsum, sinb, c11)
-            hour.temperature = self.daytmp(u, ti, self.site_parameters[8], sunr, suns)
-            hour.dew_point = self.tdewhour(u, ti, hour.temperature, sunr, state.solar_noon, self.site_parameters[8], self.site_parameters[12], self.site_parameters[13], self.site_parameters[14])
-            hour.humidity = dayrh(hour.temperature, hour.dew_point)
-            hour.wind_speed = compute_hourly_wind_speed(ti, self._sim.climate[u].Wind * 1000 / 86400, t1, t2, t3, wnytf)
-        # Compute average daily temperature, using function AverageAirTemperatures.
-        state.calculate_average_temperatures()
-        # Compute potential evapotranspiration.
-        state.compute_evapotranspiration(self.latitude, self.elevation, declination, tmpisr, self.site_parameters[7])
-
     def _stress(self, u):
         state = self._current_state
         global AverageLwp
@@ -5163,9 +5095,6 @@ cdef class Simulation:
     def simulate_runoff(
         self,
         u,
-        SandVolumeFraction,
-        ClayVolumeFraction,
-        NumIrrigations,
     ):
         """This function is called from DayClim() and is executed on each day with raifall more
     //  than 2 mm. It computes the runoff and the retained portion of the rainfall. Note: This
@@ -5192,11 +5121,11 @@ cdef class Simulation:
         # assumed. Other soils (loams) assumed moderate runoff potential. No 'impermeable' (group D)
         # soils are assumed.  References: Schwab, Brady.
 
-        if SandVolumeFraction > 0.70 and ClayVolumeFraction < 0.15:
+        if SandVolumeFraction[0] > 0.70 and ClayVolumeFraction[0] < 0.15:
             # Soil group A = 1, low runoff potential
             iGroup = SoilRunoff.Low
             d01 = 1.0
-        elif ClayVolumeFraction > 0.35:
+        elif ClayVolumeFraction[0] > 0.35:
             # Soil group C = 3, high runoff potential
             iGroup = SoilRunoff.High
             d01 = 1.14
