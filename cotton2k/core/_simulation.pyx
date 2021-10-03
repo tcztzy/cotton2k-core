@@ -14,7 +14,7 @@ cimport numpy
 import numpy as np
 from scipy.interpolate import interp2d
 
-from .climate import compute_day_length, compute_incoming_long_wave_radiation, radiation, delta, gamma, refalbed, clcor, cloudcov, sunangle, clearskyemiss, dayrh, VaporPressure, tdewest, compute_hourly_wind_speed
+from .meteorology import compute_incoming_long_wave_radiation, delta, gamma, refalbed, clcor, cloudcov, sunangle, clearskyemiss, VaporPressure, tdewest
 from .fruit import TemperatureOnFruitGrowthRate
 from .phenology import Stage
 from .leaf import temperature_on_leaf_growth_rate, leaf_resistance_for_transpiration

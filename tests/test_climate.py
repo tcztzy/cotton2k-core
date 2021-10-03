@@ -1,6 +1,6 @@
 import datetime
 
-from cotton2k.core.climate import compute_day_length
+from cotton2k.core.meteorology import compute_day_length
 
 
 def test_compute_day_length():
