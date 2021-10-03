@@ -109,12 +109,7 @@ ctypedef struct cState:
     double delay_for_new_branch[3]
     cVegetativeBranch vegetative_branches[3]
     cSoil soil
-ctypedef struct Irrigation:
-    int day  # date of application (DOY)
-    int method  # index of irrigation method ( 0 = sprinkler; 1 = furrow; 2 = drip)
-    int LocationColumnDrip  # horizontal placement of side-dressed fertilizer, cm.
-    int LocationLayerDrip  # vertical placement of side-dressed fertilizer, cm.
-    double amount  # water applied, mm.
+
 ctypedef struct NitrogenFertilizer:  # nitrogen fertilizer application information for each day.
     int day  # date of application (DOY)
     int mthfrt  # method of application ( 0 = broadcast; 1 = sidedress; 2 = foliar; 3 = drip fertigation);
@@ -142,7 +137,6 @@ cdef double PotGroAllBolls  # sum of potential growth rates of seedcotton in all
 cdef double PotGroAllBurrs  # sum of potential growth rates of burrs in all bolls, g plant-1 day-1.
 cdef NitrogenFertilizer NFertilizer[150]
 cdef int NumNitApps  # number of applications of nitrogen fertilizer.
-cdef int NumIrrigations  # number of irrigations.
 cdef double SoilPsi[40][20]  # matric water potential of a soil cell, bars.
 cdef double AverageSoilPsi  # average soil matric water potential, bars, computed as the weighted average of the root zone.
 cdef double thts[40]  # saturated volumetric water content of each soil layer, cm3 cm-3.
@@ -220,7 +214,6 @@ cdef double HeatCapacitySoilSolid[40]  # heat capacity of the solid phase of the
 
 ctypedef struct cSimulation:
     ClimateStruct climate[400]
-    Irrigation irrigation[150]
     cState states[200]
 
 
@@ -4016,6 +4009,7 @@ cdef class Simulation:
     # 1 = one dimensional - used before emergence when emergence date is given;
     # 2 = two dimensional - used after emergence.
     relative_radiation_received_by_a_soil_column = np.ones(20)  # the relative radiation received by a soil column, as affected by shading by plant canopy.
+    irrigation = {}
 
     def __init__(self, version=0x0400, **kwargs):
         self.version = version
@@ -4974,15 +4968,14 @@ cdef class Simulation:
         # Check if there is rain on this day
         WaterToApply = self._sim.climate[u].Rain
         # When water is added by an irrigation defined in the input: update the amount of applied water.
-        for i in range(NumIrrigations):
-            if state.date.timetuple().tm_yday == self._sim.irrigation[i].day:
-                if self._sim.irrigation[i].method == 2:
-                    DripWaterAmount += self._sim.irrigation[i].amount
-                    LocationColumnDrip = self._sim.irrigation[i].LocationColumnDrip
-                    LocationLayerDrip = self._sim.irrigation[i].LocationLayerDrip
-                else:
-                    WaterToApply += self._sim.irrigation[i].amount
-                break
+        if state.date in self.irrigation:
+            irrigation = self.irrigation[state.date]
+            if irrigation.get("method", 0) == 2:
+                DripWaterAmount += irrigation["amount"]
+                LocationColumnDrip = irrigation["drip_x"]
+                LocationLayerDrip = irrigation["drip_y"]
+            else:
+                WaterToApply += irrigation["amount"]
         # The following will be executed only after plant emergence
         if state.date >= self.emerge_date and self.emerge_switch > 0:
             state.roots_capable_of_uptake()  # function computes roots capable of uptake for each soil cell
@@ -5023,26 +5016,14 @@ cdef class Simulation:
         nk = maxk
 
     def _read_agricultural_input(self, inputs):
-        global NumNitApps, NumIrrigations
+        global NumNitApps
         NumNitApps = 0
         idef = 0
-        cdef Irrigation irrigation
         cdef NitrogenFertilizer nf
         for i in inputs:
-            if i["type"] == "irrigation":
-                irrigation.day = date2doy(i["date"])  # day of year of this irrigation
-                irrigation.amount = i["amount"]  # net amount of water applied, mm
-                irrigation.method = i.get("method", 0)  # method of irrigation: 1=  2=drip
-                isdhrz = i.get("drip_horizontal_place", 0)  # horizontal placement cm
-                isddph = i.get("drip_depth", 0)  # vertical placement cm
-                # If this is a drip irrigation, convert distances to soil
-                # layer and column numbers by calling SlabLoc.
-                if irrigation.method == 2:
-                    irrigation.LocationColumnDrip = self.slab_location(isdhrz, self.row_space)
-                    irrigation.LocationLayerDrip = self.slab_location(isddph)
-                self._sim.irrigation[NumIrrigations] = irrigation
-                NumIrrigations += 1
-            elif i["type"] == "fertilization":
+            if "type" not in i:
+                continue
+            if i["type"] == "fertilization":
                 nf.day = date2doy(i["date"])
                 nf.amtamm = i.get("ammonium", 0)
                 nf.amtnit = i.get("nitrate", 0)
@@ -5109,7 +5090,7 @@ cdef class Simulation:
     //  3rd ed. John Wiley & Sons, Inc.
     //
     //     The following global variables are referenced here:
-    //  soil_clay_volume_fraction, Irrig (structure), NumIrrigations, soil_sand_volume_fraction.
+    //  soil_clay_volume_fraction, Irrig (structure), soil_sand_volume_fraction.
     //     The argument used here:  rain = today,s rainfall.
     //     The return value:  the amount of water (mm) lost by runoff."""
         iGroup: SoilRunoff
@@ -5139,10 +5120,10 @@ cdef class Simulation:
             i01 = 0
         PreviousWetting = 0  # five day total (before this day) of rain and irrigation, mm
         for Dayn in range(i01, u):
+            d = self.start_date + timedelta(days=Dayn)
             amtirr = 0  # mm water applied on this day by irrigation
-            for i in range(NumIrrigations):
-                if Dayn == self._sim.irrigation[i].day:
-                    amtirr = self._sim.irrigation[i].amount
+            if d in self.irrigation:
+                amtirr = self.irrigation[d]["amount"]
             PreviousWetting += amtirr + self._sim.climate[Dayn].Rain
 
         d02: float  # Adjusting curve number for antecedent rainfall conditions.

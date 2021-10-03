@@ -337,12 +337,20 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
         self, agricultural_inputs=None, **kwargs
     ):  # pylint: disable=unused-argument
         """This is the main function for reading input."""
+        if agricultural_inputs is None:
+            agricultural_inputs = []
         # pylint: disable=attribute-defined-outside-init
         self._soil_temperature_init()
         self._initialize_globals()
         self._initialize_switch()
         self._init_grid()
-        self._read_agricultural_input(agricultural_inputs or [])
+        for ao in agricultural_inputs:
+            if ao["type"] == "irrigation":
+                del ao["type"]
+                if not isinstance(d := ao.pop("date"), datetime.date):
+                    d = datetime.date.fromisoformat(d)
+                self.irrigation[d] = ao
+        self._read_agricultural_input(agricultural_inputs)
         self._initialize_soil_data()
         self._initialize_root_data()
 
@@ -524,7 +532,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
                 state.water_stress_stem,
                 state.carbon_stress,
                 state.nitrogen_stress_vegetative,
-                *self.cultivar_parameters[19:27]
+                *self.cultivar_parameters[19:27],
             )
         # Call ActualRootGrowth() to compute actual root growth.
         state.compute_actual_root_growth(
