@@ -213,7 +213,6 @@ cdef double dclay  # aggregation factor for clay in water.
 cdef double dsand  # aggregation factor for sand in water.
 cdef double HeatCondDrySoil[40]  # the heat conductivity of dry soil.
 cdef double MarginalWaterContent[40]  # marginal soil water content (as a function of soil texture) for computing soil heat conductivity.
-cdef double ClayVolumeFraction[40]  # fraction by volume of clay in the soil.
 cdef double FieldCapacity[40]  # volumetric water content of soil at field capacity for each soil layer, cm3 cm-3.
 cdef double PoreSpace[40]  # pore space of soil, volume fraction.
 cdef double HeatCapacitySoilSolid[40]  # heat capacity of the solid phase of the soil.
@@ -1430,6 +1429,7 @@ cdef class State:
         cdef double dclayair = form(bclay, cka, ga)  # aggregation factor for clay in air
         # Loop over all soil layers, and define indices for some soil arrays.
         self._sim.soil_sand_volume_fraction = np.zeros(40, dtype=np.double)
+        self._sim.soil_clay_volume_fraction = np.zeros(40, dtype=np.double)
         for l, sumdl in enumerate(SIMULATED_LAYER_DEPTH_CUMSUM):
             j = int((sumdl + LayerDepth - 1) / LayerDepth) - 1  # layer definition for oma
             if j > 13:
@@ -1440,12 +1440,12 @@ cdef class State:
             # MarginalWaterContent is set as a function of the sand fraction of the soil.
             i1 = SoilHorizonNum[l]  # layer definition as in soil hydrology input file.
             MarginalWaterContent[l] = 0.1 - 0.07 * psand[i1] / 100
-            # The volume fractions of clay (ClayVolumeFraction) and of sand plus silt (self.soil_sand_volume_fraction), are calculated.
+            # The volume fractions of clay (self.soil_clay_volume_fraction) and of sand plus silt (self.soil_sand_volume_fraction), are calculated.
             ra = (mmo / ro) / (mm / rm)  # volume ratio of organic to mineral soil fractions.
             xo = (1 - PoreSpace[l]) * ra / (1 + ra)  # organic fraction of soil (by volume).
             xm = (1 - PoreSpace[l]) - xo  # mineral fraction of soil (by volume).
-            ClayVolumeFraction[l] = pclay[i1] * xm / mm / 100
-            self._sim.soil_sand_volume_fraction[l] = 1 - PoreSpace[l] - ClayVolumeFraction[l]
+            self._sim.soil_clay_volume_fraction[l] = pclay[i1] * xm / mm / 100
+            self._sim.soil_sand_volume_fraction[l] = 1 - PoreSpace[l] - self._sim.soil_clay_volume_fraction[l]
             # Heat capacity of the solid soil fractions (mineral + organic, by volume )
             HeatCapacitySoilSolid[l] = xm * cmin + xo * corg
             # The heat conductivity of dry soil (HeatCondDrySoil) is computed using the procedure suggested by De Vries.
@@ -1454,12 +1454,12 @@ cdef class State:
                 * (
                     PoreSpace[l] * cka
                     + dsandair * bsand * self._sim.soil_sand_volume_fraction[l]
-                    + dclayair * bclay * ClayVolumeFraction[l]
+                    + dclayair * bclay * self._sim.soil_clay_volume_fraction[l]
                 )
                 / (
                     PoreSpace[l]
                     + dsandair * self._sim.soil_sand_volume_fraction[l]
-                    + dclayair * ClayVolumeFraction[l]
+                    + dclayair * self._sim.soil_clay_volume_fraction[l]
                 )
             )
 
@@ -3239,7 +3239,7 @@ cdef class State:
             # (a) Heat conductivity of soil wetter than field capacity.
             ga = 0.333 - 0.061 * xair / PoreSpace[l0]
             dair = form(cpn, ckw, ga)
-            hcond = (q0 * ckw + dsand * bsand * self._sim.soil_sand_volume_fraction[l0] + dclay * bclay * ClayVolumeFraction[l0] + dair * cpn * xair) / (q0 + dsand * self._sim.soil_sand_volume_fraction[l0] + dclay * ClayVolumeFraction[l0] + dair * xair)
+            hcond = (q0 * ckw + dsand * bsand * self._sim.soil_sand_volume_fraction[l0] + dclay * bclay * self._sim.soil_clay_volume_fraction[l0] + dair * cpn * xair) / (q0 + dsand * self._sim.soil_sand_volume_fraction[l0] + dclay * self._sim.soil_clay_volume_fraction[l0] + dair * xair)
         else:
             # (b) For soil less wet than field capacity, compute also ckn (heat conductivity of air in the soil pores).
             qq: float  # soil water content for computing ckn and ga.
@@ -3248,7 +3248,7 @@ cdef class State:
             ckn = cka + (cpn - cka) * qq / FieldCapacity[l0]
             ga = 0.041 + 0.244 * (qq - MarginalWaterContent[l0]) / (FieldCapacity[l0] - MarginalWaterContent[l0])
             dair = form(ckn, ckw, ga)
-            hcond = (qq * ckw + dsand * bsand * self._sim.soil_sand_volume_fraction[l0] + dclay * bclay * ClayVolumeFraction[l0] + dair * ckn * xair) / (qq + dsand * self._sim.soil_sand_volume_fraction[l0] + dclay * ClayVolumeFraction[l0] + dair * xair)
+            hcond = (qq * ckw + dsand * bsand * self._sim.soil_sand_volume_fraction[l0] + dclay * bclay * self._sim.soil_clay_volume_fraction[l0] + dair * ckn * xair) / (qq + dsand * self._sim.soil_sand_volume_fraction[l0] + dclay * self._sim.soil_clay_volume_fraction[l0] + dair * xair)
             # When soil moisture content is less than the limiting value MarginalWaterContent, modify the value of hcond.
             if qq <= MarginalWaterContent[l0]:
                 hcond = (hcond - HeatCondDrySoil[l0]) * q0 / MarginalWaterContent[l0] + HeatCondDrySoil[l0]
@@ -3988,6 +3988,7 @@ cdef class Simulation:
     cdef uint32_t _first_square_day
     cdef public numpy.ndarray column_width
     cdef public numpy.ndarray column_width_cumsum
+    cdef public numpy.ndarray soil_clay_volume_fraction
     cdef public numpy.ndarray soil_sand_volume_fraction
     cdef public unsigned int emerge_switch
     cdef public unsigned int version
@@ -5108,7 +5109,7 @@ cdef class Simulation:
     //  3rd ed. John Wiley & Sons, Inc.
     //
     //     The following global variables are referenced here:
-    //  ClayVolumeFraction, Irrig (structure), NumIrrigations, soil_sand_volume_fraction.
+    //  soil_clay_volume_fraction, Irrig (structure), NumIrrigations, soil_sand_volume_fraction.
     //     The argument used here:  rain = today,s rainfall.
     //     The return value:  the amount of water (mm) lost by runoff."""
         iGroup: SoilRunoff
@@ -5120,11 +5121,11 @@ cdef class Simulation:
         # assumed. Other soils (loams) assumed moderate runoff potential. No 'impermeable' (group D)
         # soils are assumed.  References: Schwab, Brady.
 
-        if self.soil_sand_volume_fraction[0] > 0.70 and ClayVolumeFraction[0] < 0.15:
+        if self.soil_sand_volume_fraction[0] > 0.70 and self.soil_clay_volume_fraction[0] < 0.15:
             # Soil group A = 1, low runoff potential
             iGroup = SoilRunoff.Low
             d01 = 1.0
-        elif ClayVolumeFraction[0] > 0.35:
+        elif self.soil_clay_volume_fraction[0] > 0.35:
             # Soil group C = 3, high runoff potential
             iGroup = SoilRunoff.High
             d01 = 1.14
