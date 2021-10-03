@@ -217,13 +217,6 @@ ctypedef struct cSimulation:
     cState states[200]
 
 
-
-class SoilRunoff(Enum):
-    Low = auto()
-    Moderate = auto()
-    High = auto()
-
-
 cdef water_flux(double q1[], double psi1[], double dd[], double qr1[], double qs1[], double pp1[], int nn, int iv, int ll, long numiter, int noitr):
     """Computes the movement of water in the soil, caused by potential differences between cells in a soil column or in a soil layer. It is called by function CapillaryFlow(). It calls functions WaterBalance(), psiq(), qpsi() and wcond().
 
@@ -5072,85 +5065,3 @@ cdef class Simulation:
                 if SIMULATED_LAYER_DEPTH_CUMSUM[l] >= isd:
                     return l
         return 0
-
-    def simulate_runoff(
-        self,
-        u,
-    ):
-        """This function is called from DayClim() and is executed on each day with raifall more
-    //  than 2 mm. It computes the runoff and the retained portion of the rainfall. Note: This
-    //  function is based on the code of GOSSYM. No changes have been made from the original GOSSYM
-    //  code (except translation to C++). It has not been validated by actual field measurement.
-    //     It calculates the portion of rainfall that is lost to runoff, and reduces rainfall to the
-    //  amount which is actually infiltrated into the soil. It uses the soil conservation service
-    //  method of estimating runoff.
-    //     References:
-    //  - Brady, Nyle C. 1984. The nature and properties of soils, 9th ed. Macmillan Publishing Co.
-    //  - Schwab, Frevert, Edminster, and Barnes. 1981. Soil and water conservation engineering,
-    //  3rd ed. John Wiley & Sons, Inc.
-    //
-    //     The following global variables are referenced here:
-    //  soil_clay_volume_fraction, Irrig (structure), soil_sand_volume_fraction.
-    //     The argument used here:  rain = today,s rainfall.
-    //     The return value:  the amount of water (mm) lost by runoff."""
-        iGroup: SoilRunoff
-        d01: float  # Adjustment of curve number for soil groups A,B,C.
-
-        # Infiltration rate is estimated from the percent sand and percent clay in the Ap layer.
-        # If clay content is greater than 35%, the soil is assumed to have a higher runoff potential,
-        # if clay content is less than 15% and sand is greater than 70%, a lower runoff potential is
-        # assumed. Other soils (loams) assumed moderate runoff potential. No 'impermeable' (group D)
-        # soils are assumed.  References: Schwab, Brady.
-
-        if self.soil_sand_volume_fraction[0] > 0.70 and self.soil_clay_volume_fraction[0] < 0.15:
-            # Soil group A = 1, low runoff potential
-            iGroup = SoilRunoff.Low
-            d01 = 1.0
-        elif self.soil_clay_volume_fraction[0] > 0.35:
-            # Soil group C = 3, high runoff potential
-            iGroup = SoilRunoff.High
-            d01 = 1.14
-        else:
-            # Soil group B = 2, moderate runoff potential
-            iGroup = SoilRunoff.Moderate
-            d01 = 1.09
-        # Loop to accumulate 5-day antecedent rainfall (mm) which will affect the soil's ability to accept new rainfall. This also includes all irrigations.
-        i01 = u - 5
-        if i01 < 0:
-            i01 = 0
-        PreviousWetting = 0  # five day total (before this day) of rain and irrigation, mm
-        for Dayn in range(i01, u):
-            d = self.start_date + timedelta(days=Dayn)
-            amtirr = 0  # mm water applied on this day by irrigation
-            if d in self.irrigation:
-                amtirr = self.irrigation[d]["amount"]
-            PreviousWetting += amtirr + self._sim.climate[Dayn].Rain
-
-        d02: float  # Adjusting curve number for antecedent rainfall conditions.
-        if PreviousWetting < 3:
-            # low moisture, low runoff potential.
-            d02 = {
-                SoilRunoff.Low: 0.71,
-                SoilRunoff.Moderate: 0.78,
-                SoilRunoff.High: 0.83
-            }[iGroup]
-        elif PreviousWetting > 53:
-            # wet conditions, high runoff potential.
-            d02 = {
-                SoilRunoff.Low: 1.24,
-                SoilRunoff.Moderate: 1.15,
-                SoilRunoff.High: 1.10,
-            }[iGroup]
-        else:
-            # moderate conditions
-            d02 = 1.00
-        # Assuming straight rows, and good cropping practice:
-        crvnum = 78.0  # Runoff curve number, unadjusted for moisture and soil type.
-        crvnum *= d01 * d02  # adjusted curve number
-        d03 = 25400 / crvnum - 254  # maximum potential difference between rainfall and runoff.
-
-        rain = self._sim.climate[u].Rain
-        if rain <= 0.2 * d03:
-            return 0
-        else:
-            return (rain - 0.2 * d03) ** 2 / (rain + 0.8 * d03)

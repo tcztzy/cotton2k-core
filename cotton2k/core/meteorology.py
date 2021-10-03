@@ -1,19 +1,23 @@
 import datetime
 from calendar import isleap
 from collections import defaultdict
+from enum import Enum, auto
 from math import acos, cos, degrees, exp, pi, radians, sin, sqrt, tan
-from typing import TYPE_CHECKING
+from typing import DefaultDict
 
 import numpy as np
 from scipy import constants
 
 from .utils import date2doy
 
-if TYPE_CHECKING:
-    from typing import DefaultDict
-
-METEOROLOGY: "DefaultDict" = defaultdict(lambda: defaultdict(dict))
+METEOROLOGY: DefaultDict = defaultdict(lambda: defaultdict(dict))
 TZ_WIDTH = 15  # timezone width in degree
+
+
+class SoilRunoff(Enum):
+    Low = auto()
+    Moderate = auto()
+    High = auto()
 
 
 def compute_day_length(coordinate: tuple[float, float], date: datetime.date) -> dict:
@@ -537,7 +541,7 @@ class Meteorology:  # pylint: disable=E1101,R0914,W0201
         # applied.
         runoffToday = 0  # amount of runoff today, mm
         if rainToday >= 2.0:
-            runoffToday = self.simulate_runoff(u)
+            runoffToday = self.simulate_runoff()
             if runoffToday < rainToday:
                 rainToday -= runoffToday
             else:
@@ -630,3 +634,93 @@ class Meteorology:  # pylint: disable=E1101,R0914,W0201
             tmin = tomorrow["Tmin"]
             tdew = tomorrow["Tdew"]
         return self.calculate_dew_point(temperature, tmax, tmin, tdew)
+
+    def simulate_runoff(self):
+        """Executed on each day with raifall more than 2 mm. It computes the runoff and
+        the retained portion of the rainfall.
+
+        NOTE: This function is based on the code of GOSSYM. No changes have been made
+        from the original GOSSYM code (except translation to Python). It has not been
+        validated by actual field measurement.
+
+        It calculates the portion of rainfall that is lost to runoff, and reduces
+        rainfall to the amount which is actually infiltrated into the soil. It uses the
+        soil conservation service method of estimating runoff.
+
+        References
+        ----------
+        Brady, Nyle C. 1984. The nature and properties of soils, 9th ed. Macmillan
+        Publishing Co.
+
+        Schwab, Frevert, Edminster, and Barnes. 1981. Soil and water conservation
+        engineering, 3rd ed. John Wiley & Sons, Inc.
+
+        Returns
+        -------
+        float
+            the amount of water (mm) lost by runoff.
+        """
+        u = (self.date - self.start_date).days
+        iGroup: SoilRunoff
+        d01: float  # Adjustment of curve number for soil groups A,B,C.
+
+        # Infiltration rate is estimated from the percent sand and percent clay in the
+        # Ap layer.
+        # If clay content is greater than 35%, the soil is assumed to have a higher
+        # runoff potential, if clay content is less than 15% and sand is greater than
+        # 70%, a lower runoff potential is assumed. Other soils (loams) assumed
+        # moderate runoff potential. No 'impermeable' (group D) soils are assumed.
+        # References: Schwab, Brady.
+
+        if (
+            self.soil_sand_volume_fraction[0] > 0.70
+            and self.soil_clay_volume_fraction[0] < 0.15
+        ):
+            # Soil group A = 1, low runoff potential
+            iGroup = SoilRunoff.Low
+            d01 = 1.0
+        elif self.soil_clay_volume_fraction[0] > 0.35:
+            # Soil group C = 3, high runoff potential
+            iGroup = SoilRunoff.High
+            d01 = 1.14
+        else:
+            # Soil group B = 2, moderate runoff potential
+            iGroup = SoilRunoff.Moderate
+            d01 = 1.09
+        # Loop to accumulate 5-day antecedent rainfall (mm) which will affect the
+        # soil's ability to accept new rainfall. This also includes all irrigations.
+        i01 = max(u - 5, 0)
+        PreviousWetting = 0  # five day total (before this day) of rain and irrigation
+        for Dayn in range(i01, u):
+            d = self.start_date + datetime.timedelta(days=Dayn)
+            amtirr = 0  # mm water applied on this day by irrigation
+            if d in self.irrigation:
+                amtirr = self.irrigation[d]["amount"]
+            PreviousWetting += amtirr + self._sim.climate[Dayn]["Rain"]
+
+        d02: float  # Adjusting curve number for antecedent rainfall conditions.
+        if PreviousWetting < 3:
+            # low moisture, low runoff potential.
+            d02 = {
+                SoilRunoff.Low: 0.71,
+                SoilRunoff.Moderate: 0.78,
+                SoilRunoff.High: 0.83,
+            }[iGroup]
+        elif PreviousWetting > 53:
+            # wet conditions, high runoff potential.
+            d02 = {
+                SoilRunoff.Low: 1.24,
+                SoilRunoff.Moderate: 1.15,
+                SoilRunoff.High: 1.10,
+            }[iGroup]
+        else:
+            # moderate conditions
+            d02 = 1.00
+        # Assuming straight rows, and good cropping practice:
+        crvnum = 78.0  # Runoff curve number, unadjusted for moisture and soil type.
+        crvnum *= d01 * d02  # adjusted curve number
+        # maximum potential difference between rainfall and runoff.
+        d03 = 25400 / crvnum - 254
+
+        rain = self._sim.climate[u]["Rain"]
+        return 0 if rain <= 0.2 * d03 else (rain - 0.2 * d03) ** 2 / (rain + 0.8 * d03)
