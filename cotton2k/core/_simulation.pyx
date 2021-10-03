@@ -214,7 +214,6 @@ cdef double dsand  # aggregation factor for sand in water.
 cdef double HeatCondDrySoil[40]  # the heat conductivity of dry soil.
 cdef double MarginalWaterContent[40]  # marginal soil water content (as a function of soil texture) for computing soil heat conductivity.
 cdef double ClayVolumeFraction[40]  # fraction by volume of clay in the soil.
-cdef double SandVolumeFraction[40]  # fraction by volume of sand plus silt in the soil.
 cdef double FieldCapacity[40]  # volumetric water content of soil at field capacity for each soil layer, cm3 cm-3.
 cdef double PoreSpace[40]  # pore space of soil, volume fraction.
 cdef double HeatCapacitySoilSolid[40]  # heat capacity of the solid phase of the soil.
@@ -468,66 +467,6 @@ cdef double dz[40]  # equal to the dl array in a columnn, or wk in a row.
 cdef double ts1[40]  # array of soil temperatures.
 cdef double ts0[40]  # array of previous soil temperatures.
 cdef double hcap[40]  # heat capacity of soil layer (cal cm-3 oC-1).
-
-
-cdef double ThermalCondSoil(double q0, double t0, int l0):
-    """Computes and returns the thermal conductivity of the soil (cal cm-1 s-1 oC-1). It is based on the work of De Vries(1963).
-
-    Arguments
-    ---------
-    l0
-        soil layer.
-    q0
-        volumetric soil moisture content.
-    t0
-        soil temperature (K).
-    """
-    # Constant parameters:
-    cdef double bclay = 7.0  # heat conductivity of clay (= 7 mcal cm-1 s-1 oc-1).
-    cdef double bsand = 20.0  # heat conductivity of sand (= 20 mcal cm-1 s-1 oc-1).
-    cdef double cka = 0.0615  # heat conductivity of air (= 0.0615 mcal cm-1 s-1 oc-1).
-    cdef double ckw = 1.45  # heat conductivity of water (= 1.45 mcal cm-1 s-1 oc-1).
-    # Convert soil temperature to degrees C.
-    cdef double tcel = t0 - 273.161  # soil temperature, in C.
-    # Compute cpn, the apparent heat conductivity of air in soil pore spaces, when saturated with water vapor, using a function of soil temperature, which changes linearly between 36 and 40 C.
-    cdef double bb  # effect of temperature on heat conductivity of air saturated with water vapor.
-    if tcel <= 36:
-        bb = 0.06188
-    elif 36 < tcel <= 40:
-        bb = 0.06188 + (tcel - 36) * (0.05790 - 0.06188) / (40 - 36)
-    else:
-        bb = 0.05790
-    cdef double cpn  # apparent heat conductivity of air in soil pore spaces, when it is saturated with water vapor.
-    cpn = cka + 0.05 * np.exp(bb * tcel)
-    # Compute xair, air content of soil per volume, from soil porosity and moisture content.
-    # Compute thermal conductivity
-    # (a) for wet soil (soil moisture higher than field capacity),
-    # (b) for less wet soil.
-    # In each case compute first ga, and then dair.
-    cdef double xair  # air content of soil, per volume.
-    xair = max(PoreSpace[l0] - q0, 0)
-    cdef double dair  # aggregation factor for air in soil pore spaces.
-    cdef double ga  # shape factor for air in pore spaces.
-    cdef double hcond  # computed heat conductivity of soil, mcal cm-1 s-1 oc-1.
-    if q0 >= FieldCapacity[l0]:
-        # (a) Heat conductivity of soil wetter than field capacity.
-        ga = 0.333 - 0.061 * xair / PoreSpace[l0]
-        dair = form(cpn, ckw, ga)
-        hcond = (q0 * ckw + dsand * bsand * SandVolumeFraction[l0] + dclay * bclay * ClayVolumeFraction[l0] + dair * cpn * xair) / (q0 + dsand * SandVolumeFraction[l0] + dclay * ClayVolumeFraction[l0] + dair * xair)
-    else:
-        # (b) For soil less wet than field capacity, compute also ckn (heat conductivity of air in the soil pores).
-        qq: float  # soil water content for computing ckn and ga.
-        ckn: float  # heat conductivity of air in pores in soil.
-        qq = max(q0, MarginalWaterContent[l0])
-        ckn = cka + (cpn - cka) * qq / FieldCapacity[l0]
-        ga = 0.041 + 0.244 * (qq - MarginalWaterContent[l0]) / (FieldCapacity[l0] - MarginalWaterContent[l0])
-        dair = form(ckn, ckw, ga)
-        hcond = (qq * ckw + dsand * bsand * SandVolumeFraction[l0] + dclay * bclay * ClayVolumeFraction[l0] + dair * ckn * xair) / (qq + dsand * SandVolumeFraction[l0] + dclay * ClayVolumeFraction[l0] + dair * xair)
-        # When soil moisture content is less than the limiting value MarginalWaterContent, modify the value of hcond.
-        if qq <= MarginalWaterContent[l0]:
-            hcond = (hcond - HeatCondDrySoil[l0]) * q0 / MarginalWaterContent[l0] + HeatCondDrySoil[l0]
-    # The result is hcond converted from mcal to cal.
-    return hcond / 1000
 
 
 cdef void HeatBalance(int nn):
@@ -1469,9 +1408,8 @@ cdef class State:
                 state.cells[l][k] = SoilCell.from_ptr(&_ptr[0].soil.cells[l][k], l, k)
         return state
 
-    @staticmethod
-    def initialize_soil_temperature():
-        """Initializes the variables needed for the simulation of soil temperature, and variables used by functions ThermalCondSoil() and SoilHeatFlux().
+    def initialize_soil_temperature(self):
+        """Initializes the variables needed for the simulation of soil temperature, and variables used by functions soil_thermal_conductivity() and SoilHeatFlux().
 
         It is executed once at the beginning of the simulation.
         """
@@ -1491,6 +1429,7 @@ cdef class State:
         cdef double dsandair = form(bsand, cka, ga)  # aggregation factor for sand in air
         cdef double dclayair = form(bclay, cka, ga)  # aggregation factor for clay in air
         # Loop over all soil layers, and define indices for some soil arrays.
+        self._sim.soil_sand_volume_fraction = np.zeros(40, dtype=np.double)
         for l, sumdl in enumerate(SIMULATED_LAYER_DEPTH_CUMSUM):
             j = int((sumdl + LayerDepth - 1) / LayerDepth) - 1  # layer definition for oma
             if j > 13:
@@ -1501,12 +1440,12 @@ cdef class State:
             # MarginalWaterContent is set as a function of the sand fraction of the soil.
             i1 = SoilHorizonNum[l]  # layer definition as in soil hydrology input file.
             MarginalWaterContent[l] = 0.1 - 0.07 * psand[i1] / 100
-            # The volume fractions of clay (ClayVolumeFraction) and of sand plus silt (SandVolumeFraction), are calculated.
+            # The volume fractions of clay (ClayVolumeFraction) and of sand plus silt (self.soil_sand_volume_fraction), are calculated.
             ra = (mmo / ro) / (mm / rm)  # volume ratio of organic to mineral soil fractions.
             xo = (1 - PoreSpace[l]) * ra / (1 + ra)  # organic fraction of soil (by volume).
             xm = (1 - PoreSpace[l]) - xo  # mineral fraction of soil (by volume).
             ClayVolumeFraction[l] = pclay[i1] * xm / mm / 100
-            SandVolumeFraction[l] = 1 - PoreSpace[l] - ClayVolumeFraction[l]
+            self._sim.soil_sand_volume_fraction[l] = 1 - PoreSpace[l] - ClayVolumeFraction[l]
             # Heat capacity of the solid soil fractions (mineral + organic, by volume )
             HeatCapacitySoilSolid[l] = xm * cmin + xo * corg
             # The heat conductivity of dry soil (HeatCondDrySoil) is computed using the procedure suggested by De Vries.
@@ -1514,12 +1453,12 @@ cdef class State:
                 1.25
                 * (
                     PoreSpace[l] * cka
-                    + dsandair * bsand * SandVolumeFraction[l]
+                    + dsandair * bsand * self._sim.soil_sand_volume_fraction[l]
                     + dclayair * bclay * ClayVolumeFraction[l]
                 )
                 / (
                     PoreSpace[l]
-                    + dsandair * SandVolumeFraction[l]
+                    + dsandair * self._sim.soil_sand_volume_fraction[l]
                     + dclayair * ClayVolumeFraction[l]
                 )
             )
@@ -3257,6 +3196,65 @@ cdef class State:
                     self.cells[LocationLayerDrip][LocationColumnDrip].nitrate_nitrogen_content += NFertilizer[i].amtnit * ferc * row_space / (depth * self._sim.column_width[LocationColumnDrip])
                     VolUreaNContent[LocationLayerDrip][LocationColumnDrip] += NFertilizer[i].amtura * ferc * row_space / (depth * self._sim.column_width[LocationColumnDrip])
 
+    def soil_thermal_conductivity(self, double q0, double t0, int l0):
+        """Computes and returns the thermal conductivity of the soil (cal cm-1 s-1 oC-1). It is based on the work of De Vries(1963).
+
+        Arguments
+        ---------
+        l0
+            soil layer.
+        q0
+            volumetric soil moisture content.
+        t0
+            soil temperature (K).
+        """
+        # Constant parameters:
+        cdef double bclay = 7.0  # heat conductivity of clay (= 7 mcal cm-1 s-1 oc-1).
+        cdef double bsand = 20.0  # heat conductivity of sand (= 20 mcal cm-1 s-1 oc-1).
+        cdef double cka = 0.0615  # heat conductivity of air (= 0.0615 mcal cm-1 s-1 oc-1).
+        cdef double ckw = 1.45  # heat conductivity of water (= 1.45 mcal cm-1 s-1 oc-1).
+        # Convert soil temperature to degrees C.
+        cdef double tcel = t0 - 273.161  # soil temperature, in C.
+        # Compute cpn, the apparent heat conductivity of air in soil pore spaces, when saturated with water vapor, using a function of soil temperature, which changes linearly between 36 and 40 C.
+        cdef double bb  # effect of temperature on heat conductivity of air saturated with water vapor.
+        if tcel <= 36:
+            bb = 0.06188
+        elif 36 < tcel <= 40:
+            bb = 0.06188 + (tcel - 36) * (0.05790 - 0.06188) / (40 - 36)
+        else:
+            bb = 0.05790
+        cdef double cpn  # apparent heat conductivity of air in soil pore spaces, when it is saturated with water vapor.
+        cpn = cka + 0.05 * np.exp(bb * tcel)
+        # Compute xair, air content of soil per volume, from soil porosity and moisture content.
+        # Compute thermal conductivity
+        # (a) for wet soil (soil moisture higher than field capacity),
+        # (b) for less wet soil.
+        # In each case compute first ga, and then dair.
+        cdef double xair  # air content of soil, per volume.
+        xair = max(PoreSpace[l0] - q0, 0)
+        cdef double dair  # aggregation factor for air in soil pore spaces.
+        cdef double ga  # shape factor for air in pore spaces.
+        cdef double hcond  # computed heat conductivity of soil, mcal cm-1 s-1 oc-1.
+        if q0 >= FieldCapacity[l0]:
+            # (a) Heat conductivity of soil wetter than field capacity.
+            ga = 0.333 - 0.061 * xair / PoreSpace[l0]
+            dair = form(cpn, ckw, ga)
+            hcond = (q0 * ckw + dsand * bsand * self._sim.soil_sand_volume_fraction[l0] + dclay * bclay * ClayVolumeFraction[l0] + dair * cpn * xair) / (q0 + dsand * self._sim.soil_sand_volume_fraction[l0] + dclay * ClayVolumeFraction[l0] + dair * xair)
+        else:
+            # (b) For soil less wet than field capacity, compute also ckn (heat conductivity of air in the soil pores).
+            qq: float  # soil water content for computing ckn and ga.
+            ckn: float  # heat conductivity of air in pores in soil.
+            qq = max(q0, MarginalWaterContent[l0])
+            ckn = cka + (cpn - cka) * qq / FieldCapacity[l0]
+            ga = 0.041 + 0.244 * (qq - MarginalWaterContent[l0]) / (FieldCapacity[l0] - MarginalWaterContent[l0])
+            dair = form(ckn, ckw, ga)
+            hcond = (qq * ckw + dsand * bsand * self._sim.soil_sand_volume_fraction[l0] + dclay * bclay * ClayVolumeFraction[l0] + dair * ckn * xair) / (qq + dsand * self._sim.soil_sand_volume_fraction[l0] + dclay * ClayVolumeFraction[l0] + dair * xair)
+            # When soil moisture content is less than the limiting value MarginalWaterContent, modify the value of hcond.
+            if qq <= MarginalWaterContent[l0]:
+                hcond = (hcond - HeatCondDrySoil[l0]) * q0 / MarginalWaterContent[l0] + HeatCondDrySoil[l0]
+        # The result is hcond converted from mcal to cal.
+        return hcond / 1000
+
     cdef public long soil_heat_flux_numiter  # number of this iteration.
 
     def soil_heat_flux(self, double dlt, int iv, int nn, int layer, int n0, double row_space):
@@ -3284,7 +3282,7 @@ cdef class State:
         # Constant parameters:
         cdef double beta1 = 0.90  # weighting factor for the implicit method of computation.
         cdef double ca = 0.0003  # heat capacity of air (cal cm-3 oC-1).
-        # Set soil layer number l (needed to define HeatCapacitySoilSolid, PoreSpace, ThermalCondSoil).
+        # Set soil layer number l (needed to define HeatCapacitySoilSolid, PoreSpace, soil_thermal_conductivity).
         # Compute for each soil cell the heat capacity and heat diffusivity.
 
         cdef int l = layer  # soil layer number.
@@ -3301,7 +3299,7 @@ cdef class State:
                 ts1[i] = SoilTemp[n0][i]
                 dz[i] = self._sim.column_width[i]
             hcap[i] = HeatCapacitySoilSolid[l] + q1[i] + (PoreSpace[l] - q1[i]) * ca
-            asoi[i] = ThermalCondSoil(q1[i], ts1[i], l) / hcap[i]
+            asoi[i] = self.soil_thermal_conductivity(q1[i], ts1[i], l) / hcap[i]
         # The numerical solution of the flow equation is a combination of the implicit method (weighted by beta1) and the explicit method (weighted by 1-beta1).
         cdef double dltt  # computed time step required.
         cdef double avdif[40]  # average thermal diffusivity between adjacent cells.
@@ -3328,7 +3326,7 @@ cdef class State:
                 ts0[i] = ts1[i]
                 if iv == 1:
                     l = i
-                asoi[i] = ThermalCondSoil(q1[i], ts1[i], l) / hcap[i]
+                asoi[i] = self.soil_thermal_conductivity(q1[i], ts1[i], l) / hcap[i]
                 if i > 0:
                     avdif[i] = (asoi[i] + asoi[i - 1]) / 2
             self.soil_heat_flux_numiter += 1
@@ -3570,7 +3568,7 @@ cdef class State:
         return sumpsi / sumnum if sumnum > 0 else 0  # average soil water potential for the whole root zone
 
     def soil_surface_balance(self, int ihr, int k, double ess, double rlzero, double rss, double sf, double hsg, double so, double so2, double so3, double thet, double tv) -> tuple[float, float, float]:
-        """This function is called from EnergyBalance(). It calls function ThermalCondSoil().
+        """This function is called from EnergyBalance(). It calls function soil_thermal_conductivity().
 
         It solves the energy balance equations at the soil surface, and computes the resulting temperature of the soil surface.
 
@@ -3609,11 +3607,11 @@ cdef class State:
             # hlat is the energy used for evaporation from soil surface (latent heat)
             hlat = (75.5255 - 0.05752 * so) * ess
             dhlat = -0.05752 * ess  # derivative of hlat
-            # Compute the thermal conductivity of layers 1 to 3 by function ThermalCondSoil().
+            # Compute the thermal conductivity of layers 1 to 3 by function soil_thermal_conductivity().
             # heat conductivity of n-th soil layer in cal / (cm sec deg).
-            rosoil1 = ThermalCondSoil(self._[0].soil.cells[0][k].water_content, so, 1)
-            rosoil2 = ThermalCondSoil(self._[0].soil.cells[1][k].water_content, so2, 2)
-            rosoil3 = ThermalCondSoil(self._[0].soil.cells[2][k].water_content, so3, 3)
+            rosoil1 = self.soil_thermal_conductivity(self._[0].soil.cells[0][k].water_content, so, 1)
+            rosoil2 = self.soil_thermal_conductivity(self._[0].soil.cells[1][k].water_content, so2, 2)
+            rosoil3 = self.soil_thermal_conductivity(self._[0].soil.cells[2][k].water_content, so3, 3)
             surface_layer_depth = SIMULATED_LAYER_DEPTH[:3]
             # Compute average rosoil between layers 1 to 3,and heat transfer from soil surface to 3rd soil layer.
             # multiplier for heat flux between 1st and 3rd soil layers.
@@ -3645,7 +3643,7 @@ cdef class State:
             # Compute derivative of bbsoil
             sop001 = so + 0.001  # soil surface temperature plus 0.001
             # heat conductivity of 1st soil layer for so+0.001
-            rosoil1p = ThermalCondSoil(self._[0].soil.cells[0][k].water_content, sop001, 1)
+            rosoil1p = self.soil_thermal_conductivity(self._[0].soil.cells[0][k].water_content, sop001, 1)
             # rosoil for so+0.001
             rosoilp = (np.array([rosoil1p, rosoil2, rosoil3]) * surface_layer_depth).sum() / surface_layer_depth.sum() / (np.array([0.5, 1, 0.5]) * surface_layer_depth).sum()
             drosoil = (rosoilp - rosoil) / 0.001  # derivative of rosoil
@@ -3990,6 +3988,7 @@ cdef class Simulation:
     cdef uint32_t _first_square_day
     cdef public numpy.ndarray column_width
     cdef public numpy.ndarray column_width_cumsum
+    cdef public numpy.ndarray soil_sand_volume_fraction
     cdef public unsigned int emerge_switch
     cdef public unsigned int version
     cdef public unsigned int year
@@ -5109,7 +5108,7 @@ cdef class Simulation:
     //  3rd ed. John Wiley & Sons, Inc.
     //
     //     The following global variables are referenced here:
-    //  ClayVolumeFraction, Irrig (structure), NumIrrigations, SandVolumeFraction.
+    //  ClayVolumeFraction, Irrig (structure), NumIrrigations, soil_sand_volume_fraction.
     //     The argument used here:  rain = today,s rainfall.
     //     The return value:  the amount of water (mm) lost by runoff."""
         iGroup: SoilRunoff
@@ -5121,7 +5120,7 @@ cdef class Simulation:
         # assumed. Other soils (loams) assumed moderate runoff potential. No 'impermeable' (group D)
         # soils are assumed.  References: Schwab, Brady.
 
-        if SandVolumeFraction[0] > 0.70 and ClayVolumeFraction[0] < 0.15:
+        if self.soil_sand_volume_fraction[0] > 0.70 and ClayVolumeFraction[0] < 0.15:
             # Soil group A = 1, low runoff potential
             iGroup = SoilRunoff.Low
             d01 = 1.0
