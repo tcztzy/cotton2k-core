@@ -4965,8 +4965,8 @@ cdef class Simulation:
             irrigation = self.irrigation[state.date]
             if irrigation.get("method", 0) == 2:
                 DripWaterAmount += irrigation["amount"]
-                LocationColumnDrip = irrigation["drip_x"]
-                LocationLayerDrip = irrigation["drip_y"]
+                LocationColumnDrip = irrigation.get("drip_x", 0)
+                LocationLayerDrip = irrigation.get("drip_y", 0)
             else:
                 WaterToApply += irrigation["amount"]
         # The following will be executed only after plant emergence
