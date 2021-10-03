@@ -488,7 +488,7 @@ def tdewest(maxt: float, site5: float, site6: float) -> float:
     return ((40 - maxt) * site5 + (maxt - 20) * site6) / 20
 
 
-class Meteorology:  # pylint: disable=E1101,R0903,R0914,W0201
+class Meteorology:  # pylint: disable=E1101,R0914,W0201
     def daily_meteorology(self):
         u = (self.date - self.start_date).days
         declination: float  # daily declination angle, in radians
@@ -561,16 +561,11 @@ class Meteorology:  # pylint: disable=E1101,R0903,R0914,W0201
             sinb = sd + cd * cos(pi * (ti - self.solar_noon) / 12)
             hour.radiation = radiation(radsum, sinb, c11)
             hour.temperature = self.daytmp(u, ti, self.site_parameters[8], sunr, suns)
-            hour.dew_point = self.tdewhour(
-                u,
+            hour.dew_point = self.calculate_hourly_dew_point(
                 ti,
                 hour.temperature,
                 sunr,
-                self.solar_noon,
-                self.site_parameters[8],
-                self.site_parameters[12],
-                self.site_parameters[13],
-                self.site_parameters[14],
+                self.solar_noon + self.site_parameters[8],
             )
             hour.humidity = dayrh(hour.temperature, hour.dew_point)
             hour.wind_speed = compute_hourly_wind_speed(
@@ -582,3 +577,56 @@ class Meteorology:  # pylint: disable=E1101,R0903,R0914,W0201
         self.compute_evapotranspiration(
             self.latitude, self.elevation, declination, tmpisr, self.site_parameters[7]
         )
+
+    def dew_point_range(self, tmax, tmin):
+        """range of dew point temperature."""
+        return max(
+            self.site_parameters[12]
+            + self.site_parameters[13] * tmax
+            + self.site_parameters[14] * tmin,
+            0,
+        )
+
+    def calculate_dew_point(self, t, tmax, tmin, tdew):
+        tdrange = self.dew_point_range(tmax, tmin)
+        tdmin = tdew - tdrange / 2  # minimum of dew point temperature.
+        return tdmin + tdrange * (t - tmin) / (tmax - tmin)
+
+    def calculate_hourly_dew_point(
+        self,
+        time,
+        temperature,
+        sunrise,
+        hmax,
+    ):
+        """Computes the hourly values of dew point temperature from average dew-point
+        and the daily estimated range. This range is computed as a regression on
+        maximum and minimum temperatures.
+
+        Arguments
+        ---------
+        hmax
+            time of maximum air temperature
+        """
+        u = (self.date - self.start_date).days
+        im1 = max(u - 1, 0)  # day of year yesterday
+        yesterday = self._sim.climate[im1]
+        today = self._sim.climate[u]
+        ip1 = u + 1  # day of year tomorrow
+        tomorrow = self._sim.climate[ip1]
+        if time <= sunrise:
+            # from midnight to sunrise
+            tmax = yesterday["Tmax"]
+            tmin = today["Tmin"]
+            tdew = yesterday["Tdew"]
+        elif time <= hmax:
+            # from sunrise to hmax
+            tmax = today["Tmax"]
+            tmin = today["Tmin"]
+            tdew = today["Tdew"]
+        # from hmax to midnight
+        else:
+            tmax = today["Tmax"]
+            tmin = tomorrow["Tmin"]
+            tdew = tomorrow["Tdew"]
+        return self.calculate_dew_point(temperature, tmax, tmin, tdew)
