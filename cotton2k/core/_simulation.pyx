@@ -21,13 +21,6 @@ from .leaf import temperature_on_leaf_growth_rate, leaf_resistance_for_transpira
 from .soil import compute_soil_surface_albedo, compute_incoming_short_wave_radiation, root_psi, SoilTemOnRootGrowth, SoilAirOnRootGrowth, SoilNitrateOnRootGrowth, PsiOnTranspiration, SoilTemperatureEffect, SoilWaterEffect, wcond, qpsi, psiq, SoilMechanicResistance, PsiOsmotic, form
 from .utils import date2doy, doy2date
 from .thermology import canopy_balance
-ctypedef struct ClimateStruct:
-    double Rad
-    double Tmax
-    double Tmin
-    double Rain
-    double Wind
-    double Tdew
 
 ctypedef struct cSoilCell:
     double nitrate_nitrogen_content  # volumetric water content of a soil cell, cm3 cm-3.
@@ -213,7 +206,6 @@ cdef double HeatCapacitySoilSolid[40]  # heat capacity of the solid phase of the
 
 
 ctypedef struct cSimulation:
-    ClimateStruct climate[400]
     cState states[200]
 
 
@@ -532,57 +524,6 @@ cdef class SoilInit:
             BulkDensity[i] = layer["bulk_density"]
             pclay[i] = layer["clay"]
             psand[i] = layer["sand"]
-
-cdef class Climate:
-    cdef ClimateStruct *climate
-    cdef unsigned int start_day
-    cdef unsigned int days
-    cdef unsigned int current
-
-    def __init__(self, start_date, climate, site5, site6):
-        self.start_day = date2doy(start_date)
-        self.current = self.start_day
-        self.days = len(climate)
-        self.climate = <ClimateStruct *> malloc(sizeof(ClimateStruct) * len(climate))
-        for i, daily_climate in enumerate(climate):
-            self.climate[i].Rad = daily_climate["radiation"]
-            self.climate[i].Tmax = daily_climate["max"]
-            self.climate[i].Tmin = daily_climate["min"]
-            self.climate[i].Wind = daily_climate["wind"]
-            self.climate[i].Rain = daily_climate["rain"]
-            self.climate[i].Tdew = daily_climate.get("dewpoint",
-                                                     tdewest(daily_climate["max"],
-                                                             site5, site6))
-
-    def __getitem__(self, key):
-        if isinstance(key, slice):
-            start = key.start or 0
-            stop = key.stop or self.days
-            step = key.step or 1
-            if isinstance(start, date):
-                start = date2doy(start) - self.start_day
-            if isinstance(stop, date):
-                stop = date2doy(stop) - self.start_day
-            return [{
-                "radiation": self.climate[i].Rad,
-                "max": self.climate[i].Tmax,
-                "min": self.climate[i].Tmin,
-                "wind": self.climate[i].Wind,
-                "rain": self.climate[i].Rain,
-                "dewpoint": self.climate[i].Tdew,
-            } for i in range(start, stop, step)]
-        else:
-            if not isinstance(key, int):
-                key = date2doy(key) - self.start_day
-            climate = self.climate[key]
-            return {
-                "radiation": climate["Rad"],
-                "max": climate["Tmax"],
-                "min": climate["Tmin"],
-                "wind": climate["Wind"],
-                "rain": climate["Rain"],
-                "dewpoint": climate["Tdew"],
-            }
 
 
 cdef class SoilCell:
@@ -2327,7 +2268,7 @@ cdef class State:
         # Assign 0.01 to the first member of AbscissionLag.
         AbscissionLag[0] = 0.01
         # Updating age of tags for shedding: Each member of array AbscissionLag is incremented by physiological age of today. It is further increased (i.e., shedding will occur sooner) when maximum temperatures are high.
-        cdef double tmax = self._sim.climate[(self.date - self._sim.start_date).days]["Tmax"]
+        cdef double tmax = self._sim.meteor[self.date]["tmax"]
         for lt in range(NumSheddingTags):
             AbscissionLag[lt] += max(self.day_inc, 0.40)
             if tmax > vabsfr[2]:
@@ -3976,6 +3917,7 @@ cdef class Simulation:
     cdef public numpy.ndarray column_width_cumsum
     cdef public numpy.ndarray soil_clay_volume_fraction
     cdef public numpy.ndarray soil_sand_volume_fraction
+    cdef public object meteor
     cdef public unsigned int emerge_switch
     cdef public unsigned int version
     cdef public unsigned int year
@@ -4024,6 +3966,11 @@ cdef class Simulation:
         ):
             if attr in kwargs:
                 setattr(self, attr, kwargs.get(attr))
+        meteor = kwargs.get("meteor", {})
+        for d, met in meteor.items():
+            if "tdew" not in met:
+                met["tdew"] = tdewest(met["tmax"], self.site_parameters[5], self.site_parameters[6])
+        self.meteor = meteor
 
     @property
     def start_date(self):
@@ -4109,25 +4056,6 @@ cdef class Simulation:
 
     cpdef State _state(self, unsigned int i):
         return State.from_ptr(&self._sim.states[i], self, self.version)
-
-    @property
-    def climate(self):
-        return self._sim.climate
-
-    @climate.setter
-    def climate(self, climate):
-        alias = {
-            "radiation": "Rad",
-            "max": "Tmax",
-            "min": "Tmin",
-            "wind": "Wind",
-            "rain": "Rain",
-            "dewpoint": "Tdew",
-        }
-        for i, daily_climate in enumerate(climate):
-            self._sim.climate[i] = {
-                alias[k]: v for k, v in daily_climate.items()
-            }
 
     def _init_state(self):
         cdef State state0 = self._current_state
@@ -4363,7 +4291,8 @@ cdef class Simulation:
         idd = 0  # number of days minus 4 from start of simulation.
         tsi1 = 0  # Upper boundary (surface layer) initial soil temperature, C.
         for i in range(5):
-            tsi1 += self.climate[i]["Tmax"] + self.climate[i]["Tmin"]
+            d = self.start_date + timedelta(days=i)
+            tsi1 += self.meteor[d]["tmax"] + self.meteor[d]["tmin"]
         tsi1 /= 10
         # The temperature of the last soil layer (lower boundary) is computed as a sinusoidal function of day of year, with site-specific parameters.
         state0.deep_soil_temperature = self.site_parameters[9] + self.site_parameters[10] * sin(2 * pi * (self.start_date.timetuple().tm_yday - self.site_parameters[11]) / 365) + 273.161
@@ -4635,9 +4564,9 @@ cdef class Simulation:
         tkk = 15  # The temperature increase at which the sensible heat flux is doubled, in comparison with the situation without buoyancy.
         tcoef = 4  # time coefficient for the exponential part of the equation.
         hmax = state.solar_noon + site8  # hour of maximum temperature
-        yesterday = self.climate[max(u - 1, 0)]
-        today = self.climate[u]
-        tomorrow = self.climate[u + 1]
+        yesterday = self.meteor[state.date - timedelta(days=1)]
+        today = self.meteor[state.date]
+        tomorrow = self.meteor[state.date + timedelta(days=1)]
 
         amp: float  # amplitude of temperatures for a period.
         sst: float  # the temperature at sunset.
@@ -4646,31 +4575,31 @@ cdef class Simulation:
 
         if ti <= sunr:
             # from midnight to sunrise
-            amp = (yesterday["Tmax"] - today["Tmin"]) * (1 + (yesterday["Tmax"] - today["Tmin"]) / tkk)
+            amp = (yesterday["tmax"] - today["tmin"]) * (1 + (yesterday["tmax"] - today["tmin"]) / tkk)
             sts = sin(pi * state.day_length / (state.day_length + 2 * site8))
             # compute temperature at sunset:
-            sst = today["Tmin"] - tkk / 2 + 0.5 * sqrt(tkk * tkk + 4 * amp * tkk * sts)
+            sst = today["tmin"] - tkk / 2 + 0.5 * sqrt(tkk * tkk + 4 * amp * tkk * sts)
             return (
-                today["Tmin"] - sst * exp((state.day_length - 24) / tcoef)
-                + (sst - today["Tmin"]) * exp((suns - ti - 24) / tcoef)
+                today["tmin"] - sst * exp((state.day_length - 24) / tcoef)
+                + (sst - today["tmin"]) * exp((suns - ti - 24) / tcoef)
             ) / (1 - exp((state.day_length - 24) / tcoef))
         if ti <= hmax:
             # from sunrise to hmax
-            amp = (today["Tmax"] - today["Tmin"]) * (1 + (today["Tmax"] - today["Tmin"]) / tkk)
+            amp = (today["tmax"] - today["tmin"]) * (1 + (today["tmax"] - today["tmin"]) / tkk)
             st = sin(pi * (ti - state.solar_noon + state.day_length / 2) / (state.day_length + 2 * site8))
-            return today["Tmin"] - tkk / 2 + sqrt(tkk * tkk + 4 * amp * tkk * st) / 2
+            return today["tmin"] - tkk / 2 + sqrt(tkk * tkk + 4 * amp * tkk * st) / 2
         if ti <= suns:
             # from hmax to sunset
-            amp = (today["Tmax"] - tomorrow["Tmin"]) * (1 + (today["Tmax"] - tomorrow["Tmin"]) / tkk)
+            amp = (today["tmax"] - tomorrow["tmin"]) * (1 + (today["tmax"] - tomorrow["tmin"]) / tkk)
             st = sin(pi * (ti - state.solar_noon + state.day_length / 2) / (state.day_length + 2 * site8))
-            return tomorrow["Tmin"] - tkk / 2 + sqrt(tkk * tkk + 4 * amp * tkk * st) / 2
+            return tomorrow["tmin"] - tkk / 2 + sqrt(tkk * tkk + 4 * amp * tkk * st) / 2
         # from sunset to midnight
-        amp = (today["Tmax"] - tomorrow["Tmin"]) * (1 + (today["Tmax"] - tomorrow["Tmin"]) / tkk)
+        amp = (today["tmax"] - tomorrow["tmin"]) * (1 + (today["tmax"] - tomorrow["tmin"]) / tkk)
         sts = sin(pi * state.day_length / (state.day_length + 2 * site8))
-        sst = tomorrow["Tmin"] - tkk / 2 + sqrt(tkk * tkk + 4 * amp * tkk * sts) / 2
+        sst = tomorrow["tmin"] - tkk / 2 + sqrt(tkk * tkk + 4 * amp * tkk * sts) / 2
         return (
-            tomorrow["Tmin"] - sst * exp((state.day_length - 24) / tcoef)
-            + (sst - tomorrow["Tmin"]) * exp((suns - ti) / tcoef)
+            tomorrow["tmin"] - sst * exp((state.day_length - 24) / tcoef)
+            + (sst - tomorrow["tmin"]) * exp((suns - ti) / tcoef)
         ) / (1 - exp((state.day_length - 24) / tcoef))
 
     def _stress(self, u):
@@ -4959,7 +4888,7 @@ cdef class Simulation:
         cdef double DripWaterAmount = 0  # amount of water applied by drip irrigation
         cdef double WaterToApply  # amount of water applied by non-drip irrigation or rainfall
         # Check if there is rain on this day
-        WaterToApply = self._sim.climate[u].Rain
+        WaterToApply = self.meteor[state.date]["rain"]
         # When water is added by an irrigation defined in the input: update the amount of applied water.
         if state.date in self.irrigation:
             irrigation = self.irrigation[state.date]

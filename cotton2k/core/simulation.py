@@ -7,9 +7,8 @@ from typing import Any, Union
 
 import numpy as np
 
-from ._simulation import Climate  # pylint: disable=E0611
-from ._simulation import SoilInit  # pylint: disable=E0611
 from ._simulation import Simulation as CySimulation  # pylint: disable=E0611
+from ._simulation import SoilInit  # pylint: disable=E0611
 from ._simulation import State as CyState  # pylint: disable=E0611
 from .meteorology import METEOROLOGY, Meteorology
 from .nitrogen import PlantNitrogen
@@ -182,7 +181,16 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             kwargs = path
         else:
             kwargs = json.loads(Path(path).read_text())
-        super().__init__(kwargs.pop("version", 0x0400), **kwargs)
+        coord = (kwargs["latitude"], kwargs["longitude"])
+        if coord not in METEOROLOGY:
+            METEOROLOGY[coord] = {
+                datetime.date.fromisoformat(kwargs["climate_start_date"])
+                + datetime.timedelta(days=i): c
+                for i, c in enumerate(kwargs["climate"])
+            }
+        super().__init__(
+            version=kwargs.pop("version", 0x0400), meteor=METEOROLOGY[coord], **kwargs
+        )
         SoilInit(**kwargs.pop("soil", {}))  # type: ignore[arg-type]
         start_date = kwargs["start_date"]
         if not isinstance(start_date, (datetime.date, str)):
@@ -194,13 +202,6 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
         )
         self.initialize_state0()
         self.read_input(**kwargs)
-        METEOROLOGY[(kwargs["latitude"], kwargs["longitude"])] = {
-            datetime.date.fromisoformat(kwargs["climate_start_date"])
-            + datetime.timedelta(days=i): c
-            for i, c in enumerate(kwargs["climate"])
-        }
-        climate_start_date = kwargs.pop("climate_start_date", 0)
-        self.climate = Climate(climate_start_date, kwargs.pop("climate"), self.site_parameters[5], self.site_parameters[5])[self.start_date :]  # type: ignore[misc]  # pylint: disable=line-too-long
 
     def state(self, i):
         if isinstance(i, datetime.date):
@@ -420,7 +421,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
                 )
                 growing_stem_weight = state.stem_weight
             state.get_net_photosynthesis(
-                self.climate[u]["Rad"],
+                self.meteor[state.date]["irradiation"],
                 self.per_plant_area,
                 self.ptsred,
                 old_stem_weight,

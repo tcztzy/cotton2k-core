@@ -171,8 +171,8 @@ class Phenology:
                         m,
                         self._sim.defoliate_date,
                         self._sim.first_bloom_date,
-                        self._sim.climate[u]["Tmin"],
-                        self._sim.climate[u]["Tmax"],
+                        self._sim.meteor[self.date]["tmin"],
+                        self._sim.meteor[self.date]["tmax"],
                         *self._sim.cultivar_parameters[38:43]
                     )
                     if first_bloom is not None:

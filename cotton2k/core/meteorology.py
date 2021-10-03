@@ -531,8 +531,8 @@ class Meteorology:  # pylint: disable=E1101,R0914,W0201
             # Daily radiation intedral is converted from langleys to Watt m - 2,
             # and divided by dsbe.
             # 11.630287 = 1000000 / 3600 / 23.884
-            radsum = self.climate[u]["Rad"] * 11.630287 / dsbe
-        rainToday = self.climate[u]["Rain"]  # the amount of rain today, mm
+            radsum = self.meteor[self.date]["irradiation"] * 11.630287 / dsbe
+        rainToday = self.meteor[self.date]["rain"]  # the amount of rain today, mm
         # Set 'pollination switch' for rainy days (as in GOSSYM).
         self.pollination_switch = rainToday < 2.5
         # Call SimulateRunoff() only if the daily rainfall is more than 2 mm.
@@ -546,7 +546,7 @@ class Meteorology:  # pylint: disable=E1101,R0914,W0201
                 rainToday -= runoffToday
             else:
                 rainToday = 0
-            self.climate[u]["Rain"] = rainToday
+            self.meteor[self.date]["rain"] = rainToday
         self.runoff = runoffToday
         # Parameters for the daily wind function are now computed:
         # the hour at which wind begins to blow (SitePar(1) hours after sunrise).
@@ -573,7 +573,7 @@ class Meteorology:  # pylint: disable=E1101,R0914,W0201
             )
             hour.humidity = dayrh(hour.temperature, hour.dew_point)
             hour.wind_speed = compute_hourly_wind_speed(
-                ti, self.climate[u]["Wind"] * 1000 / 86400, t1, t2, t3, wnytf
+                ti, self.meteor[self.date]["wind"] * 1000 / 86400, t1, t2, t3, wnytf
             )
         # Compute average daily temperature, using function AverageAirTemperatures.
         self.calculate_average_temperatures()
@@ -612,27 +612,24 @@ class Meteorology:  # pylint: disable=E1101,R0914,W0201
         hmax
             time of maximum air temperature
         """
-        u = (self.date - self.start_date).days
-        im1 = max(u - 1, 0)  # day of year yesterday
-        yesterday = self._sim.climate[im1]
-        today = self._sim.climate[u]
-        ip1 = u + 1  # day of year tomorrow
-        tomorrow = self._sim.climate[ip1]
+        yesterday = self._sim.meteor[self.date - datetime.timedelta(days=1)]
+        today = self._sim.meteor[self.date]
+        tomorrow = self._sim.meteor[self.date + datetime.timedelta(days=1)]
         if time <= sunrise:
             # from midnight to sunrise
-            tmax = yesterday["Tmax"]
-            tmin = today["Tmin"]
-            tdew = yesterday["Tdew"]
+            tmax = yesterday["tmax"]
+            tmin = today["tmin"]
+            tdew = yesterday["tdew"]
         elif time <= hmax:
             # from sunrise to hmax
-            tmax = today["Tmax"]
-            tmin = today["Tmin"]
-            tdew = today["Tdew"]
+            tmax = today["tmax"]
+            tmin = today["tmin"]
+            tdew = today["tdew"]
         # from hmax to midnight
         else:
-            tmax = today["Tmax"]
-            tmin = tomorrow["Tmin"]
-            tdew = tomorrow["Tdew"]
+            tmax = today["tmax"]
+            tmin = tomorrow["tmin"]
+            tdew = tomorrow["tdew"]
         return self.calculate_dew_point(temperature, tmax, tmin, tdew)
 
     def simulate_runoff(self):
@@ -660,7 +657,6 @@ class Meteorology:  # pylint: disable=E1101,R0914,W0201
         float
             the amount of water (mm) lost by runoff.
         """
-        u = (self.date - self.start_date).days
         iGroup: SoilRunoff
         d01: float  # Adjustment of curve number for soil groups A,B,C.
 
@@ -689,14 +685,14 @@ class Meteorology:  # pylint: disable=E1101,R0914,W0201
             d01 = 1.09
         # Loop to accumulate 5-day antecedent rainfall (mm) which will affect the
         # soil's ability to accept new rainfall. This also includes all irrigations.
-        i01 = max(u - 5, 0)
         PreviousWetting = 0  # five day total (before this day) of rain and irrigation
-        for Dayn in range(i01, u):
-            d = self.start_date + datetime.timedelta(days=Dayn)
-            amtirr = 0  # mm water applied on this day by irrigation
+        for i in range(5):
+            d = self.date - datetime.timedelta(days=i)
             if d in self.irrigation:
-                amtirr = self.irrigation[d]["amount"]
-            PreviousWetting += amtirr + self._sim.climate[Dayn]["Rain"]
+                # mm water applied on this day by irrigation
+                PreviousWetting += self.irrigation[d]["amount"]
+            if d in self.meteor:
+                PreviousWetting += self.meteor[d]["rain"]
 
         d02: float  # Adjusting curve number for antecedent rainfall conditions.
         if PreviousWetting < 3:
@@ -722,5 +718,5 @@ class Meteorology:  # pylint: disable=E1101,R0914,W0201
         # maximum potential difference between rainfall and runoff.
         d03 = 25400 / crvnum - 254
 
-        rain = self._sim.climate[u]["Rain"]
+        rain = self._sim.meteor[self.date]["rain"]
         return 0 if rain <= 0.2 * d03 else (rain - 0.2 * d03) ** 2 / (rain + 0.8 * d03)

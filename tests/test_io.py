@@ -22,15 +22,15 @@ def test_write_output(sim: Simulation):
         if 15 <= i <= 16:
             assert s.pre_fruiting_leaf_area == [0, 0.04, 0, 0, 0, 0, 0, 0, 0]
         elif i == 17:
-            assert s.pre_fruiting_leaf_area[1] - 0.048507219 < 1e-9
+            assert s.pre_fruiting_leaf_area[1] - 0.04854027307818367 < 1e-9
         elif i == 18:
-            assert s.pre_fruiting_leaf_area[1] - 0.056486458 < 1e-9
+            assert s.pre_fruiting_leaf_area[1] - 0.05691214973504026 < 1e-9
         elif i == 19:
-            assert s.pre_fruiting_leaf_area[1] - 0.066505135 < 1e-9
+            assert s.pre_fruiting_leaf_area[1] - 0.06742381894057693 < 1e-9
         elif i == 20:
-            assert s.pre_fruiting_leaf_area[1] - 0.072625299 < 1e-9
+            assert s.pre_fruiting_leaf_area[1] - 0.07354398298576931 < 1e-9
         elif i == 21:
-            assert s.pre_fruiting_leaf_area[1] - 0.077645256 < 1e-9
+            assert s.pre_fruiting_leaf_area[1] - 0.07856394039688848 < 1e-9
     assert (state.lint_yield - 2219.4412479701537) < 1e-9
     assert (state.ginning_percent - 0.37750407781082385) < 1e-9
     assert (state.leaf_weight - 6.416714304185261) < 1e-9
