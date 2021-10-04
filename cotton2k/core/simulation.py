@@ -188,6 +188,14 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
         super().__init__(
             version=kwargs.pop("version", 0x0400), meteor=METEOROLOGY[coord], **kwargs
         )
+        self.column_width = np.ones(20) * self.row_space / 20
+        self.column_width_cumsum = self.column_width.cumsum()
+        self.layer_depth = np.ones(40) * 5
+        self.layer_depth[:3] = 2
+        self.layer_depth[3] = 4
+        self.layer_depth[-2:] = 10
+        self.layer_depth_cumsum = self.layer_depth.cumsum()
+        self.cell_area = self.layer_depth[:, None] * self.column_width[None, :]
         SoilInit(**kwargs.pop("soil", {}))  # type: ignore[arg-type]
         start_date = kwargs["start_date"]
         if not isinstance(start_date, (datetime.date, str)):
@@ -293,10 +301,6 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             # pylint: disable=attribute-defined-outside-init
             self.row_space = (self.row_space + self.skip_row_width) / 2
             plant_location = self.skip_row_width / 2
-        # pylint: disable=attribute-defined-outside-init
-        self.column_width = np.ones(20) * self.row_space / 20
-        # pylint: disable=attribute-defined-outside-init
-        self.column_width_cumsum = self.column_width.cumsum()
         # Compute plant_population - number of plants per hectar, and per_plant_area --
         # the average surface area per plant, in dm2, and the empirical plant density
         # factor (density_factor). This factor will be used to express the effect of
