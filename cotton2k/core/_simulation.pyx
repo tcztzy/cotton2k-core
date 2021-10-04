@@ -131,7 +131,6 @@ cdef double PotGroAllBurrs  # sum of potential growth rates of burrs in all boll
 cdef NitrogenFertilizer NFertilizer[150]
 cdef int NumNitApps  # number of applications of nitrogen fertilizer.
 cdef double SoilPsi[40][20]  # matric water potential of a soil cell, bars.
-cdef double AverageSoilPsi  # average soil matric water potential, bars, computed as the weighted average of the root zone.
 cdef double thts[40]  # saturated volumetric water content of each soil layer, cm3 cm-3.
 cdef int LocationColumnDrip  # number of column in which the drip emitter is located
 cdef int LocationLayerDrip  # number of layer in which the drip emitter is located.
@@ -999,6 +998,7 @@ cdef class State:
     cdef public double actual_square_growth  # total actual growth of squares, g plant-1 day-1.
     cdef public double actual_stem_growth  # actual growth rate of stems, g plant-1 day-1.
     cdef public double actual_transpiration  # actual transpiration from plants, mm day-1.
+    cdef public double average_soil_psi  # average soil matric water potential, bars, computed as the weighted average of the root zone.
     cdef public double pre_fruiting_nodes_age[9]  # age of each prefruiting node, physiological days.
     cdef public double pre_fruiting_leaf_area[9]  # area of prefruiting node leaves, dm2.
     cdef public double average_min_leaf_water_potential  #running average of min_leaf_water_potential for the last 3 days.
@@ -1590,9 +1590,9 @@ cdef class State:
         cdef double rleaf = sumrl / numl  # leaf resistance, Mpa hours per cm.
 
         cdef double rtotal = rsoil + rroot + rshoot + rleaf  # The total resistance to transpiration, MPa hours per cm, (rtotal) is computed.
-        # Compute maximum (early morning) leaf water potential, max_leaf_water_potential, from soil water potential (AverageSoilPsi, converted from bars to MPa).
+        # Compute maximum (early morning) leaf water potential, max_leaf_water_potential, from soil water potential (average_soil_psi, converted from bars to MPa).
         # Check for minimum and maximum values.
-        self.max_leaf_water_potential = min(max(vpsil[7] + 0.1 * AverageSoilPsi, vpsil[8]), psiln0)
+        self.max_leaf_water_potential = min(max(vpsil[7] + 0.1 * self.average_soil_psi, vpsil[8]), psiln0)
         # Compute minimum (at time of maximum transpiration rate) leaf water potential, min_leaf_water_potential, from maximum transpiration rate (etmax) and total resistance to transpiration (rtotal).
         cdef double etmax = 0  # the maximum hourly rate of evapotranspiration for this day.
         for ihr in range(24):  # hourly loop
@@ -3314,7 +3314,7 @@ cdef class State:
 
         # Compute the reduction due to soil moisture supply by function PsiOnTranspiration().
         # the actual transpiration converted to cm3 per slab units.
-        Transp = 0.10 * row_space * PotentialTranspiration * PsiOnTranspiration(AverageSoilPsi)
+        Transp = 0.10 * row_space * PotentialTranspiration * PsiOnTranspiration(self.average_soil_psi)
         while True:
             for l in range(40):
                 j = SoilHorizonNum[l]
@@ -3470,7 +3470,7 @@ cdef class State:
                     sumwat[j] += self.cells[l][k].water_content * self.layer_depth[l] * self._sim.column_width[k] * min(self.root_weight_capable_uptake[l, k], vrcumax)
                     psinum[j] += self.layer_depth[l] * self._sim.column_width[k] * min(self.root_weight_capable_uptake[l, k], vrcumax)
         sumpsi = 0  # weighted sum of avgpsi
-        sumnum = 0  # sum of weighting coefficients for computing AverageSoilPsi.
+        sumnum = 0  # sum of weighting coefficients for computing average_soil_psi.
         for j in range(9):
             if psinum[j] > 0 and sumdl[j] > 0:
                 # Compute avgwat and the parameters to compute the soil water potential in each soil horizon
@@ -4866,7 +4866,7 @@ cdef class Simulation:
 
     def _soil_procedures(self, u):
         """This function manages all the soil related processes, and is executed once each day."""
-        global AverageSoilPsi, LocationColumnDrip, LocationLayerDrip
+        global LocationColumnDrip, LocationLayerDrip
         state = self._current_state
         # The following constant parameters are used:
         cdef double cpardrip = 0.2
@@ -4887,7 +4887,7 @@ cdef class Simulation:
         # The following will be executed only after plant emergence
         if state.date >= self.emerge_date and self.emerge_switch > 0:
             state.roots_capable_of_uptake()  # function computes roots capable of uptake for each soil cell
-            AverageSoilPsi = state.average_psi(self.row_space)  # function computes the average matric soil water
+            state.average_soil_psi = state.average_psi(self.row_space)  # function computes the average matric soil water
             # potential in the root zone, weighted by the roots-capable-of-uptake.
             state.water_uptake(self.row_space, self.per_plant_area)  # function  computes water and nitrogen uptake by plants.
         if WaterToApply > 0:
