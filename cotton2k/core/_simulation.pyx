@@ -3100,17 +3100,17 @@ cdef class State:
                             VolUreaNContent[lsdr][km1] += addnur / (side_dressed_layer_depth * self._sim.column_width[km1])
                         if lsdr < nl - 1:
                             lp1 = lsdr + 1
-                            depth = self.layer_depth[lp1]
-                            self.cells[lp1][ksdr].nitrate_nitrogen_content += addnit / (depth * self._sim.column_width[ksdr])
-                            VolNh4NContent[lp1][ksdr] += addamm / (depth * self._sim.column_width[ksdr])
-                            VolUreaNContent[lp1][ksdr] += addnur / (depth * self._sim.column_width[ksdr])
+                            area = self.cell_area[lp1, ksdr]
+                            self.cells[lp1][ksdr].nitrate_nitrogen_content += addnit / area
+                            VolNh4NContent[lp1][ksdr] += addamm / area
+                            VolUreaNContent[lp1][ksdr] += addnur / area
                 # If this is FERTIGATION (N fertilizer applied in drip irrigation):
                 elif NFertilizer[i].mthfrt == 3:
                     # Convert amounts added to mg cm-3, and update the nitrogen content of the soil cell in which the drip outlet is situated.
-                    depth = self.layer_depth[LocationLayerDrip]
-                    VolNh4NContent[LocationLayerDrip][LocationColumnDrip] += NFertilizer[i].amtamm * ferc * row_space / (depth * self._sim.column_width[LocationColumnDrip])
-                    self.cells[LocationLayerDrip][LocationColumnDrip].nitrate_nitrogen_content += NFertilizer[i].amtnit * ferc * row_space / (depth * self._sim.column_width[LocationColumnDrip])
-                    VolUreaNContent[LocationLayerDrip][LocationColumnDrip] += NFertilizer[i].amtura * ferc * row_space / (depth * self._sim.column_width[LocationColumnDrip])
+                    area = self.cell_area[LocationLayerDrip, LocationColumnDrip]
+                    VolNh4NContent[LocationLayerDrip][LocationColumnDrip] += NFertilizer[i].amtamm * ferc * row_space / area
+                    self.cells[LocationLayerDrip][LocationColumnDrip].nitrate_nitrogen_content += NFertilizer[i].amtnit * ferc * row_space / area
+                    VolUreaNContent[LocationLayerDrip][LocationColumnDrip] += NFertilizer[i].amtura * ferc * row_space / area
 
     def soil_thermal_conductivity(self, double q0, double t0, int l0):
         """Computes and returns the thermal conductivity of the soil (cal cm-1 s-1 oC-1). It is based on the work of De Vries(1963).
