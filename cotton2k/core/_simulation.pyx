@@ -4948,8 +4948,7 @@ cdef class Simulation:
                 isddph = i.get("drip_depth",
                             0)  # vertical placement of DRIP, cm from soil surface.
                 if nf.mthfrt == 1 or nf.mthfrt == 3:
-                    nf.ksdr = self.slab_location(isdhrz, self.row_space)
-                    nf.lsdr = self.slab_location(isddph)
+                    nf.lsdr, nf.ksdr = self.slab_location(isdhrz, isddph)
                 else:
                     nf.ksdr = 0
                     nf.lsdr = 0
@@ -4966,23 +4965,19 @@ cdef class Simulation:
     def _initialize_soil_data(self):
         self._current_state.initialize_soil_data()
 
-    def slab_location(self, isd, row_space=0):
+    def slab_location(self, x, y):
         """Computes the layer (lsdr) or column (ksdr) where the emitter of drip irrigation, or the fertilizer side - dressing is located. It is called from ReadAgriculturalInput().
 
         Arguments
         ---------
-        isd
-            horizontal or vertical distance
+        x, y
+            horizontal and vertical distance
+
+        Returns
+        -------
+        tuple[float, float]
+            cell index
         """
-        # horizontal
-        if row_space > 0:
-            # Define the column of this location
-            for w in range(20):
-                if self.column_width_cumsum[w] >= isd:
-                    return w
-        else:
-            # Define the layer of this location
-            for l in range(40):
-                if SIMULATED_LAYER_DEPTH_CUMSUM[l] >= isd:
-                    return l
-        return 0
+        k = np.searchsorted(self.column_width_cumsum, x)
+        l = np.searchsorted(SIMULATED_LAYER_DEPTH_CUMSUM, y)
+        return l, k
