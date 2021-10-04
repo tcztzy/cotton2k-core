@@ -3029,8 +3029,8 @@ cdef class State:
         # Compute vertical distance between centers of l and l0
         x = self.layer_depth_cumsum[l] - self.layer_depth[l] / 2
         x0 = self.layer_depth_cumsum[l0] - self.layer_depth[l0] / 2
-        y = self._sim.column_width_cumsum[k] - self._sim.column_width[k]
-        y0 = self._sim.column_width_cumsum[k0] - self._sim.column_width[k0]
+        y = self._sim.column_width_cumsum[k] - self._sim.column_width[k] / 2
+        y0 = self._sim.column_width_cumsum[k0] - self._sim.column_width[k0] / 2
         return np.linalg.norm((x - x0, y - y0))
 
     def apply_fertilizer(self, row_space, plant_population):
@@ -4904,7 +4904,7 @@ cdef class Simulation:
         if DripWaterAmount > 0:
             # For drip irrigation.
             # The number of iterations is computed from the volume of the soil cell in which the water is applied.
-            noitr = <int>(cpardrip * DripWaterAmount / (self.layer_depth[LocationLayerDrip] * self.column_width[LocationColumnDrip]) + 1)
+            noitr = <int>(cpardrip * DripWaterAmount / (self.cell_area[LocationLayerDrip, LocationColumnDrip]) + 1)
             # the amount of water applied, mm per iteration.
             applywat = DripWaterAmount / noitr
             # If water is applied, drip_flow() is called followed by CapillaryFlow().
