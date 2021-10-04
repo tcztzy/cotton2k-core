@@ -991,6 +991,7 @@ cdef class State:
     cdef public numpy.ndarray fruiting_nodes_fraction  # fraction of fruit remaining at each fruiting site (0 to 1).
     cdef public numpy.ndarray fruiting_nodes_stage
     cdef public numpy.ndarray fruiting_nodes_ginning_percent
+    cdef public object date
     cdef public object pollination_switch  # pollination switch: false = no pollination, true = yes.
     cdef public unsigned int seed_layer_number  # layer number where the seeds are located.
     cdef public unsigned int taproot_layer_number  # last soil layer with taproot.
@@ -1100,16 +1101,6 @@ cdef class State:
             # add the hourly contribution to physiological age.
             dayfd += min(max((hour.temperature - p1) / p2, 0), p3)
         return dayfd / 24.0
-
-    @property
-    def date(self):
-        return date.fromordinal(self._ordinal)
-
-    @date.setter
-    def date(self, value):
-        if not isinstance(value, date):
-            raise TypeError
-        self._ordinal = value.toordinal()
 
     @property
     def solar_noon(self):
