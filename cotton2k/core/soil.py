@@ -440,3 +440,68 @@ def form(c0: float, d0: float, g0: float) -> float:
         shape factor for these materials
     """
     return (2 / (1 + (c0 / d0 - 1) * g0) + 1 / (1 + (c0 / d0 - 1) * (1 - 2 * g0))) / 3
+
+
+class SoilProcedure:  # pylint: disable=too-few-public-methods,W0201,E1101
+    def soil_procedures(self):
+        """Manages all the soil related processes, and is executed once each day."""
+        # The following constant parameters are used:
+        cpardrip = 0.2
+        cparelse = 0.4
+        DripWaterAmount = 0  # amount of water applied by drip irrigation
+        # Call function ApplyFertilizer() for nitrogen fertilizer application.
+        self.apply_fertilizer(self.row_space, self.plant_population)
+        # amount of water applied by non-drip irrigation or rainfall
+        # Check if there is rain on this day
+        WaterToApply = self.meteor[self.date]["rain"]
+        # When water is added by an irrigation defined in the input: update the amount
+        # of applied water.
+        if self.date in self.irrigation:
+            irrigation = self.irrigation[self.date]
+            if irrigation.get("method", 0) == 2:
+                DripWaterAmount += irrigation["amount"]
+                self.drip_x = irrigation.get("drip_x", 0)
+                self.drip_y = irrigation.get("drip_y", 0)
+            else:
+                WaterToApply += irrigation["amount"]
+        # The following will be executed only after plant emergence
+        if self.date >= self.emerge_date and self.emerge_switch > 0:
+            # computes roots capable of uptakefor each soil cell
+            self.roots_capable_of_uptake()
+            self.average_soil_psi = self.average_psi(
+                self.row_space
+            )  # function computes the average matric soil water
+            # potential in the root zone, weighted by the roots-capable-of-uptake.
+            self.water_uptake(
+                self.row_space, self.per_plant_area
+            )  # function  computes water and nitrogen uptake by plants.
+        if WaterToApply > 0:
+            # For rain or surface irrigation.
+            # The number of iterations is computed from the thickness of the first soil
+            # layer.
+            noitr = int(cparelse * WaterToApply / (self.layer_depth[0] + 2) + 1)
+            # the amount of water applied, mm per iteration.
+            applywat = WaterToApply / noitr
+            # The following subroutines are called noitr times per day:
+            # If water is applied, state.gravity_flow() is called when the method of
+            # irrigation is not by drippers, followed by CapillaryFlow().
+            for _ in range(noitr):
+                self.gravity_flow(applywat)
+                self.capillary_flow(noitr)
+        if DripWaterAmount > 0:
+            # For drip irrigation.
+            # The number of iterations is computed from the volume of the soil cell in
+            # which the water is applied.
+            noitr = int(
+                cpardrip * DripWaterAmount / (self.cell_area[self.drip_y, self.drip_x])
+                + 1
+            )
+            # the amount of water applied, mm per iteration.
+            applywat = DripWaterAmount / noitr
+            # If water is applied, drip_flow() is called followed by CapillaryFlow().
+            for _ in range(noitr):
+                self.drip_flow(applywat, self.row_space)
+                self.capillary_flow(noitr)
+        # When no water is added, there is only one iteration in this day.
+        if WaterToApply + DripWaterAmount <= 0:
+            self.capillary_flow(1)

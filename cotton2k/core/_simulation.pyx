@@ -132,8 +132,6 @@ cdef NitrogenFertilizer NFertilizer[150]
 cdef int NumNitApps  # number of applications of nitrogen fertilizer.
 cdef double SoilPsi[40][20]  # matric water potential of a soil cell, bars.
 cdef double thts[40]  # saturated volumetric water content of each soil layer, cm3 cm-3.
-cdef int LocationColumnDrip  # number of column in which the drip emitter is located
-cdef int LocationLayerDrip  # number of layer in which the drip emitter is located.
 cdef double VolNh4NContent[40][20]  # volumetric ammonium nitrogen content of a soil cell, mg N cm-3.
 cdef double VolUreaNContent[40][20]  # volumetric urea nitrogen content of a soil cell, mg N cm-3.
 cdef double ElCondSatSoilToday  # electrical conductivity of saturated extract (mmho/cm) on this day.
@@ -993,6 +991,8 @@ cdef class State:
     cdef public unsigned int version
     cdef public unsigned int kday
     cdef public unsigned int number_of_vegetative_branches  # number of vegetative branches (including the main branch), per plant.
+    cdef public unsigned int drip_x  # number of column in which the drip emitter is located
+    cdef public unsigned int drip_y  # number of layer in which the drip emitter is located.
     cdef public double actual_boll_growth  # total actual growth of seedcotton in bolls, g plant-1 day-1.
     cdef public double actual_soil_evaporation  # actual evaporation from soil surface, mm day-1.
     cdef public double actual_square_growth  # total actual growth of squares, g plant-1 day-1.
@@ -2894,8 +2894,8 @@ cdef class State:
         dripw[0] = Drip * row_space * 0.10
         # Wetting the cell in which the emitter is located.
         cdef double h2odef  # the difference between the maximum water capacity (at a water content of uplimit) of this ring of soil cell, and the actual water content, cm3.
-        cdef int l0 = LocationLayerDrip  #  layer where the drip emitter is situated
-        cdef int k0 = LocationColumnDrip  #  column where the drip emitter is situated
+        cdef int l0 = self.drip_y  #  layer where the drip emitter is situated
+        cdef int k0 = self.drip_x  #  column where the drip emitter is situated
         # SoilCell &soil_cell = soil_cells[l0][k0]
         # It is assumed that wetting cannot exceed MaxWaterCapacity of this cell. Compute h2odef, the amount of water needed to saturate this cell.
         h2odef = (MaxWaterCapacity[l0] - self._.soil.cells[l0][k0].water_content) * self.layer_depth[l0] * self._sim.column_width[k0]
@@ -3106,10 +3106,10 @@ cdef class State:
                 # If this is FERTIGATION (N fertilizer applied in drip irrigation):
                 elif NFertilizer[i].mthfrt == 3:
                     # Convert amounts added to mg cm-3, and update the nitrogen content of the soil cell in which the drip outlet is situated.
-                    area = self.cell_area[LocationLayerDrip, LocationColumnDrip]
-                    VolNh4NContent[LocationLayerDrip][LocationColumnDrip] += NFertilizer[i].amtamm * ferc * row_space / area
-                    self.cells[LocationLayerDrip][LocationColumnDrip].nitrate_nitrogen_content += NFertilizer[i].amtnit * ferc * row_space / area
-                    VolUreaNContent[LocationLayerDrip][LocationColumnDrip] += NFertilizer[i].amtura * ferc * row_space / area
+                    area = self.cell_area[self.drip_y, self.drip_x]
+                    VolNh4NContent[self.drip_y][self.drip_x] += NFertilizer[i].amtamm * ferc * row_space / area
+                    self.cells[self.drip_y, self.drip_x].nitrate_nitrogen_content += NFertilizer[i].amtnit * ferc * row_space / area
+                    VolUreaNContent[self.drip_y][self.drip_x] += NFertilizer[i].amtura * ferc * row_space / area
 
     def soil_thermal_conductivity(self, double q0, double t0, int l0):
         """Computes and returns the thermal conductivity of the soil (cal cm-1 s-1 oC-1). It is based on the work of De Vries(1963).
@@ -4863,57 +4863,6 @@ cdef class Simulation:
                 dum = -state.min_leaf_water_potential * 10  # value of min_leaf_water_potential in bars.
                 PercentDefoliation = p1 + p2 * state.average_temperature + p3 * self.tdfkgh + p4 * (state.date - self.defoliate_date).days + p5 * dum - p6 * dum * dum + p7 * state.average_temperature * self.tdfkgh * (state.date - self.defoliate_date).days * dum
                 PercentDefoliation = min(max(PercentDefoliation, 0), 40)
-
-    def _soil_procedures(self, u):
-        """This function manages all the soil related processes, and is executed once each day."""
-        global LocationColumnDrip, LocationLayerDrip
-        state = self._current_state
-        # The following constant parameters are used:
-        cdef double cpardrip = 0.2
-        cdef double cparelse = 0.4
-        cdef double DripWaterAmount = 0  # amount of water applied by drip irrigation
-        cdef double WaterToApply  # amount of water applied by non-drip irrigation or rainfall
-        # Check if there is rain on this day
-        WaterToApply = self.meteor[state.date]["rain"]
-        # When water is added by an irrigation defined in the input: update the amount of applied water.
-        if state.date in self.irrigation:
-            irrigation = self.irrigation[state.date]
-            if irrigation.get("method", 0) == 2:
-                DripWaterAmount += irrigation["amount"]
-                LocationColumnDrip = irrigation.get("drip_x", 0)
-                LocationLayerDrip = irrigation.get("drip_y", 0)
-            else:
-                WaterToApply += irrigation["amount"]
-        # The following will be executed only after plant emergence
-        if state.date >= self.emerge_date and self.emerge_switch > 0:
-            state.roots_capable_of_uptake()  # function computes roots capable of uptake for each soil cell
-            state.average_soil_psi = state.average_psi(self.row_space)  # function computes the average matric soil water
-            # potential in the root zone, weighted by the roots-capable-of-uptake.
-            state.water_uptake(self.row_space, self.per_plant_area)  # function  computes water and nitrogen uptake by plants.
-        if WaterToApply > 0:
-            # For rain or surface irrigation.
-            # The number of iterations is computed from the thickness of the first soil layer.
-            noitr = <int>(cparelse * WaterToApply / (self.layer_depth[0] + 2) + 1)
-            # the amount of water applied, mm per iteration.
-            applywat = WaterToApply / noitr
-            # The following subroutines are called noitr times per day:
-            # If water is applied, state.gravity_flow() is called when the method of irrigation is not by drippers, followed by CapillaryFlow().
-            for iter in range(noitr):
-                state.gravity_flow(applywat)
-                state.capillary_flow(noitr)
-        if DripWaterAmount > 0:
-            # For drip irrigation.
-            # The number of iterations is computed from the volume of the soil cell in which the water is applied.
-            noitr = <int>(cpardrip * DripWaterAmount / (self.cell_area[LocationLayerDrip, LocationColumnDrip]) + 1)
-            # the amount of water applied, mm per iteration.
-            applywat = DripWaterAmount / noitr
-            # If water is applied, drip_flow() is called followed by CapillaryFlow().
-            for iter in range(noitr):
-                state.drip_flow(applywat, self.row_space)
-                state.capillary_flow(noitr)
-        # When no water is added, there is only one iteration in this day.
-        if WaterToApply + DripWaterAmount <= 0:
-            state.capillary_flow(1)
 
     def _initialize_globals(self):
         # Define the numbers of rows and columns in the soil slab (nl, nk).

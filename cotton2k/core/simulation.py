@@ -15,11 +15,18 @@ from .nitrogen import PlantNitrogen
 from .phenology import Phenology, Stage
 from .photo import Photosynthesis
 from .root import RootGrowth
+from .soil import SoilProcedure
 from .stem import StemGrowth
 
 
 class State(
-    Meteorology, Photosynthesis, Phenology, PlantNitrogen, RootGrowth, StemGrowth
+    Meteorology,
+    Photosynthesis,
+    Phenology,
+    PlantNitrogen,
+    RootGrowth,
+    SoilProcedure,
+    StemGrowth,
 ):  # pylint: disable=too-many-instance-attributes
     _: CyState
     sim: "Simulation"
@@ -397,7 +404,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
         self._soil_temperature(
             u
         )  # executes all modules of soil and canopy temperature.
-        self._soil_procedures(u)  # executes all other soil processes.
+        state.soil_procedures()  # executes all other soil processes.
         state.soil_nitrogen()  # computes nitrogen transformations in the soil.
         # The following is executed each day after plant emergence:
         if (
@@ -545,12 +552,6 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             self.emerge_date,
             self.plant_row_column,
         )
-
-    def _soil_procedures(self, u):
-        state = self.state(u)
-        # Call function ApplyFertilizer() for nitrogen fertilizer application.
-        state.apply_fertilizer(self.row_space, self.plant_population)
-        super()._soil_procedures(u)
 
     @property
     def _column_width(self):
