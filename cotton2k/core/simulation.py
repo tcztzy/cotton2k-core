@@ -181,9 +181,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
         coord = (kwargs["latitude"], kwargs["longitude"])
         if coord not in METEOROLOGY:
             METEOROLOGY[coord] = {
-                datetime.date.fromisoformat(kwargs["climate_start_date"])
-                + datetime.timedelta(days=i): c
-                for i, c in enumerate(kwargs["climate"])
+                datetime.date.fromisoformat(c.pop("date")): c for c in kwargs["climate"]
             }
         super().__init__(
             version=kwargs.pop("version", 0x0400), meteor=METEOROLOGY[coord], **kwargs

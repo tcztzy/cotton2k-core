@@ -193,16 +193,16 @@
                 }
             }
         },
-        "climate_start_date": {
-            "type": "string",
-            "format": "date"
-        },
         "climate": {
             "description": "Climate data",
             "type": "array",
             "items": {
                 "type": "object",
                 "properties": {
+                    "date": {
+                        "type": "string",
+                        "format": "date"
+                    },
                     "radiation": {
                         "type": "number",
                         "minimum": 0

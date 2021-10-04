@@ -1,10 +1,6 @@
 import datetime
 import numpy as N
 
-class Climate:
-    def __init__(self, climate_start_date, climate, site5, site6): ...
-    def __getitem__(self, item): ...
-
 class FruitingBranch: ...
 
 class Simulation:
