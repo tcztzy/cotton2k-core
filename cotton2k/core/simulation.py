@@ -47,10 +47,7 @@ class State(
         try:
             return getattr(self._, name)
         except AttributeError:
-            try:
-                return getattr(self._sim, name)
-            except AttributeError:
-                return getattr(self, name)
+            return getattr(self, name)
 
     def __setattr__(self, name: str, value: Any) -> None:
         if name in ("_", "_sim"):

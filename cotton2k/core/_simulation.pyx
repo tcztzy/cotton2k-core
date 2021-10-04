@@ -1070,6 +1070,15 @@ cdef class State:
             for k in range(20):
                 self.cells[l][k] = SoilCell.from_ptr(&self._.soil.cells[l][k], l, k)
 
+    def __getattr__(self, name):
+        try:
+            return getattr(self._sim, name)
+        except AttributeError:
+            return getattr(self, name)
+
+    def __getitem__(self, item):
+        return getattr(self, item)
+
     @property
     def day_inc(self):
         """physiological days increment for this day. based on hourlytemperatures."""
@@ -1327,9 +1336,6 @@ cdef class State:
     def phenological_delay_by_nitrogen_stress(self):
         """the delay caused by nitrogen stress, is assumed to be a function of the vegetative nitrogen stress."""
         return min(max(0.65 * (1 - self.nitrogen_stress_vegetative), 0), 1)
-
-    def __getitem__(self, item):
-        return getattr(self, item)
 
     def initialize_soil_temperature(self):
         """Initializes the variables needed for the simulation of soil temperature, and variables used by functions soil_thermal_conductivity() and SoilHeatFlux().
