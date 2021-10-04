@@ -3067,10 +3067,9 @@ cdef class State:
                     # Define the soil column (ksdr) and the soil layer (lsdr) in which the side-dressed fertilizer is applied.
                     ksdr = NFertilizer[i].ksdr  # the column in which the side-dressed is applied
                     lsdr = NFertilizer[i].ksdr  # the layer in which the side-dressed is applied
-                    side_dressed_layer_depth = self.layer_depth[lsdr]
                     n00 = 1  # number of soil soil cells in which side-dressed fertilizer is incorporated.
                     # If the volume of this soil cell is less than 100 cm3, it is assumed that the fertilizer is also incorporated in the soil cells below and to the sides of it.
-                    if side_dressed_layer_depth * self._sim.column_width[ksdr] < 100:
+                    if self.cell_area[lsdr, ksdr] < 100:
                         if ksdr < nk - 1:
                             n00 += 1
                         if ksdr > 0:
@@ -3084,20 +3083,20 @@ cdef class State:
                     # amount of urea N added to the soil by sidedressing (mg per cell)
                     addnur = NFertilizer[i].amtura * ferc * row_space / n00
                     # Update the nitrogen contents of these soil cells.
-                    self.cells[lsdr][ksdr].nitrate_nitrogen_content += addnit / (side_dressed_layer_depth * self._sim.column_width[ksdr])
-                    VolNh4NContent[lsdr][ksdr] += addamm / (side_dressed_layer_depth * self._sim.column_width[ksdr])
-                    VolUreaNContent[lsdr][ksdr] += addnur / (side_dressed_layer_depth * self._sim.column_width[ksdr])
-                    if side_dressed_layer_depth * self._sim.column_width[ksdr] < 100:
+                    self.cells[lsdr][ksdr].nitrate_nitrogen_content += addnit / (self.cell_area[lsdr, ksdr])
+                    VolNh4NContent[lsdr][ksdr] += addamm / (self.cell_area[lsdr, ksdr])
+                    VolUreaNContent[lsdr][ksdr] += addnur / (self.cell_area[lsdr, ksdr])
+                    if self.cell_area[lsdr, ksdr] < 100:
                         if ksdr < nk - 1:
                             kp1 = ksdr + 1  # column to the right of ksdr.
-                            self.cells[lsdr][kp1].nitrate_nitrogen_content += addnit / (side_dressed_layer_depth * self._sim.column_width[kp1])
-                            VolNh4NContent[lsdr][kp1] += addamm / (side_dressed_layer_depth * self._sim.column_width[kp1])
-                            VolUreaNContent[lsdr][kp1] += addnur / (side_dressed_layer_depth * self._sim.column_width[kp1])
+                            self.cells[lsdr][kp1].nitrate_nitrogen_content += addnit / (self.cell_area[lsdr, kp1])
+                            VolNh4NContent[lsdr][kp1] += addamm / (self.cell_area[lsdr, kp1])
+                            VolUreaNContent[lsdr][kp1] += addnur / (self.cell_area[lsdr, kp1])
                         if ksdr > 0:
                             km1 = ksdr - 1  # column to the left of ksdr.
-                            self.cells[lsdr][km1].nitrate_nitrogen_content += addnit / (side_dressed_layer_depth * self._sim.column_width[km1])
-                            VolNh4NContent[lsdr][km1] += addamm / (side_dressed_layer_depth * self._sim.column_width[km1])
-                            VolUreaNContent[lsdr][km1] += addnur / (side_dressed_layer_depth * self._sim.column_width[km1])
+                            self.cells[lsdr][km1].nitrate_nitrogen_content += addnit / (self.cell_area[lsdr, km1])
+                            VolNh4NContent[lsdr][km1] += addamm / (self.cell_area[lsdr, km1])
+                            VolUreaNContent[lsdr][km1] += addnur / (self.cell_area[lsdr, km1])
                         if lsdr < nl - 1:
                             lp1 = lsdr + 1
                             area = self.cell_area[lp1, ksdr]
