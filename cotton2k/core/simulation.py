@@ -268,6 +268,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             "root_weights",
             "root_growth_factor",
             "root_weight_capable_uptake",
+            "soil_fresh_organic_matter",
             "soil_water_content",
         ):
             value = getattr(pre, attr)

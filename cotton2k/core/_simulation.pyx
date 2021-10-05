@@ -24,7 +24,6 @@ from .thermology import canopy_balance
 
 ctypedef struct cSoilCell:
     double nitrate_nitrogen_content  # volumetric nitrate nitrogen content of a soil cell, mg N cm-3.
-    double fresh_organic_matter  # fresh organic matter in the soil, mg / cm3.
 
 ctypedef struct cSoil:
     cSoilCell cells[40][20]
@@ -542,14 +541,6 @@ cdef class SoilCell:
     def nitrate_nitrogen_content(self, value):
         self._[0].nitrate_nitrogen_content = value
 
-    @property
-    def fresh_organic_matter(self):
-        return self._[0].fresh_organic_matter
-
-    @fresh_organic_matter.setter
-    def fresh_organic_matter(self, value):
-        self._[0].fresh_organic_matter = value
-
 
 cdef class NodeLeaf:
     cdef Leaf *_
@@ -983,6 +974,7 @@ cdef class State:
     cdef public numpy.ndarray fruiting_nodes_stage
     cdef public numpy.ndarray fruiting_nodes_ginning_percent
     cdef public numpy.ndarray soil_water_content  # volumetric water content of a soil cell, cm3 cm-3.
+    cdef public numpy.ndarray soil_fresh_organic_matter  # fresh organic matter in the soil, mg / cm3.
     cdef public object date
     cdef public object pollination_switch  # pollination switch: false = no pollination, true = yes.
     cdef public unsigned int seed_layer_number  # layer number where the seeds are located.
@@ -2501,7 +2493,7 @@ cdef class State:
         soil_temperature = self.soil_temperature[index]
         l, k = index
         water_content = self.soil_water_content[l, k]
-        fresh_organic_matter = self._.soil.cells[l][k].fresh_organic_matter
+        fresh_organic_matter = self.soil_fresh_organic_matter[l, k]
         # The following constant parameters are used:
         cdef double cak1 = 0.3416
         cdef double cak2 = 0.0776  # constant parameters for computing ak from organic carbon.
@@ -2542,7 +2534,7 @@ cdef class State:
         """
         l, k = index
         soil_temperature = self.soil_temperature[index]
-        fresh_organic_matter = self._.soil.cells[l][k].fresh_organic_matter
+        fresh_organic_matter = self.soil_fresh_organic_matter[index]
         nitrate_nitrogen_content = self._.soil.cells[l][k].nitrate_nitrogen_content
         water_content = self.soil_water_content[l, k]
         # The following constant parameters are used:
@@ -2600,7 +2592,7 @@ cdef class State:
             rnac1: float = VolNh4NContent[l][k] + nitrate_nitrogen_content - 2 * cparMinNH4
             immobilizationRateN = min(max(immobilizationRateN, 0), rnac1)
             # FreshOrganicMatter and FreshOrganicNitrogen (the N in it) are now updated.
-            fresh_organic_matter -= grossReleaseDW
+            self.soil_fresh_organic_matter[index] -= grossReleaseDW
             FreshOrganicNitrogen[l][k] += immobilizationRateN - grossReleaseN
         else:
             grossReleaseN = 0
@@ -3740,6 +3732,7 @@ cdef class State:
             if SaturatedHydCond[j] <= 0:
                 SaturatedHydCond[j] = condfc[j] / wcond(FieldCapacity[l], thad[l], thts[l], vanGenuchtenBeta[j], 1, 1)
         self.soil_water_content = np.zeros((40, 20), dtype=np.double)
+        self.soil_fresh_organic_matter = np.zeros((40, 20), dtype=np.double)
         # Loop for all soil layers. Compute depth from soil surface to the end of each layer.
         for l in range(40):
             sumdl = self.layer_depth_cumsum[l]
@@ -3780,7 +3773,7 @@ cdef class State:
             # potom is the proportion of readily mineralizable om. it is a function of soil depth (sumdl, in cm), modified from GOSSYM (where it probably includes the 0.4 factor for organic C in om).
             potom = max(0.0, 0.15125 - 0.02878 * log(sumdl))
             # FreshOrganicMatter is the readily mineralizable organic matter (= "fresh organic matter" in CERES models). HumusOrganicMatter is the remaining organic matter, which is mineralized very slowly.
-            self.cells[l][0].fresh_organic_matter = om * potom
+            self.soil_fresh_organic_matter[l, 0] = om * potom
             HumusOrganicMatter[l][0] = om * (1 - potom)
         # Since the initial value has been set for the first column only in each layer, these values are now assigned to all the other columns.
         for l in range(40):
@@ -3789,7 +3782,7 @@ cdef class State:
                 self.soil_water_content[l, k] = self.soil_water_content[l, 0]
                 self.cells[l][k].nitrate_nitrogen_content = self.cells[l][0].nitrate_nitrogen_content
                 VolNh4NContent[l][k] = VolNh4NContent[l][0]
-                self.cells[l][k].fresh_organic_matter = self.cells[l][0].fresh_organic_matter
+                self.soil_fresh_organic_matter[l, k] = self.soil_fresh_organic_matter[l, 0]
                 HumusOrganicMatter[l][k] = HumusOrganicMatter[l][0]
                 VolUreaNContent[l][k] = 0
         self.initialize_soil_temperature()
