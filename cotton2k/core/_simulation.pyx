@@ -116,7 +116,6 @@ cdef double PotGroAllBolls  # sum of potential growth rates of seedcotton in all
 cdef double PotGroAllBurrs  # sum of potential growth rates of burrs in all bolls, g plant-1 day-1.
 cdef NitrogenFertilizer NFertilizer[150]
 cdef int NumNitApps  # number of applications of nitrogen fertilizer.
-cdef double SoilPsi[40][20]  # matric water potential of a soil cell, bars.
 cdef double thts[40]  # saturated volumetric water content of each soil layer, cm3 cm-3.
 cdef double VolNh4NContent[40][20]  # volumetric ammonium nitrogen content of a soil cell, mg N cm-3.
 cdef double VolUreaNContent[40][20]  # volumetric urea nitrogen content of a soil cell, mg N cm-3.
@@ -893,6 +892,7 @@ cdef class State:
     cdef public numpy.ndarray soil_water_content  # volumetric water content of a soil cell, cm3 cm-3.
     cdef public numpy.ndarray soil_fresh_organic_matter  # fresh organic matter in the soil, mg / cm3.
     cdef public numpy.ndarray soil_nitrate_content  # volumetric nitrate nitrogen content of a soil cell, mg N cm-3.
+    cdef public numpy.ndarray soil_psi  # matric water potential of a soil cell, bars.
     cdef public object date
     cdef public object pollination_switch  # pollination switch: false = no pollination, true = yes.
     cdef public unsigned int seed_layer_number  # layer number where the seeds are located.
@@ -1318,7 +1318,7 @@ cdef class State:
         # Define te as soil temperature at seed location, C.
         cdef double psi  # matric soil moisture potential at seed location.
         cdef double te  # soil temperature at seed depth, C.
-        psi = SoilPsi[self.seed_layer_number][plant_row_column]
+        psi = self.soil_psi[self.seed_layer_number, plant_row_column]
         te = SoilTemp[self.seed_layer_number][plant_row_column] - 273.161
         te = max(te, 10)
 
@@ -1452,10 +1452,10 @@ cdef class State:
                     psinum += min(self.root_weight_capable_uptake[l, k], vpsil[11])
                     sumlv += min(self.root_weight_capable_uptake[l, k], vpsil[11]) * cmg
                     rootvol += self.layer_depth[l] * self._sim.column_width[k]
-                    if SoilPsi[l][k] <= vpsil[1]:
+                    if self.soil_psi[l, k] <= vpsil[1]:
                         rrl = vpsil[2] / cmg
                     else:
-                        rrl = (vpsil[3] - SoilPsi[l][k] * (vpsil[4] + vpsil[5] * SoilPsi[l][k])) / cmg
+                        rrl = (vpsil[3] - self.soil_psi[l, k] * (vpsil[4] + vpsil[5] * self.soil_psi[l, k])) / cmg
                     rrlsum += min(self.root_weight_capable_uptake[l, k], vpsil[11]) / rrl
                     vh2sum += self.soil_water_content[l, k] * min(self.root_weight_capable_uptake[l, k], vpsil[11])
         # Compute average root resistance (rroot) and average soil water content (vh2).
@@ -1756,8 +1756,8 @@ cdef class State:
                 if self.soil_water_content[l, k] >= PoreSpace[l]:
                     dthfac = dthmax
                 else:
-                    if i <= 1 and SoilPsi[l][k] <= psi0:
-                        dthfac += aa * (psi0 - SoilPsi[l][k])
+                    if i <= 1 and self.soil_psi[l, k] <= psi0:
+                        dthfac += aa * (psi0 - self.soil_psi[l, k])
                     if dthfac > dthmax:
                         dthfac = dthmax
                 result += self.root_weights[l][k][i] * dthfac
@@ -1961,12 +1961,12 @@ cdef class State:
                     rtimpdmin = min(rtimpd0, rtimpdkm1, rtimpdkp1, rtimpdlp1)  # minimum value of rtimpd
                     rtpct = SoilMechanicResistance(rtimpdmin)  # effect of soil mechanical resistance on root growth (returned from SoilMechanicResistance).
                     # effect of oxygen deficiency on root growth (returned from SoilAirOnRootGrowth).
-                    rtrdo = SoilAirOnRootGrowth(SoilPsi[l][k], PoreSpace[l], self.soil_water_content[l, k])
+                    rtrdo = SoilAirOnRootGrowth(self.soil_psi[l, k], PoreSpace[l], self.soil_water_content[l, k])
                     # effect of nitrate deficiency on root growth (returned from SoilNitrateOnRootGrowth).
                     rtrdn = SoilNitrateOnRootGrowth(self.soil_nitrate_content[l, k])
                     # The root growth resistance factor RootGroFactor(l,k), which can take a value between 0 and 1, is computed as the minimum of these resistance factors. It is further modified by multiplying it by the soil moisture function root_psi().
                     # Potential root growth PotGroRoots(l,k) in each cell is computed as a product of rtwtcg, rgfac, the temperature function temprg, and RootGroFactor(l,k). It is also multiplied by per_plant_area / 19.6, for the effect of plant population density on root growth: it is made comparable to a population of 5 plants per m in 38" rows.
-                    self.root_growth_factor[l, k] = root_psi(SoilPsi[l][k]) * min(rtrdo, rtpct, rtrdn)
+                    self.root_growth_factor[l, k] = root_psi(self.soil_psi[l, k]) * min(rtrdo, rtpct, rtrdn)
                     self._root_potential_growth[l][k] = rtwtcg * rgfac * temprg * self.root_growth_factor[l, k] * per_plant_area / 19.6
         return self._root_potential_growth.sum()
 
@@ -2622,7 +2622,7 @@ cdef class State:
         for l in range(40):
             j = SoilHorizonNum[l]  # the soil horizon number
             for k in range(20):
-                SoilPsi[l][k] = psiq(self.soil_water_content[l, k], thad[l], thts[l], alpha[j], vanGenuchtenBeta[j]) - PsiOsmotic(self.soil_water_content[l, k], thts[l], ElCondSatSoilToday)
+                self.soil_psi[l, k] = psiq(self.soil_water_content[l, k], thad[l], thts[l], alpha[j], vanGenuchtenBeta[j]) - PsiOsmotic(self.soil_water_content[l, k], thts[l], ElCondSatSoilToday)
 
         cdef double q01[40]  # one dimensional array of a layer or a column of previous values of cell.water_content.
         cdef double q1[40]  # one dimensional array of a layer or a column of cell.water_content.
@@ -2637,7 +2637,7 @@ cdef class State:
             for l in range(40):
                 q1[l] = self.soil_water_content[l, k]
                 q01[l] = self.soil_water_content[l, k]
-                psi1[l] = SoilPsi[l][k] + PsiOsmotic(self.soil_water_content[l, k], thts[l], ElCondSatSoilToday)
+                psi1[l] = self.soil_psi[l, k] + PsiOsmotic(self.soil_water_content[l, k], thts[l], ElCondSatSoilToday)
                 nit[l] = self.soil_nitrate_content[l, k]
                 nur[l] = VolUreaNContent[l][k]
                 _dl[l] = self.layer_depth[l]
@@ -2649,7 +2649,7 @@ cdef class State:
                 self.soil_water_content[l, k] = q1[l]
                 self.soil_nitrate_content[l, k] = nit[l]
                 VolUreaNContent[l][k] = nur[l]
-                SoilPsi[l][k] = psi1[l] - PsiOsmotic(self.soil_water_content[l, k], thts[l], ElCondSatSoilToday)
+                self.soil_psi[l, k] = psi1[l] - PsiOsmotic(self.soil_water_content[l, k], thts[l], ElCondSatSoilToday)
         cdef double pp1[40]  # one dimensional array of a layer or a column of PP.
         cdef double qr1[40]  # one dimensional array of a layer or a column of THAD.
         cdef double qs1[40]  # one dimensional array of a layer or a column of THTS.
@@ -2661,7 +2661,7 @@ cdef class State:
             for k in range(20):
                 q1[k] = self.soil_water_content[l, k]
                 q01[k] = self.soil_water_content[l, k]
-                psi1[k] = SoilPsi[l][k] + PsiOsmotic(self.soil_water_content[l, k], thts[l], ElCondSatSoilToday)
+                psi1[k] = self.soil_psi[l][k] + PsiOsmotic(self.soil_water_content[l, k], thts[l], ElCondSatSoilToday)
                 qr1[k] = thad[l]
                 qs1[k] = thts[l]
                 pp1[k] = PoreSpace[l]
@@ -2674,7 +2674,7 @@ cdef class State:
             # Reassign the updated values of q1, nit, nur and psi1 back to cell.water_content, VolNo3NContent, VolUreaNContent and SoilPsi.
             for k in range(20):
                 self.soil_water_content[l, k] = q1[k]
-                SoilPsi[l][k] = psi1[k] - PsiOsmotic(self.soil_water_content[l, k], thts[l], ElCondSatSoilToday)
+                self.soil_psi[l][k] = psi1[k] - PsiOsmotic(self.soil_water_content[l, k], thts[l], ElCondSatSoilToday)
                 self.soil_nitrate_content[l, k] = nit[k]
                 VolUreaNContent[l][k] = nur[k]
         # Call drain to move excess water down in the column and compute drainage out of the column. Update cumulative drainage.
@@ -2684,7 +2684,7 @@ cdef class State:
         for l in range(40):
             j = SoilHorizonNum[l]
             for k in range(20):
-                SoilPsi[l][k] = psiq(self.soil_water_content[l, k], thad[l], thts[l], alpha[j], vanGenuchtenBeta[j]) - PsiOsmotic(self.soil_water_content[l, k], thts[l], ElCondSatSoilToday)
+                self.soil_psi[l][k] = psiq(self.soil_water_content[l, k], thad[l], thts[l], alpha[j], vanGenuchtenBeta[j]) - PsiOsmotic(self.soil_water_content[l, k], thts[l], ElCondSatSoilToday)
 
     def drain(self) -> float:
         """the gravity flow of water in the slab, and returns the drainage of water out of the slab. It is called from capillary_flow()."""
@@ -3260,7 +3260,7 @@ cdef class State:
         for l in range(40):
             j = SoilHorizonNum[l]
             for k in range(20):
-                SoilPsi[l][k] = (
+                self.soil_psi[l, k] = (
                     psiq(self.soil_water_content[l, k], thad[l], thts[l], alpha[j], vanGenuchtenBeta[j])
                     - PsiOsmotic(self.soil_water_content[l, k], thts[l], ElCondSatSoilToday)
                 )

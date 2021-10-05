@@ -273,6 +273,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             "root_weight_capable_uptake",
             "soil_fresh_organic_matter",
             "soil_nitrate_content",
+            "soil_psi",
             "soil_water_content",
         ):
             value = getattr(pre, attr)
@@ -351,6 +352,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
         state0.fruiting_nodes_boll_potential_growth = np.zeros(
             (3, 30, 5), dtype=np.double
         )
+        state0.soil_psi = np.zeros((40, 20), dtype=np.double)
         self._current_state = state0
         super()._init_state()
         self.states = [State(state0, self)]
