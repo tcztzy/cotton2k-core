@@ -31,7 +31,6 @@ ctypedef struct SquareStruct:
     double potential_growth  # potential growth in weight of an individual fruiting node squares, g day-1.
     double weight  # weight of each square, g per plant.
 ctypedef struct cBoll:
-    double age  # age of each boll, physiological days from flowering.
     double potential_growth  # potential growth in weight of an individual fruiting node bolls, g day-1.
 ctypedef struct cBurr:
     double potential_growth  # potential growth rate of burrs in an individual boll, g day-1.
@@ -579,14 +578,6 @@ cdef class Boll:
     cdef unsigned int m
 
     @property
-    def age(self):
-        return self._[0].age
-
-    @age.setter
-    def age(self, value):
-        self._[0].age = value
-
-    @property
     def potential_growth(self):
         return self._[0].potential_growth
 
@@ -924,6 +915,7 @@ cdef class State:
     cdef public numpy.ndarray root_weight_capable_uptake  # root weight capable of uptake, in g per soil cell.
     cdef public numpy.ndarray fruiting_nodes_age  # age of each fruiting site, physiological days from square initiation.
     cdef public numpy.ndarray fruiting_nodes_average_temperature  # running average temperature of each node.
+    cdef public numpy.ndarray fruiting_nodes_boll_age  # age of each boll, physiological days from flowering.
     cdef public numpy.ndarray fruiting_nodes_boll_weight  # weight of seedcotton for each site, g per plant.
     cdef public numpy.ndarray fruiting_nodes_fraction  # fraction of fruit remaining at each fruiting site (0 to 1).
     cdef public numpy.ndarray fruiting_nodes_stage
@@ -2267,22 +2259,22 @@ cdef class State:
             # Total shedding ratio (shedt) is a product of the effects of carbohydrate stress and nitrogen stress.
             shedt = 1 - (1 - ShedByCarbonStress[lt]) * (1 - ShedByNitrogenStress[lt])
         # (2) Very young bolls (FruitingCode = 7, and AgeOfBoll less than VarPar[47]).
-        elif self.fruiting_nodes_stage[k, l, m] == Stage.YoungGreenBoll and site.boll.age <= VarPar[47]:
+        elif self.fruiting_nodes_stage[k, l, m] == Stage.YoungGreenBoll and self.fruiting_nodes_boll_age[k, l, m] <= VarPar[47]:
             # There is a constant probability of shedding (VarPar[48]), and shedt is a product of the effects carbohydrate, and nitrogen stresses. Note that nitrogen stress has only a partial effect in this case, as modified by vabsc[2].
             pabs = VarPar[48]
             shedt = 1 - (1 - ShedByCarbonStress[lt]) * (1 - vabsc[2] * ShedByNitrogenStress[lt])
         # (3) Medium age bolls (AgeOfBoll between VarPar[47] and VarPar[47] + VarPar[49]).
-        elif VarPar[47] < site.boll.age <= (VarPar[47] + VarPar[49]):
+        elif VarPar[47] < self.fruiting_nodes_boll_age[k, l, m] <= (VarPar[47] + VarPar[49]):
             # pabs is linearly decreasing with age, and shedt is a product of the effects carbohydrate, nitrogen and water stresses.  Note that nitrogen stress has only a partial effect in this case, as modified by vabsc[4].
-            pabs = VarPar[48] - (VarPar[48] - VarPar[50]) * (site.boll.age - VarPar[47]) / VarPar[49]
+            pabs = VarPar[48] - (VarPar[48] - VarPar[50]) * (self.fruiting_nodes_boll_age[k, l, m] - VarPar[47]) / VarPar[49]
             shedt = 1 - (1 - ShedByCarbonStress[lt]) * (1 - vabsc[4] * ShedByNitrogenStress[lt]) * (1 - ShedByWaterStress[lt])
         # (4) Older bolls (AgeOfBoll between VarPar[47] + VarPar[49] and VarPar[47] + 2*VarPar[49]).
-        elif (VarPar[47] + VarPar[49]) < site.boll.age <= (VarPar[47] + 2 * VarPar[49]):
+        elif (VarPar[47] + VarPar[49]) < self.fruiting_nodes_boll_age[k, l, m] <= (VarPar[47] + 2 * VarPar[49]):
             # pabs is linearly decreasing with age, and shedt is affected only by water stress.
-            pabs = VarPar[50] / VarPar[49] * (VarPar[47] + 2 * VarPar[49] - site.boll.age)
+            pabs = VarPar[50] / VarPar[49] * (VarPar[47] + 2 * VarPar[49] - self.fruiting_nodes_boll_age[k, l, m])
             shedt = ShedByWaterStress[lt]
         # (5) bolls older than VarPar[47] + 2*VarPar[49]
-        elif site.boll.age > (VarPar[47] + 2 * VarPar[49]):
+        elif self.fruiting_nodes_boll_age[k, l, m] > (VarPar[47] + 2 * VarPar[49]):
             pabs = 0  # no abscission
         # Actual abscission of tagged sites (abscissionRatio) is a product of pabs, shedt and DayInc for this day. It can not be greater than 1.
         return min(pabs * shedt * self.day_inc, 1)
@@ -4074,7 +4066,6 @@ cdef class Simulation:
                             weight=0,
                         ),
                         boll=dict(
-                            age=0,
                             potential_growth=0,
                         ),
                         burr=dict(
@@ -4618,14 +4609,14 @@ cdef class Simulation:
                     #    ratebol = 4 * rbmax * pex / (1. + pex)**2
                     elif state.fruiting_nodes_stage[k, l, m] in [Stage.YoungGreenBoll, Stage.GreenBoll]:
                         # pex is an intermediate variable to compute boll growth.
-                        pex = exp(-4 * rbmax * (state.vegetative_branches[k].fruiting_branches[l].nodes[m].boll.age - agemax) / wbmax)
+                        pex = exp(-4 * rbmax * (state.fruiting_nodes_boll_age[k, l, m] - agemax) / wbmax)
                         # ratebol is the rate of boll (seed and lint) growth, g per boll per day.
                         ratebol = 4 * tfrt * rbmax * pex / (1 + pex) ** 2
                         # Potential growth rate of the burrs is assumed to be constant (vpotfrt[4] g dry weight per day) until the boll reaches its final volume. This occurs at the age of 22 physiological days in 'Acala-SJ2'. Both ratebol and ratebur are modified by temperature (tfrt) and ratebur is also affected by water stress (wfdb).
                         # Compute wfdb for the effect of water stress on burr growth rate. wfdb is the effect of water stress on rate of burr growth.
                         wfdb = min(max(vpotfrt[0] + vpotfrt[1] * state.water_stress, 0), 1)
                         ratebur = None  # rate of burr growth, g per boll per day.
-                        if state.vegetative_branches[k].fruiting_branches[l].nodes[m].boll.age >= 22:
+                        if state.fruiting_nodes_boll_age[k, l, m] >= 22:
                             ratebur = 0
                         else:
                             ratebur = vpotfrt[4] * tfrt * wfdb

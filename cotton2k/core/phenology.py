@@ -56,6 +56,7 @@ class Phenology:
     fruiting_nodes_age: npt.NDArray[np.double]
     fruiting_nodes_average_temperature: npt.NDArray[np.double]
     fruiting_nodes_boll_cumulative_temperature: npt.NDArray[np.double]
+    fruiting_nodes_boll_age: npt.NDArray[np.double]
     fruiting_nodes_boll_weight: npt.NDArray[np.double]
     fruiting_nodes_fraction: npt.NDArray[np.double]
     fruiting_nodes_ginning_percent: npt.NDArray[np.double]
@@ -276,7 +277,7 @@ class Phenology:
                 self.fruiting_nodes_boll_cumulative_temperature[
                     k, l, m
                 ] = self.average_temperature
-                site.boll.age = self.day_inc
+                self.fruiting_nodes_boll_age[k, l, m] = self.day_inc
                 self.fruiting_nodes_stage[k, l, m] = Stage.YoungGreenBoll
                 self.new_boll_formation(site)
                 # If this is the first flower, define FirstBloom.
@@ -303,15 +304,16 @@ class Phenology:
                 + vfrsite[10] * (1 - self.nitrogen_stress_fruiting)
             )
             self.fruiting_nodes_boll_cumulative_temperature[k, l, m] = (
-                self.fruiting_nodes_boll_cumulative_temperature[k, l, m] * site.boll.age
+                self.fruiting_nodes_boll_cumulative_temperature[k, l, m]
+                * self.fruiting_nodes_boll_age[k, l, m]
                 + self.average_temperature * dagebol
-            ) / (site.boll.age + dagebol)
-            site.boll.age += dagebol
+            ) / (self.fruiting_nodes_boll_age[k, l, m] + dagebol)
+            self.fruiting_nodes_boll_age[k, l, m] += dagebol
         # if this node is a young green boll (Stage.YoungGreenBoll):
         # Check boll age and after a fixed age convert it to an "old" green boll
         # (Stage.GreenBoll).
         if self.fruiting_nodes_stage[k, l, m] == Stage.YoungGreenBoll:
-            if site.boll.age >= vfrsite[9]:
+            if self.fruiting_nodes_boll_age[k, l, m] >= vfrsite[9]:
                 self.fruiting_nodes_stage[k, l, m] = Stage.GreenBoll
             return None
         if self.fruiting_nodes_stage[k, l, m] == Stage.GreenBoll:
@@ -647,7 +649,7 @@ class Phenology:
             fdhslai = ddpar2 + self.leaf_area_index * (1 - ddpar2) / ddpar1
             fdhslai = min(max(fdhslai, 0), 1)
             dehiss *= fdhslai
-        if site.boll.age < dehiss:
+        if self.fruiting_nodes_boll_age[site_index] < dehiss:
             return
         # If green boll is old enough (AgeOfBoll greater than dehiss), make it an open
         # boll, set stage to MatureBoll, and update boll and burr weights.

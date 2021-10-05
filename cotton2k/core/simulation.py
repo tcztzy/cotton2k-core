@@ -262,6 +262,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             # ndarrays
             "fruiting_nodes_age",
             "fruiting_nodes_average_temperature",
+            "fruiting_nodes_boll_age",
             "fruiting_nodes_boll_weight",
             "fruiting_nodes_fraction",
             "fruiting_nodes_ginning_percent",
@@ -341,12 +342,14 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
                 )
 
     def initialize_state0(self):
-        self._current_state = CyState(self, self.version)
-        self._current_state.fruiting_nodes_average_temperature = np.zeros(
+        state0 = CyState(self, self.version)
+        state0.fruiting_nodes_average_temperature = np.zeros(
             (3, 30, 5), dtype=np.double
         )
+        state0.fruiting_nodes_boll_age = np.zeros((3, 30, 5), dtype=np.double)
+        self._current_state = state0
         super()._init_state()
-        self.states = [State(self._current_state, self)]
+        self.states = [State(state0, self)]
 
     def read_input(
         self, agricultural_inputs=None, **kwargs
