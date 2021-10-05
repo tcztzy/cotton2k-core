@@ -261,6 +261,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             "total_required_nitrogen",
             # ndarrays
             "fruiting_nodes_age",
+            "fruiting_nodes_average_temperature",
             "fruiting_nodes_boll_weight",
             "fruiting_nodes_fraction",
             "fruiting_nodes_ginning_percent",
@@ -341,6 +342,9 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
 
     def initialize_state0(self):
         self._current_state = CyState(self, self.version)
+        self._current_state.fruiting_nodes_average_temperature = np.zeros(
+            (3, 30, 5), dtype=np.double
+        )
         super()._init_state()
         self.states = [State(self._current_state, self)]
 

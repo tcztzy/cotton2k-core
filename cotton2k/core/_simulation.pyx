@@ -40,7 +40,6 @@ ctypedef struct cPetiole:
     double potential_growth  # potential growth in weight of an individual fruiting node petiole, g day-1.
     double weight  # petiole weight at each fruiting site, g.
 ctypedef struct FruitingSite:
-    double average_temperature  # running average temperature of each node.
     Leaf leaf
     SquareStruct square
     cBoll boll
@@ -677,14 +676,6 @@ cdef class FruitingNode:
     cdef public Petiole petiole
 
     @property
-    def average_temperature(self):
-        return self._[0].average_temperature
-
-    @average_temperature.setter
-    def average_temperature(self, value):
-        self._[0].average_temperature = value
-
-    @property
     def leaf(self):
         return NodeLeaf.from_ptr(&self._.leaf)
 
@@ -932,6 +923,7 @@ cdef class State:
     cdef public numpy.ndarray root_weights
     cdef public numpy.ndarray root_weight_capable_uptake  # root weight capable of uptake, in g per soil cell.
     cdef public numpy.ndarray fruiting_nodes_age  # age of each fruiting site, physiological days from square initiation.
+    cdef public numpy.ndarray fruiting_nodes_average_temperature  # running average temperature of each node.
     cdef public numpy.ndarray fruiting_nodes_boll_weight  # weight of seedcotton for each site, g per plant.
     cdef public numpy.ndarray fruiting_nodes_fraction  # fraction of fruit remaining at each fruiting site (0 to 1).
     cdef public numpy.ndarray fruiting_nodes_stage
@@ -4071,7 +4063,6 @@ cdef class Simulation:
                 )
                 for m in range(5):
                     state0._.vegetative_branches[k].fruiting_branches[l].nodes[m] = dict(
-                        average_temperature=0,
                         leaf=dict(
                             age=0,
                             potential_growth=0,

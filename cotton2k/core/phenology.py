@@ -54,6 +54,7 @@ class Phenology:
     date: datetime.date
     day_inc: float
     fruiting_nodes_age: npt.NDArray[np.double]
+    fruiting_nodes_average_temperature: npt.NDArray[np.double]
     fruiting_nodes_boll_cumulative_temperature: npt.NDArray[np.double]
     fruiting_nodes_boll_weight: npt.NDArray[np.double]
     fruiting_nodes_fraction: npt.NDArray[np.double]
@@ -259,8 +260,9 @@ class Phenology:
             ageinc -= min(vfrsite[6] * (max_temperature - vfrsite[4]), vfrsite[5])
         ageinc = max(ageinc, vfrsite[7])
         # Compute average temperature of this site since formation.
-        site.average_temperature = (
-            site.average_temperature * self.fruiting_nodes_age[k, l, m]
+        self.fruiting_nodes_average_temperature[k, l, m] = (
+            self.fruiting_nodes_average_temperature[k, l, m]
+            * self.fruiting_nodes_age[k, l, m]
             + self.average_temperature * ageinc
         ) / (self.fruiting_nodes_age[k, l, m] + ageinc)
         # Update the age of this node, AgeOfSite(k,l,m), by adding ageinc.
@@ -329,10 +331,11 @@ class Phenology:
         if self.number_of_vegetative_branches == 3:
             return
         # TimeToNextVegBranch is computed as a function of this average temperature.
-        node = self.vegetative_branches[-1].fruiting_branches[0].nodes[0]
         # time, in physiological days, for the next vegetative branch to be formed.
         TimeToNextVegBranch = np.polynomial.Polynomial([13.39, -0.696, 0.012])(
-            node.average_temperature
+            self.fruiting_nodes_average_temperature[
+                self.number_of_vegetative_branches - 1, 0, 0
+            ]
         )
         # Compare the age of the first fruiting site of the last formed vegetative
         # branch with TimeToNextVegBranch plus DaysTo1stSqare and the delays caused by
@@ -379,7 +382,9 @@ class Phenology:
         self.stem_nitrogen -= addlfn
         # Assign the initial value of the average temperature of the first site.
         # Define initial NumFruitBranches and NumNodes for the new vegetative branch.
-        vb.fruiting_branches[0].nodes[0].average_temperature = self.average_temperature
+        self.fruiting_nodes_average_temperature[
+            self.number_of_vegetative_branches, 0, 0
+        ] = self.average_temperature
         vb.number_of_fruiting_branches = 1
         vb.fruiting_branches[0].number_of_fruiting_nodes = 1
         # When a new vegetative branch is formed, increase NumVegBranches by 1.
@@ -415,9 +420,13 @@ class Phenology:
 
         # It is different for the main stem (k = 0) than for the other vegetative
         # branches. TimeToNextFruNode is modified for plant density.
-        last_fruiting_branch = vb.fruiting_branches[-1]
         # modified average daily temperature.
-        tav = min(last_fruiting_branch.nodes[0].average_temperature, vfrtbr[2])
+        tav = min(
+            self.fruiting_nodes_average_temperature[
+                k, vb.number_of_fruiting_branches - 1, 0
+            ],
+            vfrtbr[2],
+        )
         # TimeToNextFruBranch is the time, in physiological days, for the next fruiting
         # branch to be formed.
         # Add DelayNewFruBranch to TimeToNextFruNode.
@@ -479,7 +488,7 @@ class Phenology:
         self.stem_nitrogen -= addlfn
         # Begin computing AvrgNodeTemper of the new node and assign zero to
         # DelayNewFruBranch.
-        new_node.average_temperature = self.average_temperature
+        self.fruiting_nodes_average_temperature[k, l, 0] = self.average_temperature
         self.delay_of_new_fruiting_branch[k] = 0
 
     def add_fruiting_node(self, k, l, stemNRatio, density_factor, var34, var36, var37):
@@ -500,7 +509,7 @@ class Phenology:
             fb.number_of_fruiting_nodes - 1
         )  # the number of the last node on this fruiting branche.
         tav = min(
-            fb.nodes[nnid].average_temperature,
+            self.fruiting_nodes_average_temperature[k, l, nnid],
             vfrtnod[2],
         )  # modified daily average temperature.
 
@@ -552,7 +561,9 @@ class Phenology:
         self.stem_nitrogen -= leaf_weight * stemNRatio
         # Begin computing AvrgNodeTemper of the new node, and assign zero to
         # DelayNewNode.
-        node.average_temperature = self.average_temperature
+        self.fruiting_nodes_average_temperature[
+            k, l, nnid + 1
+        ] = self.average_temperature
         fb.delay_for_new_node = 0
 
     def create_first_square(self, stemNRatio, first_square_leaf_area):
@@ -581,7 +592,7 @@ class Phenology:
         self.leaf_weight += leaf_weight
         self.leaf_nitrogen += leaf_weight * stemNRatio
         self.stem_nitrogen -= leaf_weight * stemNRatio
-        first_node.average_temperature = self.average_temperature
+        self.fruiting_nodes_average_temperature[0, 0, 0] = self.average_temperature
         # Define the initial values of NumFruitBranches, NumNodes,
         # self.fruit_growth_ratio, and AvrgNodeTemper.
         self.fruit_growth_ratio = 1
