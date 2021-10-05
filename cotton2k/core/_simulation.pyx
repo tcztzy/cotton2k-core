@@ -30,8 +30,6 @@ ctypedef struct Leaf:
 ctypedef struct SquareStruct:
     double potential_growth  # potential growth in weight of an individual fruiting node squares, g day-1.
     double weight  # weight of each square, g per plant.
-ctypedef struct cBoll:
-    double potential_growth  # potential growth in weight of an individual fruiting node bolls, g day-1.
 ctypedef struct cBurr:
     double potential_growth  # potential growth rate of burrs in an individual boll, g day-1.
     double weight  # weight of burrs for each site, g per plant.
@@ -41,7 +39,6 @@ ctypedef struct cPetiole:
 ctypedef struct FruitingSite:
     Leaf leaf
     SquareStruct square
-    cBoll boll
     cBurr burr
     cPetiole petiole
 
@@ -571,30 +568,6 @@ cdef class Petiole:
         return petiole
 
 
-cdef class Boll:
-    cdef cBoll *_
-    cdef unsigned int k
-    cdef unsigned int l
-    cdef unsigned int m
-
-    @property
-    def potential_growth(self):
-        return self._[0].potential_growth
-
-    @potential_growth.setter
-    def potential_growth(self, value):
-        self._[0].potential_growth = value
-
-    @staticmethod
-    cdef Boll from_ptr(cBoll *_ptr, unsigned int k, unsigned int l, unsigned int m):
-        cdef Boll boll = Boll.__new__(Boll)
-        boll._ = _ptr
-        boll.k = k
-        boll.l = l
-        boll.m = m
-        return boll
-
-
 cdef class Burr:
     cdef cBurr *_
     cdef unsigned int k
@@ -669,10 +642,6 @@ cdef class FruitingNode:
     @property
     def leaf(self):
         return NodeLeaf.from_ptr(&self._.leaf)
-
-    @property
-    def boll(self):
-        return Boll.from_ptr(&self._[0].boll, self.k, self.l, self.m)
 
     @property
     def burr(self):
@@ -916,6 +885,7 @@ cdef class State:
     cdef public numpy.ndarray fruiting_nodes_age  # age of each fruiting site, physiological days from square initiation.
     cdef public numpy.ndarray fruiting_nodes_average_temperature  # running average temperature of each node.
     cdef public numpy.ndarray fruiting_nodes_boll_age  # age of each boll, physiological days from flowering.
+    cdef public numpy.ndarray fruiting_nodes_boll_potential_growth  # potential growth in weight of an individual fruiting node bolls, g day-1.
     cdef public numpy.ndarray fruiting_nodes_boll_weight  # weight of seedcotton for each site, g per plant.
     cdef public numpy.ndarray fruiting_nodes_fraction  # fraction of fruit remaining at each fruiting site (0 to 1).
     cdef public numpy.ndarray fruiting_nodes_stage
@@ -1594,7 +1564,7 @@ cdef class State:
                     # If this site is a green boll, the actual dry weight added to seedcotton and burrs is proportional to their respective potential growth.
                     if self.fruiting_nodes_stage[k, l, m] in [Stage.GreenBoll, Stage.YoungGreenBoll]:
                         # dry weight added to seedcotton in a boll.
-                        dwboll = site.boll.potential_growth * self.fruit_growth_ratio
+                        dwboll = self.fruiting_nodes_boll_potential_growth[k, l, m] * self.fruit_growth_ratio
                         self.fruiting_nodes_boll_weight[k, l, m] += dwboll
                         self.actual_boll_growth += dwboll
                         self.green_bolls_weight += self.fruiting_nodes_boll_weight[k, l, m]
@@ -4065,9 +4035,6 @@ cdef class Simulation:
                             potential_growth=0,
                             weight=0,
                         ),
-                        boll=dict(
-                            potential_growth=0,
-                        ),
                         burr=dict(
                             potential_growth=0,
                             weight=0,
@@ -4621,15 +4588,15 @@ cdef class Simulation:
                         else:
                             ratebur = vpotfrt[4] * tfrt * wfdb
                         # Potential boll (seeds and lint) growth rate (ratebol) and potential burr growth rate (ratebur) are multiplied by FruitFraction to compute PotGroBolls and PotGroBurrs for node (k,l,m).
-                        state.vegetative_branches[k].fruiting_branches[l].nodes[m].boll.potential_growth = ratebol * state.fruiting_nodes_fraction[k, l, m]
+                        state.fruiting_nodes_boll_potential_growth[k, l, m] = ratebol * state.fruiting_nodes_fraction[k, l, m]
                         state.vegetative_branches[k].fruiting_branches[l].nodes[m].burr.potential_growth = ratebur * state.fruiting_nodes_fraction[k, l, m]
                         # Sum potential growth rates of bolls and burrs as PotGroAllBolls and PotGroAllBurrs, respectively.
-                        PotGroAllBolls += state.vegetative_branches[k].fruiting_branches[l].nodes[m].boll.potential_growth
+                        PotGroAllBolls += state.fruiting_nodes_boll_potential_growth[k, l, m]
                         PotGroAllBurrs += state.vegetative_branches[k].fruiting_branches[l].nodes[m].burr.potential_growth
 
                     # If these are not green bolls, their potential growth is 0. End loop.
                     else:
-                        state.vegetative_branches[k].fruiting_branches[l].nodes[m].boll.potential_growth = 0
+                        state.fruiting_nodes_boll_potential_growth[k, l, m] = 0
                         state.vegetative_branches[k].fruiting_branches[l].nodes[m].burr.potential_growth = 0
 
     def _potential_leaf_growth(self, u):

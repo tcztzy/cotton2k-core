@@ -263,6 +263,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             "fruiting_nodes_age",
             "fruiting_nodes_average_temperature",
             "fruiting_nodes_boll_age",
+            "fruiting_nodes_boll_potential_growth",
             "fruiting_nodes_boll_weight",
             "fruiting_nodes_fraction",
             "fruiting_nodes_ginning_percent",
@@ -347,6 +348,9 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             (3, 30, 5), dtype=np.double
         )
         state0.fruiting_nodes_boll_age = np.zeros((3, 30, 5), dtype=np.double)
+        state0.fruiting_nodes_boll_potential_growth = np.zeros(
+            (3, 30, 5), dtype=np.double
+        )
         self._current_state = state0
         super()._init_state()
         self.states = [State(state0, self)]
