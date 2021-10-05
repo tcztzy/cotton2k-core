@@ -1295,14 +1295,10 @@ cdef class State:
 
     def roots_capable_of_uptake(self):
         """This function computes the weight of roots capable of uptake for all soil cells."""
-        cuind = [1, 0.5, 0]  # the indices for the relative capability of uptake (between 0 and 1) of water and nutrients by root age classes.
-        self.root_weight_capable_uptake[:] = 0
-        # Loop for all soil soil cells with roots. compute for each soil cell root-weight capable of uptake (RootWtCapblUptake) as the sum of products of root weight and capability of uptake index (cuind) for each root class in it.
-        for l in range(40):
-            for k in range(20):
-                for i in range(3):
-                    if self.root_weights[l, k, i] > 1e-15:
-                        self.root_weight_capable_uptake[l, k] += self.root_weights[l, k, i] * cuind[i]
+        cuind = np.array((1, 0.5, 0))  # the indices for the relative capability of uptake (between 0 and 1) of water and nutrients by root age classes.
+        weights = self.root_weights * cuind
+        weights[self.root_weights <= 1e-15] = 0
+        self.root_weight_capable_uptake = weights.sum(axis=2)
 
     def predict_emergence(self, plant_date, hour, plant_row_column):
         """This function predicts date of emergence."""
