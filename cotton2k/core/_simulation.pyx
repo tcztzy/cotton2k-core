@@ -3512,25 +3512,6 @@ cdef class State:
             )))
     #end soil
 
-    #begin climate
-    def calculate_average_temperatures(self):
-        self.average_temperature = 0
-        self.daytime_temperature = 0
-        self.nighttime_temperature = 0
-        night_hours = 0
-        for hour in self.hours:
-            if hour.radiation <= 0:
-                night_hours += 1
-                self.nighttime_temperature += hour.temperature
-            else:
-                self.daytime_temperature += hour.temperature
-            self.average_temperature += hour.temperature
-        if night_hours == 0 or night_hours == 24:
-            raise RuntimeError("Plant cotton in polar region?")
-        self.average_temperature /= 24
-        self.nighttime_temperature /= night_hours
-        self.daytime_temperature /= (24 - night_hours)
-
     def initialize_soil_data(self):
         """Computes and sets the initial soil data. It is executed once at the beginning of the simulation, after the soil hydraulic data file has been read. It is called by ReadInput()."""
         global SoilHorizonNum

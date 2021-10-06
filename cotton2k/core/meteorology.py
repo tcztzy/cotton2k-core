@@ -757,6 +757,24 @@ class Meteorology:  # pylint: disable=E1101,R0914,W0201
             + (sst - tomorrow["tmin"]) * exp((suns - ti) / tcoef)
         ) / (1 - exp((self.day_length - 24) / tcoef))
 
+    def calculate_average_temperatures(self):
+        self.average_temperature = 0
+        self.daytime_temperature = 0
+        self.nighttime_temperature = 0
+        night_hours = 0
+        for hour in self.hours:
+            if hour.radiation <= 0:
+                night_hours += 1
+                self.nighttime_temperature += hour.temperature
+            else:
+                self.daytime_temperature += hour.temperature
+            self.average_temperature += hour.temperature
+        if night_hours in (0, 24):
+            raise RuntimeError("Plant cotton in polar region?")
+        self.average_temperature /= 24
+        self.nighttime_temperature /= night_hours
+        self.daytime_temperature /= 24 - night_hours
+
     def compute_evapotranspiration(self, declination, tmpisr):
         """computes the rate of reference evapotranspiration and related variables."""
         stefb: np.float64 = 5.77944e-08  # the Stefan-Boltzman constant, in W m-2 K-4
