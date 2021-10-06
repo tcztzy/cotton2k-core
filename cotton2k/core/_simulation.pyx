@@ -894,7 +894,6 @@ cdef class State:
     cdef public numpy.ndarray soil_nitrate_content  # volumetric nitrate nitrogen content of a soil cell, mg N cm-3.
     cdef public numpy.ndarray soil_psi  # matric water potential of a soil cell, bars.
     cdef public object date
-    cdef public object pollination_switch  # pollination switch: false = no pollination, true = yes.
     cdef public unsigned int seed_layer_number  # layer number where the seeds are located.
     cdef public unsigned int taproot_layer_number  # last soil layer with taproot.
     cdef public unsigned int year
@@ -1002,6 +1001,16 @@ cdef class State:
             # add the hourly contribution to physiological age.
             dayfd += min(max((hour.temperature - p1) / p2, 0), p3)
         return dayfd / 24.0
+
+    @property
+    def rain(self):
+        return self.meteor[self.date]["rain"]
+
+    @property
+    def pollination_switch(self):
+        """pollination switch: false = no pollination, true = yes."""
+        # Set 'pollination switch' for rainy days (as in GOSSYM).
+        return self.rain < 2.5
 
     @property
     def solar_noon(self):
