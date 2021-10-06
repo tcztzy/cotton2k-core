@@ -1252,11 +1252,7 @@ cdef class State:
             self.hypocotyl_length = 0.3
             self.seed_moisture = 8
             # Compute soil layer number for seed depth.
-            sumdl = 0  # depth to the bottom of a soil layer.
-            for l, sumdl in enumerate(self.layer_depth_cumsum):
-                if sumdl >= dpl:
-                    self.seed_layer_number = l
-                    break
+            self.seed_layer_number = np.searchsorted(self.layer_depth_cumsum, dpl)
         # Compute matric soil moisture potential at seed location.
         # Define te as soil temperature at seed location, C.
         cdef double psi  # matric soil moisture potential at seed location.
