@@ -23,7 +23,6 @@ from .utils import date2doy, doy2date
 from .thermology import canopy_balance
 
 ctypedef struct Leaf:
-    double potential_growth  # potential growth in area of an individual fruiting node leaf, dm2 day-1.
     double area  # leaf area at each fruiting site, dm2.
     double weight  # leaf weight at each fruiting site, g.
 ctypedef struct SquareStruct:
@@ -507,14 +506,6 @@ cdef class NodeLeaf:
         self._[0].area = value
 
     @property
-    def potential_growth(self):
-        return self._[0].potential_growth
-
-    @potential_growth.setter
-    def potential_growth(self, value):
-        self._[0].potential_growth = value
-
-    @property
     def weight(self):
         return self._[0].weight
 
@@ -870,6 +861,7 @@ cdef class State:
     cdef public numpy.ndarray root_weights
     cdef public numpy.ndarray root_weight_capable_uptake  # root weight capable of uptake, in g per soil cell.
     cdef public numpy.ndarray node_leaf_age  # leaf age at each fruiting site, physiological days.
+    cdef public numpy.ndarray node_leaf_area_potential_growth  # potential growth in area of an individual fruiting node leaf, dm2 day-1.
     cdef public numpy.ndarray fruiting_nodes_age  # age of each fruiting site, physiological days from square initiation.
     cdef public numpy.ndarray fruiting_nodes_average_temperature  # running average temperature of each node.
     cdef public numpy.ndarray fruiting_nodes_boll_age  # age of each boll, physiological days from flowering.
@@ -1513,11 +1505,11 @@ cdef class State:
                 # Compute total leaf weight (state.leaf_weight), total petiole weight (PetioleWeightNodes) .
                 for m in range(self._.vegetative_branches[k].fruiting_branches[l].number_of_fruiting_nodes):  # loop of nodes on a fruiting branch
                     site = self.vegetative_branches[k].fruiting_branches[l].nodes[m]
-                    site.leaf.weight += site.leaf.potential_growth * self.leaf_weight_area_ratio * vratio
+                    site.leaf.weight += self.node_leaf_area_potential_growth[k, l, m] * self.leaf_weight_area_ratio * vratio
                     self.leaf_weight += site.leaf.weight
                     site.petiole.weight += site.petiole.potential_growth * vratio
                     self.petiole_weight += site.petiole.weight
-                    site.leaf.area += site.leaf.potential_growth * vratio
+                    site.leaf.area += self.node_leaf_area_potential_growth[k, l, m] * vratio
 
     def actual_fruit_growth(self):
         """This function simulates the actual growth of squares and bolls of cotton plants."""
@@ -3893,7 +3885,6 @@ cdef class Simulation:
                 for m in range(5):
                     state0._.vegetative_branches[k].fruiting_branches[l].nodes[m] = dict(
                         leaf=dict(
-                            potential_growth=0,
                             area=0,
                             weight=0,
                         ),
@@ -4429,7 +4420,7 @@ cdef class Simulation:
                 cc = c  # value of c for the corresponding main stem leaf.
                 for m, node in enumerate(fruiting_branch.nodes):
                     if node.leaf.area <= 0:
-                        node.leaf.potential_growth = 0
+                        state.node_leaf_area_potential_growth[k, l, m] = 0
                         node.petiole.potential_growth = 0
                     # Compute potential growth of leaf area and leaf weight for leaf on fruiting branch node (k,l,m).
                     # Add leaf and petiole weight potential growth to spdwl and spdwp.
@@ -4445,9 +4436,9 @@ cdef class Simulation:
                             rate = smax * c * p * exp(-c * pow(state.node_leaf_age[k, l, m], p)) * pow(state.node_leaf_age[k, l, m], (p - 1))
                         if rate >= 1e-12:
                             # Growth rate is modified by water stress. Potential growth is computed as a function of average temperature.
-                            node.leaf.potential_growth = rate * wstrlf * temperature_on_leaf_growth_rate(state.average_temperature)
-                            node.petiole.potential_growth = node.leaf.potential_growth * state.leaf_weight_area_ratio * vpotlf[13]
-                            state.leaf_potential_growth += node.leaf.potential_growth * state.leaf_weight_area_ratio
+                            state.node_leaf_area_potential_growth[k, l, m] = rate * wstrlf * temperature_on_leaf_growth_rate(state.average_temperature)
+                            node.petiole.potential_growth = state.node_leaf_area_potential_growth[k, l, m] * state.leaf_weight_area_ratio * vpotlf[13]
+                            state.leaf_potential_growth += state.node_leaf_area_potential_growth[k, l, m] * state.leaf_weight_area_ratio
                             state.petiole_potential_growth += node.petiole.potential_growth
 
     def _defoliate(self, u):
