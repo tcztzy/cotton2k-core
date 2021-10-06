@@ -489,6 +489,7 @@ class Meteorology:  # pylint: disable=E1101,R0914,W0201
     date: datetime.date
     meteor: dict
     site_parameters: list[float]
+    solar_noon: float
 
     def daily_meteorology(self):
         declination: float  # daily declination angle, in radians

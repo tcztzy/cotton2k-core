@@ -61,9 +61,6 @@ ctypedef struct cVegetativeBranch:
     cFruitingBranch fruiting_branches[30]
 
 ctypedef struct cState:
-    double day_length  # day length, in hours
-    double runoff
-    double solar_noon
     double leaf_weight_area_ratio  # temperature dependent factor for converting leaf area to leaf weight during the day, g dm-1
     double petiole_nitrogen_concentration  # average nitrogen concentration in petioles.
     double seed_nitrogen_concentration  # average nitrogen concentration in seeds.
@@ -908,6 +905,7 @@ cdef class State:
     cdef public double actual_stem_growth  # actual growth rate of stems, g plant-1 day-1.
     cdef public double actual_transpiration  # actual transpiration from plants, mm day-1.
     cdef public double average_soil_psi  # average soil matric water potential, bars, computed as the weighted average of the root zone.
+    cdef public double day_length  # day length, in hours
     cdef public double pre_fruiting_nodes_age[9]  # age of each prefruiting node, physiological days.
     cdef public double pre_fruiting_leaf_area[9]  # area of prefruiting node leaves, dm2.
     cdef public double average_min_leaf_water_potential  #running average of min_leaf_water_potential for the last 3 days.
@@ -1011,22 +1009,6 @@ cdef class State:
         """pollination switch: false = no pollination, true = yes."""
         # Set 'pollination switch' for rainy days (as in GOSSYM).
         return self.rain < 2.5
-
-    @property
-    def solar_noon(self):
-        return self._.solar_noon
-
-    @solar_noon.setter
-    def solar_noon(self, value):
-        self._.solar_noon = value
-
-    @property
-    def day_length(self):
-        return self._.day_length
-
-    @day_length.setter
-    def day_length(self, value):
-        self._.day_length = value
 
     @property
     def leaf_area(self):

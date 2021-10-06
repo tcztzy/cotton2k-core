@@ -452,6 +452,8 @@ def form(c0: float, d0: float, g0: float) -> float:
 
 
 class SoilProcedure:  # pylint: disable=too-few-public-methods,W0201,E1101
+    runoff: float  # in mm
+
     @property
     def effective_rain(self):
         return max(self.rain - self.runoff, 0)
