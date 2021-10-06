@@ -8,11 +8,7 @@ class Growth:  # pylint: disable=no-member,too-few-public-methods,W0201
         self._potential_leaf_growth(u)
         # If it is after first square, call _potential_fruit_growth() to compute
         # potential growth rate of squares and bolls.
-        if (
-            len(self.vegetative_branches[0].fruiting_branches) > 0
-            and len(self.vegetative_branches[0].fruiting_branches[0].nodes) > 0
-            and self.fruiting_nodes_stage[0, 0, 0] != Stage.NotYetFormed
-        ):
+        if self.fruiting_nodes_stage[0, 0, 0] != Stage.NotYetFormed:
             self._potential_fruit_growth(u)
         # Call PotentialStemGrowth() to compute PotGroStem, potential growth rate of
         # stems.
@@ -48,11 +44,7 @@ class Growth:  # pylint: disable=no-member,too-few-public-methods,W0201
         vratio = self.dry_matter_balance(self.per_plant_area)
         # If it is after first square, call actual_fruit_growth() to compute actual
         # growth rate of squares and bolls.
-        if (
-            len(self.vegetative_branches[0].fruiting_branches) > 0
-            and len(self.vegetative_branches[0].fruiting_branches[0].nodes) > 0
-            and self.fruiting_nodes_stage[0, 0, 0] != Stage.NotYetFormed
-        ):
+        if self.fruiting_nodes_stage[0, 0, 0] != Stage.NotYetFormed:
             self.actual_fruit_growth()
         # Initialize state.leaf_weight.It is assumed that cotyledons fall off at time
         # of first square. Also initialize state.petiole_weight.
