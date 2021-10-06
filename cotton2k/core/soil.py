@@ -620,3 +620,12 @@ class SoilProcedure:  # pylint: disable=too-few-public-methods,W0201,E1101
             if self.rain <= 0.2 * d03
             else (self.rain - 0.2 * d03) ** 2 / (self.rain + 0.8 * d03)
         )
+
+    def roots_capable_of_uptake(self):
+        """Computes the weight of roots capable of uptake for all soil cells."""
+        # the indices for the relative capability of uptake (between 0 and 1) of water
+        # and nutrients by root age classes.
+        cuind = np.array((1, 0.5, 0))
+        weights = self.root_weights * cuind
+        weights[self.root_weights <= 1e-15] = 0
+        self.root_weight_capable_uptake = weights.sum(axis=2)

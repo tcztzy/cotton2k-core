@@ -1236,13 +1236,6 @@ cdef class State:
     def _new_vegetative_branch(self):
         return VegetativeBranch.from_ptr(&self._.vegetative_branches[self.number_of_vegetative_branches], self.number_of_vegetative_branches)
 
-    def roots_capable_of_uptake(self):
-        """This function computes the weight of roots capable of uptake for all soil cells."""
-        cuind = np.array((1, 0.5, 0))  # the indices for the relative capability of uptake (between 0 and 1) of water and nutrients by root age classes.
-        weights = self.root_weights * cuind
-        weights[self.root_weights <= 1e-15] = 0
-        self.root_weight_capable_uptake = weights.sum(axis=2)
-
     def predict_emergence(self, plant_date, hour, plant_row_column):
         """This function predicts date of emergence."""
         cdef double dpl = 5  # depth of planting, cm (assumed 5).
