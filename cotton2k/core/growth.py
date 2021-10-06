@@ -73,17 +73,11 @@ class Growth:  # pylint: disable=no-member,too-few-public-methods,W0201
         )  # effect of plant density on plant growth in height.
         # Call add_plant_height to compute PlantHeight.
         if self.version < 0x500 or not self.date >= self.topping_date:
-            # node numbers of top node.
-
-            if len(self.vegetative_branches[0].fruiting_branches) >= 2:
-                stage = self.fruiting_nodes_stage[0, 1, 0]
-            else:
-                stage = Stage.NotYetFormed
             self.plant_height += self.add_plant_height(
                 denf2,
                 self.day_inc,
                 self.number_of_pre_fruiting_nodes,
-                stage,
+                self.fruiting_nodes_stage[0, 1, 0],
                 self.pre_fruiting_nodes_age[self.number_of_pre_fruiting_nodes - 1],
                 self.pre_fruiting_nodes_age[self.number_of_pre_fruiting_nodes - 2],
                 self.agetop,
