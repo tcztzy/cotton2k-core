@@ -22,9 +22,7 @@ from .soil import compute_soil_surface_albedo, compute_incoming_short_wave_radia
 from .utils import date2doy, doy2date
 from .thermology import canopy_balance
 
-ctypedef struct Leaf:
-    double area  # leaf area at each fruiting site, dm2.
-    double weight  # leaf weight at each fruiting site, g.
+
 ctypedef struct SquareStruct:
     double potential_growth  # potential growth in weight of an individual fruiting node squares, g day-1.
     double weight  # weight of each square, g per plant.
@@ -35,7 +33,6 @@ ctypedef struct cPetiole:
     double potential_growth  # potential growth in weight of an individual fruiting node petiole, g day-1.
     double weight  # petiole weight at each fruiting site, g.
 ctypedef struct FruitingSite:
-    Leaf leaf
     SquareStruct square
     cBurr burr
     cPetiole petiole
@@ -494,32 +491,6 @@ cdef class SoilInit:
             psand[i] = layer["sand"]
 
 
-cdef class NodeLeaf:
-    cdef Leaf *_
-
-    @property
-    def area(self):
-        return self._[0].area
-
-    @area.setter
-    def area(self, value):
-        self._[0].area = value
-
-    @property
-    def weight(self):
-        return self._[0].weight
-
-    @weight.setter
-    def weight(self, value):
-        self._[0].weight = value
-
-    @staticmethod
-    cdef NodeLeaf from_ptr(Leaf *_ptr):
-        cdef NodeLeaf leaf = NodeLeaf.__new__(NodeLeaf)
-        leaf._ = _ptr
-        return leaf
-
-
 cdef class Petiole:
     cdef cPetiole *_
 
@@ -616,10 +587,6 @@ cdef class FruitingNode:
     cdef public unsigned int l
     cdef public unsigned int m
     cdef public Petiole petiole
-
-    @property
-    def leaf(self):
-        return NodeLeaf.from_ptr(&self._.leaf)
 
     @property
     def burr(self):
@@ -861,6 +828,8 @@ cdef class State:
     cdef public numpy.ndarray root_weights
     cdef public numpy.ndarray root_weight_capable_uptake  # root weight capable of uptake, in g per soil cell.
     cdef public numpy.ndarray node_leaf_age  # leaf age at each fruiting site, physiological days.
+    cdef public numpy.ndarray node_leaf_area  # leaf area at each fruiting site, dm2.
+    cdef public numpy.ndarray node_leaf_weight  # leaf weight at each fruiting site, g.
     cdef public numpy.ndarray node_leaf_area_potential_growth  # potential growth in area of an individual fruiting node leaf, dm2 day-1.
     cdef public numpy.ndarray fruiting_nodes_age  # age of each fruiting site, physiological days from square initiation.
     cdef public numpy.ndarray fruiting_nodes_average_temperature  # running average temperature of each node.
@@ -1007,8 +976,7 @@ cdef class State:
         for k in range(self.number_of_vegetative_branches):
             for l in range(self.vegetative_branches[k].number_of_fruiting_branches):
                 area += self.vegetative_branches[k].fruiting_branches[l].main_stem_leaf.area
-                for m in range(self.vegetative_branches[k].fruiting_branches[l].number_of_fruiting_nodes):
-                    area += self.vegetative_branches[k].fruiting_branches[l].nodes[m].leaf.area
+        area += self.node_leaf_area.sum()
         return area
 
     @property
@@ -1505,11 +1473,11 @@ cdef class State:
                 # Compute total leaf weight (state.leaf_weight), total petiole weight (PetioleWeightNodes) .
                 for m in range(self._.vegetative_branches[k].fruiting_branches[l].number_of_fruiting_nodes):  # loop of nodes on a fruiting branch
                     site = self.vegetative_branches[k].fruiting_branches[l].nodes[m]
-                    site.leaf.weight += self.node_leaf_area_potential_growth[k, l, m] * self.leaf_weight_area_ratio * vratio
-                    self.leaf_weight += site.leaf.weight
+                    self.node_leaf_weight[k, l, m] += self.node_leaf_area_potential_growth[k, l, m] * self.leaf_weight_area_ratio * vratio
+                    self.leaf_weight += self.node_leaf_weight[k, l, m]
                     site.petiole.weight += site.petiole.potential_growth * vratio
                     self.petiole_weight += site.petiole.weight
-                    site.leaf.area += self.node_leaf_area_potential_growth[k, l, m] * vratio
+                    self.node_leaf_area[k, l, m] += self.node_leaf_area_potential_growth[k, l, m] * vratio
 
     def actual_fruit_growth(self):
         """This function simulates the actual growth of squares and bolls of cotton plants."""
@@ -2073,7 +2041,7 @@ cdef class State:
                     leaves.append((self.fruiting_nodes_age[k, l, 0], k, l, 66))
                     # 66 indicates this leaf is at the base of the fruiting branch
                 for m in range(self.vegetative_branches[k].fruiting_branches[l].number_of_fruiting_nodes):
-                    if self.vegetative_branches[k].fruiting_branches[l].nodes[m].leaf.weight > 0:
+                    if self.node_leaf_weight[k, l, m] > 0:
                         leaves.append((self.fruiting_nodes_age[k, l, m], k, l, m))
         # Compute the number of leaves to be shed on this day (numLeavesToShed).
         numLeavesToShed = int(len(leaves) * PercentDefoliation / 100)  # the computed number of leaves to be shed.
@@ -2094,12 +2062,12 @@ cdef class State:
                     main_stem_leaf.petiole_weight = 0
                 else:  # leaves on fruit nodes
                     site = self.vegetative_branches[k].fruiting_branches[l].nodes[m]
-                    self.leaf_nitrogen -= site.leaf.weight * self.leaf_nitrogen_concentration
-                    self.leaf_weight -= site.leaf.weight
+                    self.leaf_nitrogen -= self.node_leaf_weight[k, l, m] * self.leaf_nitrogen_concentration
+                    self.leaf_weight -= self.node_leaf_weight[k, l, m]
                     self.petiole_nitrogen -= site.petiole.weight * self.petiole_nitrogen_concentration
                     self.petiole_weight -= site.petiole.weight
-                    site.leaf.area = 0
-                    site.leaf.weight = 0
+                    self.node_leaf_area[k, l, m] = 0
+                    self.node_leaf_weight[k, l, m] = 0
                     site.petiole.weight = 0
                 numLeavesToShed -= 1
 
@@ -3884,10 +3852,6 @@ cdef class Simulation:
                 )
                 for m in range(5):
                     state0._.vegetative_branches[k].fruiting_branches[l].nodes[m] = dict(
-                        leaf=dict(
-                            area=0,
-                            weight=0,
-                        ),
                         square=dict(
                             potential_growth=0,
                             weight=0,
@@ -4419,7 +4383,7 @@ cdef class Simulation:
                 smaxx = smax  # value of smax for the corresponding main stem leaf.
                 cc = c  # value of c for the corresponding main stem leaf.
                 for m, node in enumerate(fruiting_branch.nodes):
-                    if node.leaf.area <= 0:
+                    if state.node_leaf_area[k, l, m] <= 0:
                         state.node_leaf_area_potential_growth[k, l, m] = 0
                         node.petiole.potential_growth = 0
                     # Compute potential growth of leaf area and leaf weight for leaf on fruiting branch node (k,l,m).

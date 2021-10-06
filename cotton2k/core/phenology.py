@@ -353,15 +353,12 @@ class Phenology:
             return
         vb = self._new_vegetative_branch
         # Assign 1 to FruitFraction and FruitingCode of the first site of this branch.
-        self.fruiting_nodes_fraction[self.number_of_vegetative_branches, 0, 0] = 1
-        self.fruiting_nodes_stage[
-            self.number_of_vegetative_branches, 0, 0
-        ] = Stage.Square
+        index = (self.number_of_vegetative_branches, 0, 0)
+        self.fruiting_nodes_fraction[index] = 1
+        self.fruiting_nodes_stage[index] = Stage.Square
         # Add a new leaf to the first site of this branch.
-        vb.fruiting_branches[0].nodes[0].leaf.area = initial_leaf_area
-        vb.fruiting_branches[0].nodes[0].leaf.weight = (
-            initial_leaf_area * self.leaf_weight_area_ratio
-        )
+        self.node_leaf_area[index] = initial_leaf_area
+        self.node_leaf_weight[index] = initial_leaf_area * self.leaf_weight_area_ratio
         # Add a new mainstem leaf to the first node of this branch.
         vb.fruiting_branches[0].main_stem_leaf.area = initial_leaf_area
         vb.fruiting_branches[0].main_stem_leaf.weight = (
@@ -369,17 +366,14 @@ class Phenology:
         )
         # The initial mass and nitrogen in the new leaves are substracted from the stem.
         self.stem_weight -= (
-            vb.fruiting_branches[0].nodes[0].leaf.weight
-            + vb.fruiting_branches[0].main_stem_leaf.weight
+            self.node_leaf_weight[index] + vb.fruiting_branches[0].main_stem_leaf.weight
         )
         self.leaf_weight += (
-            vb.fruiting_branches[0].nodes[0].leaf.weight
-            + vb.fruiting_branches[0].main_stem_leaf.weight
+            self.node_leaf_weight[index] + vb.fruiting_branches[0].main_stem_leaf.weight
         )
         # nitrogen moved to new leaves from stem.
         addlfn = (
-            vb.fruiting_branches[0].nodes[0].leaf.weight
-            + vb.fruiting_branches[0].main_stem_leaf.weight
+            self.node_leaf_weight[index] + vb.fruiting_branches[0].main_stem_leaf.weight
         ) * stemNRatio
         self.leaf_nitrogen += addlfn
         self.stem_nitrogen -= addlfn
@@ -471,22 +465,21 @@ class Phenology:
         new_branch = vb.fruiting_branches[-1]
         l = vb.number_of_fruiting_branches - 1
         new_branch.number_of_fruiting_nodes = 1
-        new_node = new_branch.nodes[0]
         self.fruiting_nodes_fraction[k, l, 0] = 1
         self.fruiting_nodes_stage[k, l, 0] = Stage.Square
         # Initiate new leaves at the first node of the new fruiting branch, and at the
         # corresponding main stem node. The mass and nitrogen in the new leaves is
         # substacted from the stem.
-        new_node.leaf.area = leaf_area
-        new_node.leaf.weight = leaf_weight
+        self.node_leaf_area[k, l, 0] = leaf_area
+        self.node_leaf_weight[k, l, 0] = leaf_weight
         main_stem_leaf = new_branch.main_stem_leaf
 
         main_stem_leaf.area = leaf_area
         main_stem_leaf.weight = leaf_weight
-        self.stem_weight -= main_stem_leaf.weight + new_node.leaf.weight
-        self.leaf_weight += main_stem_leaf.weight + new_node.leaf.weight
+        self.stem_weight -= main_stem_leaf.weight + self.node_leaf_weight[k, l, 0]
+        self.leaf_weight += main_stem_leaf.weight + self.node_leaf_weight[k, l, 0]
         # addlfn is the nitrogen added to new leaves from stem.
-        addlfn = (main_stem_leaf.weight + new_node.leaf.weight) * stemNRatio
+        addlfn = (main_stem_leaf.weight + self.node_leaf_weight[k, l, 0]) * stemNRatio
         self.leaf_nitrogen += addlfn
         self.stem_nitrogen -= addlfn
         # Begin computing AvrgNodeTemper of the new node and assign zero to
@@ -551,13 +544,12 @@ class Phenology:
             leaf_area = var34
             leaf_weight = leaf_area * self.leaf_weight_area_ratio
         fb.number_of_fruiting_nodes += 1
-        node = fb.nodes[nnid + 1]
         self.fruiting_nodes_fraction[k, l, nnid + 1] = 1
         self.fruiting_nodes_stage[k, l, nnid + 1] = Stage.Square
         # Initiate a new leaf at the new node. The mass and nitrogen in the new leaf is
         # substacted from the stem.
-        node.leaf.area = leaf_area
-        node.leaf.weight = leaf_weight
+        self.node_leaf_area[k, l, nnid + 1] = leaf_area
+        self.node_leaf_weight[k, l, nnid + 1] = leaf_weight
         self.stem_weight -= leaf_weight
         self.leaf_weight += leaf_weight
         self.leaf_nitrogen += leaf_weight * stemNRatio
@@ -574,7 +566,6 @@ class Phenology:
         # FruitFraction and FruitingCode are assigned 1 for the first fruiting site.
         self.vegetative_branches[0].number_of_fruiting_branches = 1
         self.vegetative_branches[0].fruiting_branches[0].number_of_fruiting_nodes = 1
-        first_node = self.vegetative_branches[0].fruiting_branches[0].nodes[0]
         self.fruiting_nodes_stage[0, 0, 0] = Stage.Square
         self.fruiting_nodes_fraction[0, 0, 0] = 1
         # Initialize a new leaf at this position. define its initial weight and area.
@@ -589,8 +580,8 @@ class Phenology:
         else:
             leaf_area = first_square_leaf_area
             leaf_weight = leaf_area * self.leaf_weight_area_ratio
-        first_node.leaf.area = leaf_area
-        first_node.leaf.weight = leaf_weight
+        self.node_leaf_area[0, 0, 0] = leaf_area
+        self.node_leaf_weight[0, 0, 0] = leaf_weight
         self.stem_weight -= leaf_weight
         self.leaf_weight += leaf_weight
         self.leaf_nitrogen += leaf_weight * stemNRatio
@@ -785,15 +776,17 @@ class Phenology:
         site = self.vegetative_branches[k].fruiting_branches[l].nodes[m]
         if (
             self.node_leaf_age[k, l, m] >= droplf
-            and site.leaf.area > 0
+            and self.node_leaf_area[k, l, m] > 0
             and self.leaf_area_index > 0.1
         ):
-            self.leaf_weight -= site.leaf.weight
+            self.leaf_weight -= self.node_leaf_weight[k, l, m]
             self.petiole_weight -= site.petiole.weight
-            self.leaf_nitrogen -= site.leaf.weight * self.leaf_nitrogen_concentration
+            self.leaf_nitrogen -= (
+                self.node_leaf_weight[k, l, m] * self.leaf_nitrogen_concentration
+            )
             self.petiole_nitrogen -= (
                 site.petiole.weight * self.petiole_nitrogen_concentration
             )
-            site.leaf.area = 0
-            site.leaf.weight = 0
+            self.node_leaf_area[k, l, m] = 0
+            self.node_leaf_weight[k, l, m] = 0
             site.petiole.weight = 0
