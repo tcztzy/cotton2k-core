@@ -23,7 +23,6 @@ from .utils import date2doy, doy2date
 from .thermology import canopy_balance
 
 ctypedef struct Leaf:
-    double age  # leaf age at each fruiting site, physiological days.
     double potential_growth  # potential growth in area of an individual fruiting node leaf, dm2 day-1.
     double area  # leaf area at each fruiting site, dm2.
     double weight  # leaf weight at each fruiting site, g.
@@ -500,14 +499,6 @@ cdef class NodeLeaf:
     cdef Leaf *_
 
     @property
-    def age(self):
-        return self._[0].age
-
-    @age.setter
-    def age(self, value):
-        self._[0].age = value
-
-    @property
     def area(self):
         return self._[0].area
 
@@ -878,6 +869,7 @@ cdef class State:
     cdef public numpy.ndarray root_growth_factor  # root growth correction factor in a soil cell (0 to 1).
     cdef public numpy.ndarray root_weights
     cdef public numpy.ndarray root_weight_capable_uptake  # root weight capable of uptake, in g per soil cell.
+    cdef public numpy.ndarray node_leaf_age  # leaf age at each fruiting site, physiological days.
     cdef public numpy.ndarray fruiting_nodes_age  # age of each fruiting site, physiological days from square initiation.
     cdef public numpy.ndarray fruiting_nodes_average_temperature  # running average temperature of each node.
     cdef public numpy.ndarray fruiting_nodes_boll_age  # age of each boll, physiological days from flowering.
@@ -1479,7 +1471,7 @@ cdef class State:
             for l in range(self.vegetative_branches[k].number_of_fruiting_branches):
                 for m in range(self.vegetative_branches[k].fruiting_branches[l].number_of_fruiting_nodes):
                     numl += 1
-                    sumrl += leaf_resistance_for_transpiration(self.vegetative_branches[k].fruiting_branches[l].nodes[m].leaf.age)
+                    sumrl += leaf_resistance_for_transpiration(self.node_leaf_age[k, l, m])
         cdef double rleaf = sumrl / numl  # leaf resistance, Mpa hours per cm.
 
         cdef double rtotal = rsoil + rroot + rshoot + rleaf  # The total resistance to transpiration, MPa hours per cm, (rtotal) is computed.
@@ -3901,7 +3893,6 @@ cdef class Simulation:
                 for m in range(5):
                     state0._.vegetative_branches[k].fruiting_branches[l].nodes[m] = dict(
                         leaf=dict(
-                            age=0,
                             potential_growth=0,
                             area=0,
                             weight=0,
@@ -4406,7 +4397,7 @@ cdef class Simulation:
                     state.petiole_potential_growth += PotGroPetioleWeightPreFru[j]
         # denfac is the effect of plant density on leaf growth rate.
         cdef double denfac = 1 - vpotlf[12] * (1 - self.density_factor)
-        for vegetative_branch in state.vegetative_branches:
+        for k, vegetative_branch in enumerate(state.vegetative_branches):
             for l, fruiting_branch in enumerate(vegetative_branch.fruiting_branches):
                 # smax and c are  functions of fruiting branch number.
                 # smax is modified by plant density, using the density factor denfac.
@@ -4421,10 +4412,10 @@ cdef class Simulation:
                     smax = denfac * (self.cultivar_parameters[5] + self.cultivar_parameters[6] * lp1 * (self.cultivar_parameters[7] - lp1))
                     smax = max(self.cultivar_parameters[4], smax)
                     c = vpotlf[10] + lp1 * vpotlf[11]
-                    if fruiting_branch.nodes[0].leaf.age > 70:
+                    if state.node_leaf_age[k, l, 0] > 70:
                         rate = 0
                     else:
-                        rate = smax * c * p * exp(-c * pow(fruiting_branch.nodes[0].leaf.age, p)) * pow(fruiting_branch.nodes[0].leaf.age, (p - 1))
+                        rate = smax * c * p * exp(-c * pow(state.node_leaf_age[k, l, 0], p)) * pow(state.node_leaf_age[k, l, 0], (p - 1))
                     # Add leaf and petiole weight potential growth to SPDWL and SPDWP.
                     if rate >= 1e-12:
                         main_stem_leaf.potential_growth_of_area = rate * wstrlf * temperature_on_leaf_growth_rate(state.average_temperature)
@@ -4448,10 +4439,10 @@ cdef class Simulation:
                         smax = smaxx * (1 - self.cultivar_parameters[8] * mp1)
                         c = cc * (1 - self.cultivar_parameters[8] * mp1)
                         # Compute potential growth for the leaves on fruiting branches.
-                        if node.leaf.age > 70:
+                        if state.node_leaf_age[k, l, m] > 70:
                             rate = 0
                         else:
-                            rate = smax * c * p * exp(-c * pow(node.leaf.age, p)) * pow(node.leaf.age, (p - 1))
+                            rate = smax * c * p * exp(-c * pow(state.node_leaf_age[k, l, m], p)) * pow(state.node_leaf_age[k, l, m], (p - 1))
                         if rate >= 1e-12:
                             # Growth rate is modified by water stress. Potential growth is computed as a function of average temperature.
                             node.leaf.potential_growth = rate * wstrlf * temperature_on_leaf_growth_rate(state.average_temperature)

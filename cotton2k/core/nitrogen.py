@@ -1,5 +1,8 @@
 from functools import cached_property
+from typing import Sequence
 
+import numpy as np
+import numpy.typing as npt
 from numpy.polynomial import Polynomial
 
 
@@ -91,6 +94,8 @@ class PlantNitrogen:  # pylint: disable=too-few-public-methods,no-member,attribu
     addnf = 0.0
     addnr = 0.0
     addnv = 0.0
+    node_leaf_age: npt.NDArray[np.double]
+    vegetative_branches: Sequence
 
     @cached_property
     def petiole_nitrate_nitrogen(self) -> float:
@@ -108,11 +113,19 @@ class PlantNitrogen:  # pylint: disable=too-few-public-methods,no-member,attribu
 
         # number of petioles computed.
         numl = self.number_of_pre_fruiting_nodes  # type: ignore[attr-defined]
-        for vegetative_branch in self.vegetative_branches:  # type: ignore[attr-defined]
-            for fruiting_branch in vegetative_branch.fruiting_branches:
-                numl += len(fruiting_branch.nodes)
-                for node in fruiting_branch.nodes:
-                    spetno3 += petno3r(node.leaf.age)
+        for k in range(self.number_of_vegetative_branches):  # type: ignore
+            for l in range(self.vegetative_branches[k].number_of_fruiting_branches):
+                numl += (
+                    self.vegetative_branches[k]
+                    .fruiting_branches[l]
+                    .number_of_fruiting_nodes
+                )
+                for m in range(
+                    self.vegetative_branches[k]
+                    .fruiting_branches[l]
+                    .number_of_fruiting_nodes
+                ):
+                    spetno3 += petno3r(self.node_leaf_age[k, l, m])
         # The return value of the function is the average ratio of NO3 to total N for
         # all the petioles in the plant.
         return spetno3 / numl

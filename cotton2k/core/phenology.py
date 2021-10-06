@@ -61,6 +61,7 @@ class Phenology:
     fruiting_nodes_fraction: npt.NDArray[np.double]
     fruiting_nodes_ginning_percent: npt.NDArray[np.double]
     fruiting_nodes_stage: npt.NDArray[np.int_]
+    node_leaf_age: npt.NDArray[np.double]
     ginning_percent: float
     green_bolls_burr_weight: float
     green_bolls_weight: float
@@ -236,11 +237,11 @@ class Phenology:
         agefac = (1 - self.water_stress) * vfrsite[0] + (
             1 - self.nitrogen_stress_vegetative
         ) * vfrsite[1]
-        site.leaf.age += self.day_inc + agefac
+        self.node_leaf_age[k, l, m] += self.day_inc + agefac
         # After the application of defoliation, add the effect of defoliation on leaf
         # age.
         if defoliate_date and self.date > defoliate_date:
-            site.leaf.age += var38
+            self.node_leaf_age[k, l, m] += var38
         # FruitingCode = 3, 4, 5 or 6 indicates that this node has an open boll,
         # or has been completely abscised. Return in this case.
         if self.fruiting_nodes_stage[k, l, m] in (
@@ -738,7 +739,7 @@ class Phenology:
         # If this is after defoliation.
         main_stem_leaf = self.vegetative_branches[k].fruiting_branches[l].main_stem_leaf
         if (
-            self.vegetative_branches[k].fruiting_branches[l].nodes[0].leaf.age > droplf
+            self.node_leaf_age[k, l, 0] > droplf
             and main_stem_leaf.area > 0
             and self.leaf_area_index > 0.1
         ):
@@ -783,7 +784,7 @@ class Phenology:
         # If this is after defoliation.
         site = self.vegetative_branches[k].fruiting_branches[l].nodes[m]
         if (
-            site.leaf.age >= droplf
+            self.node_leaf_age[k, l, m] >= droplf
             and site.leaf.area > 0
             and self.leaf_area_index > 0.1
         ):

@@ -270,6 +270,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             "fruiting_nodes_fraction",
             "fruiting_nodes_ginning_percent",
             "fruiting_nodes_stage",
+            "node_leaf_age",
             "root_weights",
             "root_growth_factor",
             "root_weight_capable_uptake",
@@ -347,6 +348,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
 
     def initialize_state0(self):
         state0 = CyState(self, self.version)
+        state0.node_leaf_age = np.zeros((3, 30, 5), dtype=np.double)
         state0.fruiting_nodes_average_temperature = np.zeros(
             (3, 30, 5), dtype=np.double
         )
