@@ -38,7 +38,6 @@ ctypedef struct FruitingSite:
     cPetiole petiole
 
 ctypedef struct cMainStemLeaf:
-    double leaf_area
     double leaf_weight  # mainstem leaf weight at each node, g.
     double petiole_weight  # weight of mainstem leaf petiole at each node, g.
     double potential_growth_for_leaf_area  # potential growth in area of an individual main stem node leaf, dm2 day-1.
@@ -379,14 +378,6 @@ cdef class MainStemLeaf:
     cdef cMainStemLeaf *_
 
     @property
-    def area(self):
-        return self._[0].leaf_area
-
-    @area.setter
-    def area(self, value):
-        self._[0].leaf_area = value
-
-    @property
     def potential_growth_of_area(self):
         return self._[0].potential_growth_for_leaf_area
 
@@ -595,6 +586,7 @@ cdef class State:
     cdef public numpy.ndarray root_growth_factor  # root growth correction factor in a soil cell (0 to 1).
     cdef public numpy.ndarray root_weights
     cdef public numpy.ndarray root_weight_capable_uptake  # root weight capable of uptake, in g per soil cell.
+    cdef public numpy.ndarray main_stem_leaf_area
     cdef public numpy.ndarray node_leaf_age  # leaf age at each fruiting site, physiological days.
     cdef public numpy.ndarray node_leaf_area  # leaf area at each fruiting site, dm2.
     cdef public numpy.ndarray node_leaf_weight  # leaf weight at each fruiting site, g.
@@ -741,9 +733,7 @@ cdef class State:
             area = 0.6 * cotylwt
         for j in range(self.number_of_pre_fruiting_nodes):
             area += self.pre_fruiting_leaf_area[j]
-        for k in range(self.number_of_vegetative_branches):
-            for l in range(self.vegetative_branches[k].number_of_fruiting_branches):
-                area += self.vegetative_branches[k].fruiting_branches[l].main_stem_leaf.area
+        area += self.main_stem_leaf_area.sum()
         area += self.node_leaf_area.sum()
         return area
 
@@ -1223,7 +1213,7 @@ cdef class State:
                 self.leaf_weight += main_stem_leaf.weight
                 main_stem_leaf.petiole_weight += main_stem_leaf.potential_growth_of_petiole * vratio
                 self.petiole_weight += main_stem_leaf.petiole_weight
-                main_stem_leaf.area += main_stem_leaf.potential_growth_of_area * vratio
+                self.main_stem_leaf_area[k, l] += main_stem_leaf.potential_growth_of_area * vratio
                 # Loop for all fruiting nodes on each fruiting branch. to compute actual growth of fruiting node leaves.
                 # Added dry weight to each leaf is proportional to PotGroLeafWeightNodes, added dry weight to each petiole is proportional to PotGroPetioleWeightNodes, and added area to each leaf is proportional to PotGroLeafAreaNodes.
                 # Update leaf weight (LeafWeightNodes), petiole weight (PetioleWeightNodes) and leaf area (LeafAreaNodes) for each fruiting node leaf.
@@ -1814,7 +1804,7 @@ cdef class State:
                     self.leaf_weight -= main_stem_leaf.weight
                     self.petiole_nitrogen -= main_stem_leaf.petiole_weight * self.petiole_nitrogen_concentration
                     self.petiole_weight -= main_stem_leaf.petiole_weight
-                    main_stem_leaf.area = 0
+                    self.main_stem_leaf_area[k, l] = 0
                     main_stem_leaf.weight = 0
                     main_stem_leaf.petiole_weight = 0
                 else:  # leaves on fruit nodes
@@ -3831,7 +3821,6 @@ cdef class Simulation:
                     l].number_of_fruiting_nodes = 0
                 state0._.vegetative_branches[k].fruiting_branches[l].delay_for_new_node = 0
                 state0._.vegetative_branches[k].fruiting_branches[l].main_stem_leaf = dict(
-                    leaf_area=0,
                     leaf_weight=0,
                     petiole_weight=0,
                     potential_growth_for_leaf_area=0,
@@ -4346,7 +4335,7 @@ cdef class Simulation:
                 # smax is modified by plant density, using the density factor denfac.
                 # Compute potential main stem leaf growth, assuming that the main stem leaf is initiated at the same time as leaf (k,l,0).
                 main_stem_leaf = fruiting_branch.main_stem_leaf
-                if main_stem_leaf.area <= 0:
+                if state.main_stem_leaf_area[k, l] <= 0:
                     main_stem_leaf.potential_growth_of_area = 0
                     main_stem_leaf.potential_growth_of_weight = 0
                     main_stem_leaf.potential_growth_of_petiole = 0
