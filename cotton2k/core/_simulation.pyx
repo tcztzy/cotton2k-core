@@ -23,8 +23,6 @@ from .utils import date2doy, doy2date
 from .thermology import canopy_balance
 
 
-ctypedef struct SquareStruct:
-    double weight  # weight of each square, g per plant.
 ctypedef struct cBurr:
     double potential_growth  # potential growth rate of burrs in an individual boll, g day-1.
     double weight  # weight of burrs for each site, g per plant.
@@ -32,7 +30,6 @@ ctypedef struct cPetiole:
     double potential_growth  # potential growth in weight of an individual fruiting node petiole, g day-1.
     double weight  # petiole weight at each fruiting site, g.
 ctypedef struct FruitingSite:
-    SquareStruct square
     cBurr burr
     cPetiole petiole
 
@@ -315,30 +312,6 @@ cdef class Burr:
         return burr
 
 
-cdef class Square:
-    cdef SquareStruct *_
-    cdef unsigned int k
-    cdef unsigned int l
-    cdef unsigned int m
-
-    @property
-    def weight(self):
-        return self._[0].weight
-
-    @weight.setter
-    def weight(self, value):
-        self._[0].weight = value
-
-    @staticmethod
-    cdef Square from_ptr(SquareStruct *_ptr, unsigned int k, unsigned int l, unsigned int m):
-        cdef Square square = Square.__new__(Square)
-        square._ = _ptr
-        square.k = k
-        square.l = l
-        square.m = m
-        return square
-
-
 cdef class FruitingNode:
     cdef FruitingSite *_
     cdef public unsigned int k
@@ -349,10 +322,6 @@ cdef class FruitingNode:
     @property
     def burr(self):
         return Burr.from_ptr(&self._[0].burr, self.k, self.l, self.m)
-
-    @property
-    def square(self):
-        return Square.from_ptr(&self._[0].square, self.k, self.l, self.m)
 
     @staticmethod
     cdef FruitingNode from_ptr(FruitingSite *_ptr, unsigned int k, unsigned int l, unsigned int m):
@@ -578,6 +547,7 @@ cdef class State:
     cdef public numpy.ndarray root_weights
     cdef public numpy.ndarray root_weight_capable_uptake  # root weight capable of uptake, in g per soil cell.
     cdef public numpy.ndarray main_stem_leaf_area
+    cdef public numpy.ndarray square_weights  # weight of each square, g per plant.
     cdef public numpy.ndarray square_potential_growth  # potential growth in weight of an individual fruiting node squares, g day-1.
     cdef public numpy.ndarray node_leaf_age  # leaf age at each fruiting site, physiological days.
     cdef public numpy.ndarray node_leaf_area  # leaf area at each fruiting site, dm2.
@@ -652,7 +622,6 @@ cdef class State:
     cdef public double reserve_carbohydrate  # reserve carbohydrates in leaves, g per plant.
     cdef public double root_potential_growth  # potential growth rate of roots, g plant-1 day-1
     cdef public double seed_moisture  # moisture content of germinating seeds, percent.
-    cdef public double square_weight  # total square weight, g per plant.
     cdef public double stem_potential_growth  # potential growth rate of stems, g plant-1 day-1.
     cdef public double stem_weight  # total stem weight, g per plant.
     cdef public double taproot_length  # the length of the taproot, in cm.
@@ -1221,7 +1190,6 @@ cdef class State:
     def actual_fruit_growth(self):
         """This function simulates the actual growth of squares and bolls of cotton plants."""
         # Assign zero to all the sums to be computed.
-        self.square_weight = 0
         self.green_bolls_weight = 0
         self.green_bolls_burr_weight = 0
         self.actual_square_growth = 0
@@ -1232,13 +1200,12 @@ cdef class State:
             for l, fruiting_branch in enumerate(vegetative_branch.fruiting_branches):
                 for m, site in enumerate(fruiting_branch.nodes):
                     # If this site is a square, the actual dry weight added to it (dwsq) is proportional to its potential growth.
-                    # Update the weight of this square (SquareWeight), sum of today's added dry weight to squares (state.actual_square_growth), and total weight of squares (self.square_weight).
+                    # Update the weight of this square (SquareWeight), sum of today's added dry weight to squares (state.actual_square_growth).
                     if self.fruiting_nodes_stage[k, l, m] == Stage.Square:
                         dwsq = self.square_potential_growth[k, l, m] * self.fruit_growth_ratio  # dry weight added to square.
 
-                        site.square.weight += dwsq
+                        self.square_weights[k, l, m] += dwsq
                         self.actual_square_growth += dwsq
-                        self.square_weight += site.square.weight
                     # If this site is a green boll, the actual dry weight added to seedcotton and burrs is proportional to their respective potential growth.
                     if self.fruiting_nodes_stage[k, l, m] in [Stage.GreenBoll, Stage.YoungGreenBoll]:
                         # dry weight added to seedcotton in a boll.
@@ -1935,18 +1902,16 @@ cdef class State:
         abscissionRatio
             ratio of abscission of a fruiting site."""
         index = (site.k, site.l, site.m)
-        # Compute the square weight lost by shedding (wtlos) as a proportion of SquareWeight of this site. Update state.square_nitrogen, CumPlantNLoss, SquareWeight[k][l][m], BloomWeightLoss, state.square_weight and FruitFraction[k][l][m].
-        cdef double wtlos = site.square.weight * abscissionRatio  # weight lost by shedding at this site.
+        # Compute the square weight lost by shedding (wtlos) as a proportion of SquareWeight of this site. Update state.square_nitrogen, CumPlantNLoss, SquareWeight[k][l][m], BloomWeightLoss and FruitFraction[k][l][m].
+        cdef double wtlos = self.square_weights[index] * abscissionRatio  # weight lost by shedding at this site.
         self.square_nitrogen -= wtlos * self.square_nitrogen_concentration
-        site.square.weight -= wtlos
-        self.square_weight -= wtlos
+        self.square_weights[index] -= wtlos
         self.fruiting_nodes_fraction[index] *= (1 - abscissionRatio)
-        # If FruitFraction[k][l][m] is less than 0.001 make it zero, and update state.square_nitrogen, CumPlantNLoss, BloomWeightLoss, state.square_weight, SquareWeight[k][l][m], and assign 5 to FruitingCode.
+        # If FruitFraction[k][l][m] is less than 0.001 make it zero, and update state.square_nitrogen, CumPlantNLoss, BloomWeightLoss, SquareWeight[k][l][m], and assign 5 to FruitingCode.
         if self.fruiting_nodes_fraction[index] <= 0.001:
             self.fruiting_nodes_fraction[index] = 0
-            self.square_nitrogen -= site.square.weight * self.square_nitrogen_concentration
-            self.square_weight -= site.square.weight
-            site.square.weight = 0
+            self.square_nitrogen -= self.square_weights[index] * self.square_nitrogen_concentration
+            self.square_weights[index] = 0
             self.fruiting_nodes_stage[site.k, site.l, site.m] = Stage.AbscisedAsSquare
 
     def boll_abscission(self, site, abscissionRatio, gin1):
@@ -2001,17 +1966,17 @@ cdef class State:
         if not self.pollination_switch:
             self.fruiting_nodes_stage[site.k, site.l, site.m] = Stage.AbscisedAsFlower
             self.fruiting_nodes_fraction[index] = 0
-            site.square.weight = 0
+            self.square_weights[index] = 0
             return
         # The initial weight of the new boll (BollWeight) and new burr (state.burr_weight) will be a fraction of the square weight, and the rest will be added to BloomWeightLoss. 80% of the initial weight will be in the burr.
-        # The nitrogen in the square is partitioned in the same proportions. The nitrogen that was in the square is transferred to the burrs. Update state.green_bolls_weight, state.green_bolls_burr_weight and state.square_weight. assign zero to SquareWeight at this site.
+        # The nitrogen in the square is partitioned in the same proportions. The nitrogen that was in the square is transferred to the burrs. Update state.green_bolls_weight and state.green_bolls_burr_weight. assign zero to SquareWeight at this site.
         cdef double bolinit  # initial weight of boll after flowering.
-        bolinit = vnewboll[0] * site.square.weight
+        bolinit = vnewboll[0] * self.square_weights[index]
         self.fruiting_nodes_boll_weight[index] = 0.2 * bolinit
         site.burr.weight = bolinit - self.fruiting_nodes_boll_weight[index]
 
         cdef double sqr1n  # the nitrogen content of one square before flowering.
-        sqr1n = self.square_nitrogen_concentration * site.square.weight
+        sqr1n = self.square_nitrogen_concentration * self.square_weights[index]
         self.square_nitrogen -= sqr1n
         sqr1n = sqr1n * vnewboll[0]
 
@@ -2022,8 +1987,7 @@ cdef class State:
 
         self.green_bolls_weight += self.fruiting_nodes_boll_weight[index]
         self.green_bolls_burr_weight += site.burr.weight
-        self.square_weight -= site.square.weight
-        site.square.weight = 0
+        self.square_weights[index] = 0
     #end phenology
 
     #begin soil
@@ -3755,7 +3719,6 @@ cdef class Simulation:
         state0.plant_height = 4.0
         state0.stem_weight = 0.2
         state0.petiole_weight = 0
-        state0.square_weight = 0
         state0.green_bolls_weight = 0
         state0.green_bolls_burr_weight = 0
         state0.open_bolls_burr_weight = 0
@@ -3821,9 +3784,6 @@ cdef class Simulation:
                 )
                 for m in range(5):
                     state0._.vegetative_branches[k].fruiting_branches[l].nodes[m] = dict(
-                        square=dict(
-                            weight=0,
-                        ),
                         burr=dict(
                             potential_growth=0,
                             weight=0,

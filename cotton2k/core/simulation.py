@@ -105,6 +105,11 @@ class State(
         return self.root_weight + self.above_ground_biomass
 
     @property
+    def square_weight(self):
+        """total square weight, g per plant."""
+        return self.square_weights.sum()
+
+    @property
     def above_ground_biomass(self):
         # pylint: disable=no-member
         return (
@@ -283,6 +288,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             "soil_psi",
             "soil_water_content",
             "square_potential_growth",
+            "square_weights",
         ):
             value = getattr(pre, attr)
             if hasattr(value, "copy") and callable(value.copy):
@@ -355,6 +361,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
         state0 = CyState(self, self.version)
         state0.main_stem_leaf_area = np.zeros((3, 30), dtype=np.double)
         state0.square_potential_growth = np.zeros((3, 30, 5), dtype=np.double)
+        state0.square_weights = np.zeros((3, 30, 5), dtype=np.double)
         state0.node_leaf_age = np.zeros((3, 30, 5), dtype=np.double)
         state0.node_leaf_area = np.zeros((3, 30, 5), dtype=np.double)
         state0.node_leaf_area_potential_growth = np.zeros((3, 30, 5), dtype=np.double)
