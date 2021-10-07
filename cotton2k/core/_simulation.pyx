@@ -115,7 +115,6 @@ cdef double ElCondSatSoilToday  # electrical conductivity of saturated extract (
 cdef double thetar[40]  # volumetric water content of soil layers at permanent wilting point (-15 bars), cm3 cm-3.
 cdef double HumusOrganicMatter[40][20]  # humus fraction of soil organic matter, mg/cm3.
 cdef double NO3FlowFraction[40]  # fraction of nitrate that can move to the next layer.
-cdef double MaxWaterCapacity[40]  # volumetric water content of a soil layer at maximum capacity, before drainage, cm3 cm-3.
 cdef double HumusNitrogen[40][20]  # N in stable humic fraction material in a soil cells, mg/cm3.
 
 cdef int LateralRootFlag[40] # flags indicating presence of lateral roots in soil layers: 0 = no lateral roots are possible. 1 = lateral roots may be initiated. 2 = lateral roots have been initiated.
@@ -2403,7 +2402,7 @@ cdef class State:
                 avwl += self.soil_water_content[l, k] * self._sim.column_width[k] / self._sim.row_space
                 oldvh2oc[k] = self.soil_water_content[l, k]
             # Upper limit of water content in free drainage..
-            uplimit: float = MaxWaterCapacity[l]
+            uplimit: float = self.max_water_capacity[l]
 
             # Check if the average water content exceeds uplimit for this layer, and if it does, compute amount (wmov) to be moved to the next layer from each cell.
             wmov: float  # amount of water moving out of a cell.
@@ -2453,11 +2452,11 @@ cdef class State:
                         self.soil_nitrate_content[l, k] += (1 - NO3FlowFraction[l]) * wmov * nitconc
                         VolUreaNContent[l][k] += (1 - NO3FlowFraction[l]) * wmov * nurconc
         # For the lowermost soil layer, loop over columns:
-        # It is assumed that the maximum amount of water held at the lowest soil layer (nlx-1) of the slab is equal to FieldCapacity. If water content exceeds MaxWaterCapacity, compute the water drained out (Drainage), update water, nitrate and urea, compute nitrogen lost by drainage, and add it to the cumulative N loss SoilNitrogenLoss.
+        # It is assumed that the maximum amount of water held at the lowest soil layer (nlx-1) of the slab is equal to FieldCapacity. If water content exceeds max_water_capacity, compute the water drained out (Drainage), update water, nitrate and urea, compute nitrogen lost by drainage, and add it to the cumulative N loss SoilNitrogenLoss.
         Drainage: float = 0  # drainage of water out of the slab, cm3 (return value)
         for k in range(20):
-            if self.soil_water_content[nlx - 1, k] > MaxWaterCapacity[nlx - 1]:
-                Drainage += (self.soil_water_content[nlx - 1, k] - MaxWaterCapacity[nlx - 1]) * self.layer_depth[nlx - 1] * self._sim.column_width[k]
+            if self.soil_water_content[nlx - 1, k] > self.max_water_capacity[nlx - 1]:
+                Drainage += (self.soil_water_content[nlx - 1, k] - self.max_water_capacity[nlx - 1]) * self.layer_depth[nlx - 1] * self._sim.column_width[k]
                 nitconc = self.soil_nitrate_content[nlx - 1, k] / oldvh2oc[k]
                 if nitconc < 1.e-30:
                     nitconc = 0
@@ -2466,9 +2465,9 @@ cdef class State:
                     nurconc = 0
                 # intermediate variable for computing N loss.
                 saven: float = (self.soil_nitrate_content[nlx - 1, k] + VolUreaNContent[nlx - 1][k]) * self.layer_depth[nlx - 1] * self._sim.column_width[k]
-                self.soil_water_content[nlx - 1, k] = MaxWaterCapacity[nlx - 1]
-                self.soil_nitrate_content[nlx - 1, k] = nitconc * MaxWaterCapacity[nlx - 1]
-                VolUreaNContent[nlx - 1][k] = nurconc * MaxWaterCapacity[nlx - 1]
+                self.soil_water_content[nlx - 1, k] = self.max_water_capacity[nlx - 1]
+                self.soil_nitrate_content[nlx - 1, k] = nitconc * self.max_water_capacity[nlx - 1]
+                VolUreaNContent[nlx - 1][k] = nurconc * self.max_water_capacity[nlx - 1]
         return Drainage
 
     def drip_flow(self, double Drip, double row_space):
@@ -2478,7 +2477,7 @@ cdef class State:
     //  Drip - amount of irrigation applied by the drip method, mm.
     //
     //     The following global variables are referenced:
-    //       dl, LocationColumnDrip, LocationLayerDrip, MaxWaterCapacity,
+    //       dl, LocationColumnDrip, LocationLayerDrip, max_water_capacity,
     //       nk, nl, NO3FlowFraction, PoreSpace, wk
     //
     //     The following global variables are set:
@@ -2501,8 +2500,8 @@ cdef class State:
         cdef int l0 = self.drip_y  #  layer where the drip emitter is situated
         cdef int k0 = self.drip_x  #  column where the drip emitter is situated
         # SoilCell &soil_cell = soil_cells[l0][k0]
-        # It is assumed that wetting cannot exceed MaxWaterCapacity of this cell. Compute h2odef, the amount of water needed to saturate this cell.
-        h2odef = (MaxWaterCapacity[l0] - self.soil_water_content[l0, k0]) * self.layer_depth[l0] * self._sim.column_width[k0]
+        # It is assumed that wetting cannot exceed max_water_capacity of this cell. Compute h2odef, the amount of water needed to saturate this cell.
+        h2odef = (self.max_water_capacity[l0] - self.soil_water_content[l0, k0]) * self.layer_depth[l0] * self._sim.column_width[k0]
         # If maximum water capacity is not exceeded - update cell.water_content of this cell and exit the function.
         if dripw[0] <= h2odef:
             self.soil_water_content[l0, k0] += dripw[0] / (self.layer_depth[l0] * self._sim.column_width[k0])
@@ -2515,28 +2514,28 @@ cdef class State:
             cnw = self.soil_nitrate_content[l0, k0] / (
                         self.soil_water_content[l0, k0] + dripw[0] / (self.layer_depth[l0] * self._sim.column_width[k0]))
             # cnw is multiplied by dripw[1] to get dripn[1], the amount of nitrate N going out to the next ring of cells. It is assumed, however, that not more than a proportion (NO3FlowFraction) of the nitrate N in this cell can be removed in one iteration.
-            if (cnw * MaxWaterCapacity[l0]) < (NO3FlowFraction[l0] * self.soil_nitrate_content[l0, k0]):
+            if (cnw * self.max_water_capacity[l0]) < (NO3FlowFraction[l0] * self.soil_nitrate_content[l0, k0]):
                 dripn[1] = NO3FlowFraction[l0] * self.soil_nitrate_content[l0, k0] * self.layer_depth[
                     l0] * self._sim.column_width[k0]
                 self.soil_nitrate_content[l0, k0] = (1 - NO3FlowFraction[l0]) * self.soil_nitrate_content[l0, k0]
             else:
                 dripn[1] = dripw[1] * cnw
-                self.soil_nitrate_content[l0, k0] = MaxWaterCapacity[l0] * cnw
+                self.soil_nitrate_content[l0, k0] = self.max_water_capacity[l0] * cnw
 
         # The movement of urea N to the next ring is computed similarly.
         cdef double cuw = 0  # concentration of urea N in the outflowing water
         if VolUreaNContent[l0][k0] > 1.e-30:
             cuw = VolUreaNContent[l0][k0] / (
                         self.soil_water_content[l0, k0] + dripw[0] / (self.layer_depth[l0] * self._sim.column_width[k0]))
-            if (cuw * MaxWaterCapacity[l0]) < (NO3FlowFraction[l0] * VolUreaNContent[l0][k0]):
+            if (cuw * self.max_water_capacity[l0]) < (NO3FlowFraction[l0] * VolUreaNContent[l0][k0]):
                 dripu[1] = NO3FlowFraction[l0] * VolUreaNContent[l0][k0] * self.layer_depth[l0] * self._sim.column_width[k0]
                 VolUreaNContent[l0][k0] = (1 - NO3FlowFraction[l0]) * VolUreaNContent[l0][k0]
             else:
                 dripu[1] = dripw[1] * cuw
-                VolUreaNContent[l0][k0] = MaxWaterCapacity[l0] * cuw
+                VolUreaNContent[l0][k0] = self.max_water_capacity[l0] * cuw
         cdef double defcit[40][20]  # array of the difference between water capacity and actual water content in each cell of the ring
-        # Set cell.water_content of the cell in which the drip is located to MaxWaterCapacity.
-        self.soil_water_content[l0, k0] = MaxWaterCapacity[l0]
+        # Set cell.water_content of the cell in which the drip is located to max_water_capacity.
+        self.soil_water_content[l0, k0] = self.max_water_capacity[l0]
         # Loop of concentric rings of cells, starting from ring 1.
         # Assign zero to the sums sv, st, sn, sn1, su and su1.
         for kr in range(1, 40):
@@ -2551,8 +2550,8 @@ cdef class State:
             dist: float  # distance (cm) of a cell center from drip location
             # Loop over all soil cells
             for l in range(1, 40):
-                # Upper limit of water content is the porespace volume in layers below the water table, MaxWaterCapacity in other layers.
-                uplimit = MaxWaterCapacity[l]
+                # Upper limit of water content is the porespace volume in layers below the water table, max_water_capacity in other layers.
+                uplimit = self.max_water_capacity[l]
                 for k in range(20):
                     # Compute the sums sv, st, sn, sn1, su and su1 within the radius limits of this ring. The array defcit is the sum of difference between uplimit and cell.water_content of each cell.
                     dist = self.cell_distance(l, k, l0, k0)
@@ -2602,7 +2601,7 @@ cdef class State:
                     druout = dripu[kr] + xuloss
             # For all the cells in the ring, as in the 1st cell, saturate cell.water_content to uplimit, and update VolNo3NContent and VolUreaNContent.
             for l in range(1, 40):
-                uplimit = MaxWaterCapacity[l]
+                uplimit = self.max_water_capacity[l]
 
                 for k in range(20):
                     dist = self.cell_distance(l, k, l0, k0)
@@ -3441,9 +3440,10 @@ cdef class State:
         cdef double rm = 2.65  # density of the solid fraction of the soil (g / cm3)
         cdef double bdl[40]  # array of bulk density of soil layers
         SoilHorizonNum = np.searchsorted(SOIL["depth"], self.layer_depth_cumsum)
+        self._sim.max_water_capacity = np.zeros(40, dtype=np.double)
         for l, j in enumerate(SoilHorizonNum):
             # bdl, thad, thts are defined for each soil layer, using the respective input variables BulkDensity, airdr, thetas.
-            # FieldCapacity, MaxWaterCapacity and thetar are computed for each layer, as water content (cm3 cm-3) of each layer corresponding to matric potentials of psisfc (for field capacity), psidra (for free drainage) and -15 bars (for permanent wilting point), respectively, using function qpsi.
+            # FieldCapacity, max_water_capacity and thetar are computed for each layer, as water content (cm3 cm-3) of each layer corresponding to matric potentials of psisfc (for field capacity), psidra (for free drainage) and -15 bars (for permanent wilting point), respectively, using function qpsi.
             # pore space volume (PoreSpace) is also computed for each layer.
             # make sure that saturated water content is not more than pore space.
             bdl[l] = BulkDensity[j]
@@ -3453,7 +3453,7 @@ cdef class State:
             thad[l] = airdr[j]
             thts[l] = thetas[j]
             FieldCapacity[l] = qpsi(psisfc, thad[l], thts[l], alpha[j], vanGenuchtenBeta[j])
-            MaxWaterCapacity[l] = qpsi(psidra, thad[l], thts[l], alpha[j], vanGenuchtenBeta[j])
+            self._sim.max_water_capacity[l] = qpsi(psidra, thad[l], thts[l], alpha[j], vanGenuchtenBeta[j])
             thetar[l] = qpsi(-15., thad[l], thts[l], alpha[j], vanGenuchtenBeta[j])
             # When the saturated hydraulic conductivity (SaturatedHydCond) is not given, it is computed from the hydraulic conductivity at field capacity (condfc), using the wcond function.
             if SaturatedHydCond[j] <= 0:
@@ -3485,7 +3485,7 @@ cdef class State:
                 coeff = 1.2
             else:
                 coeff = 1.6
-            NO3FlowFraction[l] = 1 / (1 + coeff * bdl[l] / MaxWaterCapacity[l])
+            NO3FlowFraction[l] = 1 / (1 + coeff * bdl[l] / self.max_water_capacity[l])
             # Determine the corresponding 15 cm layer of the input file.
             # Compute the initial volumetric water content (cell.water_content) of each layer, and check that it will not be less than the air-dry value or more than pore space volume.
             j = min(int((sumdl - 1) / LayerDepth), 13)
@@ -3629,6 +3629,7 @@ cdef class Simulation:
     cdef public numpy.ndarray layer_depth_cumsum
     cdef public numpy.ndarray soil_clay_volume_fraction
     cdef public numpy.ndarray soil_sand_volume_fraction
+    cdef public numpy.ndarray max_water_capacity  # volumetric water content of a soil layer at maximum capacity, before drainage, cm3 cm-3.
     cdef public object meteor
     cdef public unsigned int emerge_switch
     cdef public unsigned int version
