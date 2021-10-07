@@ -282,6 +282,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             "soil_nitrate_content",
             "soil_psi",
             "soil_water_content",
+            "square_potential_growth",
         ):
             value = getattr(pre, attr)
             if hasattr(value, "copy") and callable(value.copy):
@@ -353,6 +354,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
     def initialize_state0(self):
         state0 = CyState(self, self.version)
         state0.main_stem_leaf_area = np.zeros((3, 30), dtype=np.double)
+        state0.square_potential_growth = np.zeros((3, 30, 5), dtype=np.double)
         state0.node_leaf_age = np.zeros((3, 30, 5), dtype=np.double)
         state0.node_leaf_area = np.zeros((3, 30, 5), dtype=np.double)
         state0.node_leaf_area_potential_growth = np.zeros((3, 30, 5), dtype=np.double)

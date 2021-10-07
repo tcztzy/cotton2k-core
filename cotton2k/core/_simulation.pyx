@@ -24,7 +24,6 @@ from .thermology import canopy_balance
 
 
 ctypedef struct SquareStruct:
-    double potential_growth  # potential growth in weight of an individual fruiting node squares, g day-1.
     double weight  # weight of each square, g per plant.
 ctypedef struct cBurr:
     double potential_growth  # potential growth rate of burrs in an individual boll, g day-1.
@@ -330,14 +329,6 @@ cdef class Square:
     def weight(self, value):
         self._[0].weight = value
 
-    @property
-    def potential_growth(self):
-        return self._[0].potential_growth
-
-    @potential_growth.setter
-    def potential_growth(self, value):
-        self._[0].potential_growth = value
-
     @staticmethod
     cdef Square from_ptr(SquareStruct *_ptr, unsigned int k, unsigned int l, unsigned int m):
         cdef Square square = Square.__new__(Square)
@@ -587,6 +578,7 @@ cdef class State:
     cdef public numpy.ndarray root_weights
     cdef public numpy.ndarray root_weight_capable_uptake  # root weight capable of uptake, in g per soil cell.
     cdef public numpy.ndarray main_stem_leaf_area
+    cdef public numpy.ndarray square_potential_growth  # potential growth in weight of an individual fruiting node squares, g day-1.
     cdef public numpy.ndarray node_leaf_age  # leaf age at each fruiting site, physiological days.
     cdef public numpy.ndarray node_leaf_area  # leaf area at each fruiting site, dm2.
     cdef public numpy.ndarray node_leaf_weight  # leaf weight at each fruiting site, g.
@@ -1242,7 +1234,7 @@ cdef class State:
                     # If this site is a square, the actual dry weight added to it (dwsq) is proportional to its potential growth.
                     # Update the weight of this square (SquareWeight), sum of today's added dry weight to squares (state.actual_square_growth), and total weight of squares (self.square_weight).
                     if self.fruiting_nodes_stage[k, l, m] == Stage.Square:
-                        dwsq = site.square.potential_growth * self.fruit_growth_ratio  # dry weight added to square.
+                        dwsq = self.square_potential_growth[k, l, m] * self.fruit_growth_ratio  # dry weight added to square.
 
                         site.square.weight += dwsq
                         self.actual_square_growth += dwsq
@@ -3830,7 +3822,6 @@ cdef class Simulation:
                 for m in range(5):
                     state0._.vegetative_branches[k].fruiting_branches[l].nodes[m] = dict(
                         square=dict(
-                            potential_growth=0,
                             weight=0,
                         ),
                         burr=dict(
@@ -4235,8 +4226,8 @@ cdef class Simulation:
                         # ratesqr is the rate of square growth, g per square per day.
                         # The routine for this is derived from GOSSYM, and so are the parameters used.
                         ratesqr = tfrt * vpotfrt[3] * exp(-vpotfrt[2] + vpotfrt[3] * state.fruiting_nodes_age[k, l, m])
-                        state.vegetative_branches[k].fruiting_branches[l].nodes[m].square.potential_growth = ratesqr * state.fruiting_nodes_fraction[k, l, m]
-                        PotGroAllSquares += state.vegetative_branches[k].fruiting_branches[l].nodes[m].square.potential_growth
+                        state.square_potential_growth[k, l, m] = ratesqr * state.fruiting_nodes_fraction[k, l, m]
+                        PotGroAllSquares += state.square_potential_growth[k, l, m]
                     # Growth of seedcotton is simulated separately from the growth of burrs. The logistic function is used to simulate growth of seedcotton. The constants of this function for cultivar 'Acala-SJ2', are based on the data of Marani (1979); they are derived from calibration for other cultivars
                     # agemax is the age of the boll (in physiological days after bloom) at the time when the boll growth rate is maximal.
                     # rbmax is the potential maximum rate of boll growth (g seeds plus lint dry weight per physiological day) at this age.
