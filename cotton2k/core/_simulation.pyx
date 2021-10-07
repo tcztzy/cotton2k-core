@@ -174,236 +174,6 @@ cdef double PoreSpace[40]  # pore space of soil, volume fraction.
 cdef double HeatCapacitySoilSolid[40]  # heat capacity of the solid phase of the soil.
 
 
-cdef water_flux(double q1[], double psi1[], double dd[], double qr1[], double qs1[], double pp1[], int nn, int iv, int ll, long numiter, int noitr):
-    """Computes the movement of water in the soil, caused by potential differences between cells in a soil column or in a soil layer. It is called by function CapillaryFlow(). It calls functions WaterBalance(), psiq(), qpsi() and wcond().
-
-    Arguments
-    ---------
-    q1
-        array of volumetric water content, v/v.
-    psi1
-        array of matric soil water potential, bars.
-    dd1
-        array of widths of soil cells in the direction of flow, cm.
-    qr1
-        array of residual volumetric water content.
-    qs1
-        array of saturated volumetric water content.
-    pp1
-        array of pore space v/v.
-    nn
-        number of cells in the array.
-    iv
-        indicator if flow direction, iv = 1 for vertical iv = 0 for horizontal.
-    ll
-        layer number if the flow is horizontal.
-    numiter
-        counter for the number of iterations.
-    """
-    delt: float = 1 / noitr  # the time step of this iteration (fraction of day)
-    cdef double cond[40]  # values of hydraulic conductivity
-    cdef double kx[40]  # non-dimensional conductivity to the lower layer or to the column on the right
-    cdef double ky[40]  # non-dimensional conductivity to the upper layer or to the column on the left
-    # Loop over all soil cells. if this is a vertical flow, define the profile index j for each soil cell. compute the hydraulic conductivity of each soil cell, using the function wcond(). Zero the arrays kx and ky.
-    j = SoilHorizonNum[ll]  # for horizontal flow (iv = 0)
-    for i in range(nn):
-        if iv == 1:
-            j = SoilHorizonNum[i]  # for vertical flow
-        cond[i] = wcond(q1[i], qr1[i], qs1[i], vanGenuchtenBeta[j], SaturatedHydCond[j], pp1[i])
-        kx[i] = 0
-        ky[i] = 0
-
-    # Loop from the second soil cell. compute the array dy (distances between the midpoints of adjacent cells).
-    # Compute the average conductivity avcond[i] between soil cells i and (i-1). for low values of conductivity in both cells,(( an arithmetic mean is computed)). for higher values the harmonic mean is used, but if in one of the cells the conductivity is too low (less than a minimum value of condmin ), replace it with condmin.
-
-    cdef double dy[40]  # the distance between the midpoint of a layer (or a column) and the midpoint
-    # of the layer above it (or the column to the left of it)
-    cdef double avcond[40]  # average hydraulic conductivity of two adjacent soil cells
-    condmin = 0.000006  # minimum value of conductivity, used for computing averages
-    for i in range(1, nn):
-        dy[i] = 0.5 * (dd[i - 1] + dd[i])
-        if cond[i - 1] <= condmin and cond[i] <= condmin:
-            avcond[i] = condmin
-        elif cond[i - 1] <= condmin < cond[i]:
-            avcond[i] = 2 * condmin * cond[i] / (condmin + cond[i])
-        elif cond[i] <= condmin < cond[i - 1]:
-            avcond[i] = 2 * condmin * cond[i - 1] / (condmin + cond[i - 1])
-        else:
-            avcond[i] = 2 * cond[i - 1] * cond[i] / (cond[i - 1] + cond[i])
-    # The numerical solution of the flow equation is a combination of the implicit method (weighted by RatioImplicit) and the explicit method (weighted by 1-RatioImplicit).
-    # Compute the explicit part of the solution, weighted by (1-RatioImplicit). store water content values, before changing them, in array qx.
-    cdef double qx[40]  # previous value of q1.
-    cdef double addq[40]  # water added to qx
-    cdef double sumaddq = 0  # sum of addq
-    for i in range(nn):
-        qx[i] = q1[i]
-    # Loop from the second to the last but one soil cells.
-    for i in range(1, nn - 1):
-        # Compute the difference in soil water potential between adjacent cells (deltpsi). This difference is not allowed to be greater than 1000 bars, in order to prevent computational overflow in cells with low water content.
-        deltpsi: float = psi1[i - 1] - psi1[i]  # difference of soil water potentials (in bars)
-        # between adjacent soil soil cells
-        if deltpsi > 1000:
-            deltpsi = 1000
-        if deltpsi < -1000:
-            deltpsi = -1000
-        # If this is a vertical flux, add the gravity component of water potential.
-        if iv == 1:
-            deltpsi += 0.001 * dy[i]
-        # Compute dumm1 (the hydraulic conductivity redimensioned to cm), and check that it will not exceed conmax multiplied by the distance between soil cells, in order to prevent overflow errors.
-        # redimensioned hydraulic conductivity components between adjacent cells.
-        dumm1 = 1000 * avcond[i] * delt / dy[i]
-        if dumm1 > conmax * dy[i]:
-            dumm1 = conmax * dy[i]
-        # Water entering soil cell i is now computed, weighted by (1 - RatioImplicit). It is not allowed to be greater than 25% of the difference between the cells.
-        # Compute water movement from soil cell i-1 to i:
-        # water added to cell i from cell (i-1)
-        dqq1: float = (1 - RatioImplicit) * deltpsi * dumm1
-        # difference of soil water content (v/v) between adjacent cells.
-        deltq: float = qx[i - 1] - qx[i]
-        if abs(dqq1) > abs(0.25 * deltq):
-            if deltq > 0 > dqq1:
-                dqq1 = 0
-            elif deltq < 0 < dqq1:
-                dqq1 = 0
-            else:
-                dqq1 = 0.25 * deltq
-        # This is now repeated for water movement from i+1 to i.
-        deltpsi = psi1[i + 1] - psi1[i]
-        deltq = qx[i + 1] - qx[i]
-        if deltpsi > 1000:
-            deltpsi = 1000
-        if deltpsi < -1000:
-            deltpsi = -1000
-        if iv == 1:
-            deltpsi -= 0.001 * dy[i + 1]
-        dumm1 = 1000 * avcond[i + 1] * delt / dy[i + 1]
-        if dumm1 > (conmax * dy[i + 1]):
-            dumm1 = conmax * dy[i + 1]
-        dqq2: float = (1 - RatioImplicit) * deltpsi * dumm1  # water added to cell i from cell (i+1)
-        if abs(dqq2) > abs(0.25 * deltq):
-            if deltq > 0 > dqq2:
-                dqq2 = 0
-            elif deltq < 0 < dqq2:
-                dqq2 = 0
-            else:
-                dqq2 = 0.25 * deltq
-        addq[i] = (dqq1 + dqq2) / dd[i]
-        sumaddq += dqq1 + dqq2
-        # Water content of the first and last soil cells is updated to account for flow to or from their adjacent soil cells.
-        if i == 1:
-            addq[0] = -dqq1 / dd[0]
-            sumaddq -= dqq1
-        if i == nn - 2:
-            addq[nn - 1] = -dqq2 / dd[nn - 1]
-            sumaddq -= dqq2
-    # Water content q1[i] and soil water potential psi1[i] are updated.
-    for i in range(nn):
-        q1[i] = qx[i] + addq[i]
-        if iv == 1:
-            j = SoilHorizonNum[i]
-        psi1[i] = psiq(q1[i], qr1[i], qs1[i], alpha[j], vanGenuchtenBeta[j])
-    # Compute the implicit part of the solution, weighted by RatioImplicit, starting loop from the second cell.
-    for i in range(1, nn):
-        # Mean conductivity (avcond) between adjacent cells is made "dimensionless" (ky) by multiplying it by the time step (delt)and dividing it by cell length (dd) and by dy. It is also multiplied by 1000 for converting the potential differences from bars to cm.
-        ky[i] = 1000 * avcond[i] * delt / (dy[i] * dd[i])
-        # Very low values of ky are converted to zero, to prevent underflow computer errors, and very high values are converted to maximum limit (conmax), to prevent overflow errors.
-        if ky[i] < 0.0000001:
-            ky[i] = 0
-        if ky[i] > conmax:
-            ky[i] = conmax
-    # ky[i] is the conductivity between soil cells i and i-1, whereas kx[i] is between i and i+1. Another loop, until the last but one soil cell, computes kx in a similar manner.
-    for i in range(nn - 1):
-        kx[i] = 1000 * avcond[i + 1] * delt / (dy[i + 1] * dd[i])
-        if kx[i] < 0.0000001:
-            kx[i] = 0
-        if kx[i] > conmax:
-            kx[i] = conmax
-    # Arrays used for the implicit numeric solution:
-    cdef double a1[40], b1[40], cau[40], cc1[40], d1[40], dau[40]
-    for i in range(nn):
-        # Arrays a1, b1, and cc1 are computed for the implicit part of the solution, weighted by RatioImplicit.
-        a1[i] = -kx[i] * RatioImplicit
-        b1[i] = 1 + RatioImplicit * (kx[i] + ky[i])
-        cc1[i] = -ky[i] * RatioImplicit
-        if iv == 1:
-            j = SoilHorizonNum[i]
-            a1[i] = a1[i] - 0.001 * kx[i] * RatioImplicit
-            cc1[i] = cc1[i] + 0.001 * ky[i] * RatioImplicit
-        # The water content of each soil cell is converted to water potential by function psiq and stored in array d1 (in bar units).
-        d1[i] = psiq(q1[i], qr1[i], qs1[i], alpha[j], vanGenuchtenBeta[j])
-    # The solution of the simultaneous equations in the implicit method alternates between the two directions along the arrays. The reason for this is because the direction of the solution may cause some cumulative bias. The counter numiter determines the direction of the solution.
-    # The solution in this section starts from the last soil cell (nn).
-    if numiter % 2 == 0:
-        # Intermediate arrays dau and cau are computed.
-        cau[nn - 1] = psi1[nn - 1]
-        dau[nn - 1] = 0
-        for i in range(nn - 2, 0, -1):
-            p: float = a1[i] * dau[i + 1] + b1[i]  # temporary
-            dau[i] = -cc1[i] / p
-            cau[i] = (d1[i] - a1[i] * cau[i + 1]) / p
-        if iv == 1:
-            j = SoilHorizonNum[0]
-        psi1[0] = psiq(q1[0], qr1[0], qs1[0], alpha[j], vanGenuchtenBeta[j])
-        # psi1 is now computed for soil cells 1 to nn-2. q1 is computed from psi1 by function qpsi.
-        for i in range(1, nn - 1):
-            if iv == 1:
-                j = SoilHorizonNum[i]
-            psi1[i] = dau[i] * psi1[i - 1] + cau[i]
-            q1[i] = qpsi(psi1[i], qr1[i], qs1[i], alpha[j], vanGenuchtenBeta[j])
-    # The alternative direction of solution is executed here. the solution in this section starts from the first soil cell.
-    else:
-        # Intermediate arrays dau and cau are computed, and the computations described previously are repeated in the opposite direction.
-        cau[0] = psi1[0]
-        dau[0] = 0
-        for i in range(1, nn - 1):
-            p: float = a1[i] * dau[i - 1] + b1[i]  # temporary
-            dau[i] = -cc1[i] / p
-            cau[i] = (d1[i] - a1[i] * cau[i - 1]) / p
-        if iv == 1:
-            j = SoilHorizonNum[nn - 1]
-        psi1[nn - 1] = psiq(q1[nn - 1], qr1[nn - 1], qs1[nn - 1], alpha[j], vanGenuchtenBeta[j])
-        for i in range(nn - 2, 0, -1):
-            if iv == 1:
-                j = SoilHorizonNum[i]
-            psi1[i] = dau[i] * psi1[i + 1] + cau[i]
-            q1[i] = qpsi(psi1[i], qr1[i], qs1[i], alpha[j], vanGenuchtenBeta[j])
-    # The limits of water content are now checked and corrected, and function WaterBalance() is called to correct water amounts.
-    for i in range(nn):
-        if q1[i] < qr1[i]:
-            q1[i] = qr1[i]
-        if q1[i] > qs1[i]:
-            q1[i] = qs1[i]
-        if q1[i] > pp1[i]:
-            q1[i] = pp1[i]
-    water_balance(q1, qx, dd, nn)
-
-
-cdef void water_balance(double q1[], double qx[], double dd[], int nn):
-    """Checks and corrects the water balance in the soil cells within a soil column or a soil layer. It is called by water_flux().
-
-    The implicit part of the solution may cause some deviation in the total amount of water to occur. This module corrects the water balance if the sum of deviations is not zero, so that the total amount of water in the array will not change. The correction is proportional to the difference between the previous and present water amounts in each soil cell.
-
-    Arguments
-    ---------
-    dd
-        one dimensional array of layer or column widths.
-    nn
-        the number of cells in this layer or column.
-    qx[]
-        one dimensional array of a layer or a column of the previous values of cell.water_content.
-    q1[]
-        one dimensional array of a layer or a column of cell.water_content.
-    """
-    dev: float = 0  # Sum of differences of water amount in soil
-    dabs: float = 0  # Sum of absolute value of differences in water content in
-    # the array between beginning and end of this time step.
-    for i in range(nn):
-        dev += dd[i] * (q1[i] - qx[i])
-        dabs += abs(q1[i] - qx[i])
-    if dabs > 0:
-        for i in range(nn):
-            q1[i] = q1[i] - abs(q1[i] - qx[i]) * dev / (dabs * dd[i])
-
 # arrays with file scope:
 cdef double dz[40]  # equal to the dl array in a columnn, or wk in a row.
 cdef double ts1[40]  # array of soil temperatures.
@@ -2574,7 +2344,7 @@ cdef class State:
                 nur[l] = VolUreaNContent[l][k]
                 _dl[l] = self.layer_depth[l]
             # Call the following functions: water_flux() calculates the water flow caused by potential gradients; NitrogenFlow() computes the movement of nitrates caused by the flow of water.
-            water_flux(q1, psi1, _dl, thad, thts, PoreSpace, 40, iv, 0, self.numiter, noitr)
+            self.water_flux(q1, psi1, _dl, thad, thts, PoreSpace, 40, iv, 0, self.numiter, noitr)
             NitrogenFlow(nl, q01, q1, _dl, nit, nur)
             # Reassign the updated values of q1, nit, nur and psi1 back to cell.water_content, VolNo3NContent, VolUreaNContent and SoilPsi.
             for l in range(40):
@@ -2601,7 +2371,7 @@ cdef class State:
                 nur[k] = VolUreaNContent[l][k]
                 wk1[k] = self._sim.column_width[k]
             # Call subroutines water_flux(), and NitrogenFlow() to compute water nitrate and urea transport in the layer.
-            water_flux(q1, psi1, wk1, qr1, qs1, pp1, nk, iv, l, self.numiter, noitr)
+            self.water_flux(q1, psi1, wk1, qr1, qs1, pp1, nk, iv, l, self.numiter, noitr)
             NitrogenFlow(nk, q01, q1, wk1, nit, nur)
             # Reassign the updated values of q1, nit, nur and psi1 back to cell.water_content, VolNo3NContent, VolUreaNContent and SoilPsi.
             for k in range(20):
@@ -2855,6 +2625,235 @@ cdef class State:
                 # If this is the last ring, the outflowing water will be added to the drainage, CumWaterDrained, the outflowing nitrogen to SoilNitrogenLoss.
                 return
             # Repeat all these procedures for the next ring.
+
+    cdef water_flux(self, double q1[], double psi1[], double dd[], double qr1[], double qs1[], double pp1[], int nn, int iv, int ll, long numiter, int noitr):
+        """Computes the movement of water in the soil, caused by potential differences between cells in a soil column or in a soil layer. It is called by function CapillaryFlow(). It calls functions WaterBalance(), psiq(), qpsi() and wcond().
+
+        Arguments
+        ---------
+        q1
+            array of volumetric water content, v/v.
+        psi1
+            array of matric soil water potential, bars.
+        dd1
+            array of widths of soil cells in the direction of flow, cm.
+        qr1
+            array of residual volumetric water content.
+        qs1
+            array of saturated volumetric water content.
+        pp1
+            array of pore space v/v.
+        nn
+            number of cells in the array.
+        iv
+            indicator if flow direction, iv = 1 for vertical iv = 0 for horizontal.
+        ll
+            layer number if the flow is horizontal.
+        numiter
+            counter for the number of iterations.
+        """
+        delt: float = 1 / noitr  # the time step of this iteration (fraction of day)
+        cdef double cond[40]  # values of hydraulic conductivity
+        cdef double kx[40]  # non-dimensional conductivity to the lower layer or to the column on the right
+        cdef double ky[40]  # non-dimensional conductivity to the upper layer or to the column on the left
+        # Loop over all soil cells. if this is a vertical flow, define the profile index j for each soil cell. compute the hydraulic conductivity of each soil cell, using the function wcond(). Zero the arrays kx and ky.
+        j = SoilHorizonNum[ll]  # for horizontal flow (iv = 0)
+        for i in range(nn):
+            if iv == 1:
+                j = SoilHorizonNum[i]  # for vertical flow
+            cond[i] = wcond(q1[i], qr1[i], qs1[i], vanGenuchtenBeta[j], SaturatedHydCond[j], pp1[i])
+            kx[i] = 0
+            ky[i] = 0
+
+        # Loop from the second soil cell. compute the array dy (distances between the midpoints of adjacent cells).
+        # Compute the average conductivity avcond[i] between soil cells i and (i-1). for low values of conductivity in both cells,(( an arithmetic mean is computed)). for higher values the harmonic mean is used, but if in one of the cells the conductivity is too low (less than a minimum value of condmin ), replace it with condmin.
+
+        cdef double dy[40]  # the distance between the midpoint of a layer (or a column) and the midpoint
+        # of the layer above it (or the column to the left of it)
+        cdef double avcond[40]  # average hydraulic conductivity of two adjacent soil cells
+        condmin = 0.000006  # minimum value of conductivity, used for computing averages
+        for i in range(1, nn):
+            dy[i] = 0.5 * (dd[i - 1] + dd[i])
+            if cond[i - 1] <= condmin and cond[i] <= condmin:
+                avcond[i] = condmin
+            elif cond[i - 1] <= condmin < cond[i]:
+                avcond[i] = 2 * condmin * cond[i] / (condmin + cond[i])
+            elif cond[i] <= condmin < cond[i - 1]:
+                avcond[i] = 2 * condmin * cond[i - 1] / (condmin + cond[i - 1])
+            else:
+                avcond[i] = 2 * cond[i - 1] * cond[i] / (cond[i - 1] + cond[i])
+        # The numerical solution of the flow equation is a combination of the implicit method (weighted by RatioImplicit) and the explicit method (weighted by 1-RatioImplicit).
+        # Compute the explicit part of the solution, weighted by (1-RatioImplicit). store water content values, before changing them, in array qx.
+        cdef double qx[40]  # previous value of q1.
+        cdef double addq[40]  # water added to qx
+        cdef double sumaddq = 0  # sum of addq
+        for i in range(nn):
+            qx[i] = q1[i]
+        # Loop from the second to the last but one soil cells.
+        for i in range(1, nn - 1):
+            # Compute the difference in soil water potential between adjacent cells (deltpsi). This difference is not allowed to be greater than 1000 bars, in order to prevent computational overflow in cells with low water content.
+            deltpsi: float = psi1[i - 1] - psi1[i]  # difference of soil water potentials (in bars)
+            # between adjacent soil soil cells
+            if deltpsi > 1000:
+                deltpsi = 1000
+            if deltpsi < -1000:
+                deltpsi = -1000
+            # If this is a vertical flux, add the gravity component of water potential.
+            if iv == 1:
+                deltpsi += 0.001 * dy[i]
+            # Compute dumm1 (the hydraulic conductivity redimensioned to cm), and check that it will not exceed conmax multiplied by the distance between soil cells, in order to prevent overflow errors.
+            # redimensioned hydraulic conductivity components between adjacent cells.
+            dumm1 = 1000 * avcond[i] * delt / dy[i]
+            if dumm1 > conmax * dy[i]:
+                dumm1 = conmax * dy[i]
+            # Water entering soil cell i is now computed, weighted by (1 - RatioImplicit). It is not allowed to be greater than 25% of the difference between the cells.
+            # Compute water movement from soil cell i-1 to i:
+            # water added to cell i from cell (i-1)
+            dqq1: float = (1 - RatioImplicit) * deltpsi * dumm1
+            # difference of soil water content (v/v) between adjacent cells.
+            deltq: float = qx[i - 1] - qx[i]
+            if abs(dqq1) > abs(0.25 * deltq):
+                if deltq > 0 > dqq1:
+                    dqq1 = 0
+                elif deltq < 0 < dqq1:
+                    dqq1 = 0
+                else:
+                    dqq1 = 0.25 * deltq
+            # This is now repeated for water movement from i+1 to i.
+            deltpsi = psi1[i + 1] - psi1[i]
+            deltq = qx[i + 1] - qx[i]
+            if deltpsi > 1000:
+                deltpsi = 1000
+            if deltpsi < -1000:
+                deltpsi = -1000
+            if iv == 1:
+                deltpsi -= 0.001 * dy[i + 1]
+            dumm1 = 1000 * avcond[i + 1] * delt / dy[i + 1]
+            if dumm1 > (conmax * dy[i + 1]):
+                dumm1 = conmax * dy[i + 1]
+            dqq2: float = (1 - RatioImplicit) * deltpsi * dumm1  # water added to cell i from cell (i+1)
+            if abs(dqq2) > abs(0.25 * deltq):
+                if deltq > 0 > dqq2:
+                    dqq2 = 0
+                elif deltq < 0 < dqq2:
+                    dqq2 = 0
+                else:
+                    dqq2 = 0.25 * deltq
+            addq[i] = (dqq1 + dqq2) / dd[i]
+            sumaddq += dqq1 + dqq2
+            # Water content of the first and last soil cells is updated to account for flow to or from their adjacent soil cells.
+            if i == 1:
+                addq[0] = -dqq1 / dd[0]
+                sumaddq -= dqq1
+            if i == nn - 2:
+                addq[nn - 1] = -dqq2 / dd[nn - 1]
+                sumaddq -= dqq2
+        # Water content q1[i] and soil water potential psi1[i] are updated.
+        for i in range(nn):
+            q1[i] = qx[i] + addq[i]
+            if iv == 1:
+                j = SoilHorizonNum[i]
+            psi1[i] = psiq(q1[i], qr1[i], qs1[i], alpha[j], vanGenuchtenBeta[j])
+        # Compute the implicit part of the solution, weighted by RatioImplicit, starting loop from the second cell.
+        for i in range(1, nn):
+            # Mean conductivity (avcond) between adjacent cells is made "dimensionless" (ky) by multiplying it by the time step (delt)and dividing it by cell length (dd) and by dy. It is also multiplied by 1000 for converting the potential differences from bars to cm.
+            ky[i] = 1000 * avcond[i] * delt / (dy[i] * dd[i])
+            # Very low values of ky are converted to zero, to prevent underflow computer errors, and very high values are converted to maximum limit (conmax), to prevent overflow errors.
+            if ky[i] < 0.0000001:
+                ky[i] = 0
+            if ky[i] > conmax:
+                ky[i] = conmax
+        # ky[i] is the conductivity between soil cells i and i-1, whereas kx[i] is between i and i+1. Another loop, until the last but one soil cell, computes kx in a similar manner.
+        for i in range(nn - 1):
+            kx[i] = 1000 * avcond[i + 1] * delt / (dy[i + 1] * dd[i])
+            if kx[i] < 0.0000001:
+                kx[i] = 0
+            if kx[i] > conmax:
+                kx[i] = conmax
+        # Arrays used for the implicit numeric solution:
+        cdef double a1[40], b1[40], cau[40], cc1[40], d1[40], dau[40]
+        for i in range(nn):
+            # Arrays a1, b1, and cc1 are computed for the implicit part of the solution, weighted by RatioImplicit.
+            a1[i] = -kx[i] * RatioImplicit
+            b1[i] = 1 + RatioImplicit * (kx[i] + ky[i])
+            cc1[i] = -ky[i] * RatioImplicit
+            if iv == 1:
+                j = SoilHorizonNum[i]
+                a1[i] = a1[i] - 0.001 * kx[i] * RatioImplicit
+                cc1[i] = cc1[i] + 0.001 * ky[i] * RatioImplicit
+            # The water content of each soil cell is converted to water potential by function psiq and stored in array d1 (in bar units).
+            d1[i] = psiq(q1[i], qr1[i], qs1[i], alpha[j], vanGenuchtenBeta[j])
+        # The solution of the simultaneous equations in the implicit method alternates between the two directions along the arrays. The reason for this is because the direction of the solution may cause some cumulative bias. The counter numiter determines the direction of the solution.
+        # The solution in this section starts from the last soil cell (nn).
+        if numiter % 2 == 0:
+            # Intermediate arrays dau and cau are computed.
+            cau[nn - 1] = psi1[nn - 1]
+            dau[nn - 1] = 0
+            for i in range(nn - 2, 0, -1):
+                p: float = a1[i] * dau[i + 1] + b1[i]  # temporary
+                dau[i] = -cc1[i] / p
+                cau[i] = (d1[i] - a1[i] * cau[i + 1]) / p
+            if iv == 1:
+                j = SoilHorizonNum[0]
+            psi1[0] = psiq(q1[0], qr1[0], qs1[0], alpha[j], vanGenuchtenBeta[j])
+            # psi1 is now computed for soil cells 1 to nn-2. q1 is computed from psi1 by function qpsi.
+            for i in range(1, nn - 1):
+                if iv == 1:
+                    j = SoilHorizonNum[i]
+                psi1[i] = dau[i] * psi1[i - 1] + cau[i]
+                q1[i] = qpsi(psi1[i], qr1[i], qs1[i], alpha[j], vanGenuchtenBeta[j])
+        # The alternative direction of solution is executed here. the solution in this section starts from the first soil cell.
+        else:
+            # Intermediate arrays dau and cau are computed, and the computations described previously are repeated in the opposite direction.
+            cau[0] = psi1[0]
+            dau[0] = 0
+            for i in range(1, nn - 1):
+                p: float = a1[i] * dau[i - 1] + b1[i]  # temporary
+                dau[i] = -cc1[i] / p
+                cau[i] = (d1[i] - a1[i] * cau[i - 1]) / p
+            if iv == 1:
+                j = SoilHorizonNum[nn - 1]
+            psi1[nn - 1] = psiq(q1[nn - 1], qr1[nn - 1], qs1[nn - 1], alpha[j], vanGenuchtenBeta[j])
+            for i in range(nn - 2, 0, -1):
+                if iv == 1:
+                    j = SoilHorizonNum[i]
+                psi1[i] = dau[i] * psi1[i + 1] + cau[i]
+                q1[i] = qpsi(psi1[i], qr1[i], qs1[i], alpha[j], vanGenuchtenBeta[j])
+        # The limits of water content are now checked and corrected, and function WaterBalance() is called to correct water amounts.
+        for i in range(nn):
+            if q1[i] < qr1[i]:
+                q1[i] = qr1[i]
+            if q1[i] > qs1[i]:
+                q1[i] = qs1[i]
+            if q1[i] > pp1[i]:
+                q1[i] = pp1[i]
+        self.water_balance(q1, qx, dd, nn)
+
+    cdef void water_balance(self, double q1[], double qx[], double dd[], int nn):
+        """Checks and corrects the water balance in the soil cells within a soil column or a soil layer. It is called by water_flux().
+
+        The implicit part of the solution may cause some deviation in the total amount of water to occur. This module corrects the water balance if the sum of deviations is not zero, so that the total amount of water in the array will not change. The correction is proportional to the difference between the previous and present water amounts in each soil cell.
+
+        Arguments
+        ---------
+        dd
+            one dimensional array of layer or column widths.
+        nn
+            the number of cells in this layer or column.
+        qx[]
+            one dimensional array of a layer or a column of the previous values of cell.water_content.
+        q1[]
+            one dimensional array of a layer or a column of cell.water_content.
+        """
+        dev: float = 0  # Sum of differences of water amount in soil
+        dabs: float = 0  # Sum of absolute value of differences in water content in
+        # the array between beginning and end of this time step.
+        for i in range(nn):
+            dev += dd[i] * (q1[i] - qx[i])
+            dabs += abs(q1[i] - qx[i])
+        if dabs > 0:
+            for i in range(nn):
+                q1[i] = q1[i] - abs(q1[i] - qx[i]) * dev / (dabs * dd[i])
 
     def cell_distance(self, int l, int k, int l0, int k0):
         """This function computes the distance between the centers of cells l,k an l0,k0"""
