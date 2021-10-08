@@ -650,7 +650,6 @@ class Phenology:
         # boll, set stage to MatureBoll, and update boll and burr weights.
         self.fruiting_nodes_stage[site_index] = Stage.MatureBoll
         self.open_bolls_burr_weight += self.burr_weight[site_index]
-        self.green_bolls_weight -= self.fruiting_nodes_boll_weight[site_index]
         self.green_bolls_burr_weight -= self.burr_weight[site_index]
         # Compute the ginning percentage as a function of boll temperature.
         # Compute the average ginning percentage of all the bolls opened until now

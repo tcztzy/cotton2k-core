@@ -1,4 +1,7 @@
+import numpy as np
+
 from cotton2k.core.nitrogen import PlantNitrogen
+from cotton2k.core.phenology import Stage
 
 
 def test_nitrogen_allocation():
@@ -11,7 +14,10 @@ def test_nitrogen_allocation():
     pn.actual_square_growth = 0.1
     pn.actual_burr_growth = 0.1
     pn.actual_boll_growth = 0.1
-    pn.green_bolls_weight = 0.2
+    pn.fruiting_nodes_stage = np.zeros((3, 30, 5), dtype=np.int_)
+    pn.fruiting_nodes_stage[0, 0, 0] = Stage.GreenBoll
+    pn.fruiting_nodes_boll_weight = np.zeros((3, 30, 5))
+    pn.fruiting_nodes_boll_weight[0, 0, 0] = 0.2
     pn.npool = 0.03
     pn.leaf_nitrogen = 0
     pn.petiole_nitrogen = 0

@@ -140,6 +140,13 @@ class PlantNitrogen:  # pylint: disable=too-few-public-methods,no-member,attribu
         return spetno3 / numl
 
     @property
+    def green_bolls_weight(self):
+        """total weight of seedcotton in green bolls, g plant-1."""
+        return self.fruiting_nodes_boll_weight[
+            np.isin(self.fruiting_nodes_stage, (Stage.GreenBoll, Stage.YoungGreenBoll))
+        ].sum()
+
+    @property
     def reqtot(self):
         return self.rqnrut + self.reqv + self.reqf
 

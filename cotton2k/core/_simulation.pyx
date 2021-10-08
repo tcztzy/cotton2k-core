@@ -431,7 +431,6 @@ cdef class State:
     cdef public double fiber_strength
     cdef public double ginning_percent  # weighted average ginning percentage of all open bolls.
     cdef public double green_bolls_burr_weight  # total weight of burrs in green bolls, g plant-1.
-    cdef public double green_bolls_weight  # total weight of seedcotton in green bolls, g plant-1.
     cdef public double hypocotyl_length  # length of hypocotyl, cm.
     cdef public double leaf_area_index
     cdef public double leaf_nitrogen
@@ -1023,7 +1022,6 @@ cdef class State:
     def actual_fruit_growth(self):
         """This function simulates the actual growth of squares and bolls of cotton plants."""
         # Assign zero to all the sums to be computed.
-        self.green_bolls_weight = 0
         self.green_bolls_burr_weight = 0
         self.actual_boll_growth = 0
         self.actual_burr_growth = 0
@@ -1042,7 +1040,6 @@ cdef class State:
                         dwboll = self.fruiting_nodes_boll_potential_growth[k, l, m] * self.fruit_growth_ratio
                         self.fruiting_nodes_boll_weight[k, l, m] += dwboll
                         self.actual_boll_growth += dwboll
-                        self.green_bolls_weight += self.fruiting_nodes_boll_weight[k, l, m]
                         # dry weight added to the burrs in a boll.
                         dwburr = self.burr_potential_growth[k, l, m] * self.fruit_growth_ratio
                         self.burr_weight[k, l, m] += dwburr
@@ -1749,23 +1746,21 @@ cdef class State:
         gin1
             percent of seeds in seedcotton, used to compute lost nitrogen.
         """
-        # Update state.seed_nitrogen, state.burr_nitrogen, CumPlantNLoss, state.green_bolls_weight, state.green_bolls_burr_weight, boll_weight, burr_weight, and FruitFraction[k][l][m].
+        # Update state.seed_nitrogen, state.burr_nitrogen, CumPlantNLoss, state.green_bolls_burr_weight, boll_weight, burr_weight, and FruitFraction[k][l][m].
         self.seed_nitrogen -= self.fruiting_nodes_boll_weight[index] * abscissionRatio * (1 - gin1) * self.seed_nitrogen_concentration
         self.burr_nitrogen -= self.burr_weight[index] * abscissionRatio * self.burr_nitrogen_concentration
-        self.green_bolls_weight -= self.fruiting_nodes_boll_weight[index] * abscissionRatio
         self.green_bolls_burr_weight -= self.burr_weight[index] * abscissionRatio
         self.fruiting_nodes_boll_weight[index] *= (1 - abscissionRatio)
         self.burr_weight[index] *= (1 - abscissionRatio)
         self.fruiting_nodes_fraction[index] *= (1 - abscissionRatio)
 
-        # If FruitFraction[k][l][m] is less than 0.001 make it zero, update state.seed_nitrogen, state.burr_nitrogen, CumPlantNLoss, state.green_bolls_weight, state.green_bolls_burr_weight, boll_weight, burr_weight, and assign 4 to FruitingCode.
+        # If FruitFraction[k][l][m] is less than 0.001 make it zero, update state.seed_nitrogen, state.burr_nitrogen, CumPlantNLoss, state.green_bolls_burr_weight, boll_weight, burr_weight, and assign 4 to FruitingCode.
 
         if self.fruiting_nodes_fraction[index] <= 0.001:
             self.fruiting_nodes_stage[index] = Stage.AbscisedAsBoll
             self.seed_nitrogen -= self.fruiting_nodes_boll_weight[index] * (1 - gin1) * self.seed_nitrogen_concentration
             self.burr_nitrogen -= self.burr_weight[index] * self.burr_nitrogen_concentration
             self.fruiting_nodes_fraction[index] = 0
-            self.green_bolls_weight -= self.fruiting_nodes_boll_weight[index]
             self.green_bolls_burr_weight -= self.burr_weight[index]
             self.fruiting_nodes_boll_weight[index] = 0
             self.burr_weight[index] = 0
@@ -1791,7 +1786,7 @@ cdef class State:
             self.square_weights[index] = 0
             return
         # The initial weight of the new boll (BollWeight) and new burr (state.burr_weight) will be a fraction of the square weight, and the rest will be added to BloomWeightLoss. 80% of the initial weight will be in the burr.
-        # The nitrogen in the square is partitioned in the same proportions. The nitrogen that was in the square is transferred to the burrs. Update state.green_bolls_weight and state.green_bolls_burr_weight. assign zero to SquareWeight at this site.
+        # The nitrogen in the square is partitioned in the same proportions. The nitrogen that was in the square is transferred to the burrs. Update state.green_bolls_burr_weight. assign zero to SquareWeight at this site.
         cdef double bolinit  # initial weight of boll after flowering.
         bolinit = vnewboll[0] * self.square_weights[index]
         self.fruiting_nodes_boll_weight[index] = 0.2 * bolinit
@@ -1807,7 +1802,6 @@ cdef class State:
         self.seed_nitrogen += seed1n
         self.burr_nitrogen += sqr1n - seed1n
 
-        self.green_bolls_weight += self.fruiting_nodes_boll_weight[index]
         self.green_bolls_burr_weight += self.burr_weight[index]
         self.square_weights[index] = 0
     #end phenology
@@ -3541,7 +3535,6 @@ cdef class Simulation:
         state0.plant_height = 4.0
         state0.stem_weight = 0.2
         state0.petiole_weight = 0
-        state0.green_bolls_weight = 0
         state0.green_bolls_burr_weight = 0
         state0.open_bolls_burr_weight = 0
         state0.reserve_carbohydrate = 0.06
