@@ -360,19 +360,19 @@ class Phenology:
         self.node_leaf_weight[index] = initial_leaf_area * self.leaf_weight_area_ratio
         # Add a new mainstem leaf to the first node of this branch.
         self.main_stem_leaf_area[index[:2]] = initial_leaf_area
-        vb.fruiting_branches[0].main_stem_leaf.weight = (
+        self.main_stem_leaf_weight[index[:2]] = (
             initial_leaf_area * self.leaf_weight_area_ratio
         )
         # The initial mass and nitrogen in the new leaves are substracted from the stem.
         self.stem_weight -= (
-            self.node_leaf_weight[index] + vb.fruiting_branches[0].main_stem_leaf.weight
+            self.node_leaf_weight[index] + self.main_stem_leaf_weight[index[:2]]
         )
         self.leaf_weight += (
-            self.node_leaf_weight[index] + vb.fruiting_branches[0].main_stem_leaf.weight
+            self.node_leaf_weight[index] + self.main_stem_leaf_weight[index[:2]]
         )
         # nitrogen moved to new leaves from stem.
         addlfn = (
-            self.node_leaf_weight[index] + vb.fruiting_branches[0].main_stem_leaf.weight
+            self.node_leaf_weight[index] + self.main_stem_leaf_weight[index[:2]]
         ) * stemNRatio
         self.leaf_nitrogen += addlfn
         self.stem_nitrogen -= addlfn
@@ -471,14 +471,19 @@ class Phenology:
         # substacted from the stem.
         self.node_leaf_area[k, l, 0] = leaf_area
         self.node_leaf_weight[k, l, 0] = leaf_weight
-        main_stem_leaf = new_branch.main_stem_leaf
 
         self.main_stem_leaf_area[k, l] = leaf_area
-        main_stem_leaf.weight = leaf_weight
-        self.stem_weight -= main_stem_leaf.weight + self.node_leaf_weight[k, l, 0]
-        self.leaf_weight += main_stem_leaf.weight + self.node_leaf_weight[k, l, 0]
+        self.main_stem_leaf_weight[k, l] = leaf_weight
+        self.stem_weight -= (
+            self.main_stem_leaf_weight[k, l] + self.node_leaf_weight[k, l, 0]
+        )
+        self.leaf_weight += (
+            self.main_stem_leaf_weight[k, l] + self.node_leaf_weight[k, l, 0]
+        )
         # addlfn is the nitrogen added to new leaves from stem.
-        addlfn = (main_stem_leaf.weight + self.node_leaf_weight[k, l, 0]) * stemNRatio
+        addlfn = (
+            self.main_stem_leaf_weight[k, l] + self.node_leaf_weight[k, l, 0]
+        ) * stemNRatio
         self.leaf_nitrogen += addlfn
         self.stem_nitrogen -= addlfn
         # Begin computing AvrgNodeTemper of the new node and assign zero to
@@ -726,23 +731,23 @@ class Phenology:
         # Assign zero to LeafAreaMainStem, PetioleWeightMainStem and LeafWeightMainStem
         # of this leaf.
         # If this is after defoliation.
-        main_stem_leaf = self.vegetative_branches[k].fruiting_branches[l].main_stem_leaf
         if (
             self.node_leaf_age[k, l, 0] > droplf
             and self.main_stem_leaf_area[k, l] > 0
             and self.leaf_area_index > 0.1
         ):
             self.leaf_nitrogen -= (
-                main_stem_leaf.weight * self.leaf_nitrogen_concentration
+                self.main_stem_leaf_weight[k, l] * self.leaf_nitrogen_concentration
             )
-            self.leaf_weight -= main_stem_leaf.weight
+            self.leaf_weight -= self.main_stem_leaf_weight[k, l]
             self.petiole_nitrogen -= (
-                main_stem_leaf.petiole_weight * self.petiole_nitrogen_concentration
+                self.main_stem_leaf_petiole_weight[k, l]
+                * self.petiole_nitrogen_concentration
             )
-            self.petiole_weight -= main_stem_leaf.petiole_weight
+            self.petiole_weight -= self.main_stem_leaf_petiole_weight[k, l]
             self.main_stem_leaf_area[k, l] = 0
-            main_stem_leaf.weight = 0
-            main_stem_leaf.petiole_weight = 0
+            self.main_stem_leaf_weight[k, l] = 0
+            self.main_stem_leaf_petiole_weight[k, l] = 0
         # Loop over all nodes on this fruiting branch and call
         # fruit_node_leaf_abscission().
         for m in range(

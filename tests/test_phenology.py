@@ -20,13 +20,8 @@ class node:
     leaf: node_leaf
 
 
-class msl:
-    ...
-
-
 @dataclass
 class fb:
-    main_stem_leaf: msl
     number_of_fruiting_nodes: int
     nodes: list[node]
 
@@ -47,7 +42,7 @@ def test_phenology():
     phenology.pre_fruiting_node_leaf_abscission = pre_fruiting_node_leaf_abscission
     phenology.number_of_vegetative_branches = 1
     phenology.vegetative_branches = [
-        vb(5, [fb(msl(), 1, [node(node_leaf())]) for _ in range(5)])
+        vb(5, [fb(1, [node(node_leaf())]) for _ in range(5)])
     ]
     phenology.date = date(2020, 8, 1)
     phenology.leaf_area = 4
