@@ -5,6 +5,8 @@ import numpy as np
 import numpy.typing as npt
 from numpy.polynomial import Polynomial
 
+from .phenology import Stage
+
 
 def petno3r(age: float) -> float:
     """ratio of :math:`NO_3` to total `N` in an individual petiole.
@@ -96,6 +98,13 @@ class PlantNitrogen:  # pylint: disable=too-few-public-methods,no-member,attribu
     addnv = 0.0
     node_leaf_age: npt.NDArray[np.double]
     vegetative_branches: Sequence
+
+    @cached_property
+    def actual_square_growth(self):
+        """total actual growth of squares, g plant-1 day-1."""
+        return (self.square_potential_growth * self.fruit_growth_ratio)[
+            self.fruiting_nodes_stage == Stage.Square
+        ].sum()
 
     @cached_property
     def petiole_nitrate_nitrogen(self) -> float:

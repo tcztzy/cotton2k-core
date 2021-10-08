@@ -412,7 +412,6 @@ cdef class State:
     cdef public unsigned int drip_y  # number of layer in which the drip emitter is located.
     cdef public double actual_boll_growth  # total actual growth of seedcotton in bolls, g plant-1 day-1.
     cdef public double actual_soil_evaporation  # actual evaporation from soil surface, mm day-1.
-    cdef public double actual_square_growth  # total actual growth of squares, g plant-1 day-1.
     cdef public double actual_stem_growth  # actual growth rate of stems, g plant-1 day-1.
     cdef public double actual_transpiration  # actual transpiration from plants, mm day-1.
     cdef public double average_soil_psi  # average soil matric water potential, bars, computed as the weighted average of the root zone.
@@ -1026,7 +1025,6 @@ cdef class State:
         # Assign zero to all the sums to be computed.
         self.green_bolls_weight = 0
         self.green_bolls_burr_weight = 0
-        self.actual_square_growth = 0
         self.actual_boll_growth = 0
         self.actual_burr_growth = 0
         # Begin loops over all fruiting sites.
@@ -1034,12 +1032,10 @@ cdef class State:
             for l, fruiting_branch in enumerate(vegetative_branch.fruiting_branches):
                 for m in range(fruiting_branch.number_of_fruiting_nodes):
                     # If this site is a square, the actual dry weight added to it (dwsq) is proportional to its potential growth.
-                    # Update the weight of this square (SquareWeight), sum of today's added dry weight to squares (state.actual_square_growth).
                     if self.fruiting_nodes_stage[k, l, m] == Stage.Square:
                         dwsq = self.square_potential_growth[k, l, m] * self.fruit_growth_ratio  # dry weight added to square.
 
                         self.square_weights[k, l, m] += dwsq
-                        self.actual_square_growth += dwsq
                     # If this site is a green boll, the actual dry weight added to seedcotton and burrs is proportional to their respective potential growth.
                     if self.fruiting_nodes_stage[k, l, m] in [Stage.GreenBoll, Stage.YoungGreenBoll]:
                         # dry weight added to seedcotton in a boll.
