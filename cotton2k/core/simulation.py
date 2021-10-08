@@ -208,6 +208,9 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
         self.layer_depth[-2:] = 10
         self.layer_depth_cumsum = self.layer_depth.cumsum()
         self.cell_area = self.layer_depth[:, None] * self.column_width[None, :]
+        self.ratio_implicit = (
+            kwargs.get("soil", {}).get("hydrology", {}).get("ratio_implicit", 0)
+        )
         SoilInit(**kwargs.pop("soil", {}))  # type: ignore[arg-type]
         start_date = kwargs["start_date"]
         if not isinstance(start_date, (datetime.date, str)):

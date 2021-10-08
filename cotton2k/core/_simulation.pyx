@@ -68,7 +68,6 @@ cdef int maxl = 40
 cdef int maxk = 20
 cdef int nl
 cdef int nk
-cdef double RatioImplicit  # the ratio for the implicit numerical solution of the water transport equation (used in FLUXI and in SFLUX.
 cdef double conmax  # the maximum value for non-dimensional hydraulic conductivity
 cdef double airdr[9]  # volumetric water content of soil at "air-dry" for each soil horizon, cm3 cm-3.
 cdef double thetas[9]  # volumetric saturated water content of soil horizon, cm3 cm-3.
@@ -192,7 +191,6 @@ cdef class SoilInit:
     @property
     def hydrology(self):
         return {
-            "ratio_implicit": RatioImplicit,
             "max_conductivity": conmax,
             "field_capacity_water_potential": psisfc,
             "immediate_drainage_water_potential": psidra,
@@ -215,8 +213,7 @@ cdef class SoilInit:
 
     @hydrology.setter
     def hydrology(self, soil_hydrology):
-        global RatioImplicit, conmax, psisfc, psidra, SOIL
-        RatioImplicit = soil_hydrology["ratio_implicit"]
+        global conmax, psisfc, psidra, SOIL
         conmax = soil_hydrology["max_conductivity"]
         psisfc = soil_hydrology["field_capacity_water_potential"]
         psidra = soil_hydrology["immediate_drainage_water_potential"]
@@ -1197,10 +1194,7 @@ cdef class State:
         soil cells.
         The impedance is a function of bulk density and water content in each soil soil
         cell. No changes have been made in the original GOSSYM code."""
-        water_content = np.array([
-            [self.soil_water_content[l, k] for k in range(20)]
-            for l in range(40)
-        ], dtype=np.double) / bulk_density[:, None]
+        water_content = self.soil_water_content / bulk_density[:, None]
         soil_imp = np.genfromtxt(Path(__file__).parent / "soil_imp.csv", delimiter=",")
         f = interp2d(soil_imp[0, 1:], soil_imp[1:, 0], soil_imp[1:, 1:])
         self.root_impedance = np.array([
@@ -2442,8 +2436,8 @@ cdef class State:
                 avcond[i] = 2 * condmin * cond[i - 1] / (condmin + cond[i - 1])
             else:
                 avcond[i] = 2 * cond[i - 1] * cond[i] / (cond[i - 1] + cond[i])
-        # The numerical solution of the flow equation is a combination of the implicit method (weighted by RatioImplicit) and the explicit method (weighted by 1-RatioImplicit).
-        # Compute the explicit part of the solution, weighted by (1-RatioImplicit). store water content values, before changing them, in array qx.
+        # The numerical solution of the flow equation is a combination of the implicit method (weighted by ratio_implicit) and the explicit method (weighted by 1-ratio_implicit).
+        # Compute the explicit part of the solution, weighted by (1-ratio_implicit). store water content values, before changing them, in array qx.
         cdef double qx[40]  # previous value of q1.
         cdef double addq[40]  # water added to qx
         cdef double sumaddq = 0  # sum of addq
@@ -2466,10 +2460,10 @@ cdef class State:
             dumm1 = 1000 * avcond[i] * delt / dy[i]
             if dumm1 > conmax * dy[i]:
                 dumm1 = conmax * dy[i]
-            # Water entering soil cell i is now computed, weighted by (1 - RatioImplicit). It is not allowed to be greater than 25% of the difference between the cells.
+            # Water entering soil cell i is now computed, weighted by (1 - ratio_implicit). It is not allowed to be greater than 25% of the difference between the cells.
             # Compute water movement from soil cell i-1 to i:
             # water added to cell i from cell (i-1)
-            dqq1: float = (1 - RatioImplicit) * deltpsi * dumm1
+            dqq1: float = (1 - self.ratio_implicit) * deltpsi * dumm1
             # difference of soil water content (v/v) between adjacent cells.
             deltq: float = qx[i - 1] - qx[i]
             if abs(dqq1) > abs(0.25 * deltq):
@@ -2491,7 +2485,7 @@ cdef class State:
             dumm1 = 1000 * avcond[i + 1] * delt / dy[i + 1]
             if dumm1 > (conmax * dy[i + 1]):
                 dumm1 = conmax * dy[i + 1]
-            dqq2: float = (1 - RatioImplicit) * deltpsi * dumm1  # water added to cell i from cell (i+1)
+            dqq2: float = (1 - self.ratio_implicit) * deltpsi * dumm1  # water added to cell i from cell (i+1)
             if abs(dqq2) > abs(0.25 * deltq):
                 if deltq > 0 > dqq2:
                     dqq2 = 0
@@ -2514,7 +2508,7 @@ cdef class State:
             if iv == 1:
                 j = self.soil_horizon_number[i]
             psi1[i] = psiq(q1[i], qr1[i], qs1[i], alpha[j], vanGenuchtenBeta[j])
-        # Compute the implicit part of the solution, weighted by RatioImplicit, starting loop from the second cell.
+        # Compute the implicit part of the solution, weighted by ratio_implicit, starting loop from the second cell.
         for i in range(1, nn):
             # Mean conductivity (avcond) between adjacent cells is made "dimensionless" (ky) by multiplying it by the time step (delt)and dividing it by cell length (dd) and by dy. It is also multiplied by 1000 for converting the potential differences from bars to cm.
             ky[i] = 1000 * avcond[i] * delt / (dy[i] * dd[i])
@@ -2533,14 +2527,14 @@ cdef class State:
         # Arrays used for the implicit numeric solution:
         cdef double a1[40], b1[40], cau[40], cc1[40], d1[40], dau[40]
         for i in range(nn):
-            # Arrays a1, b1, and cc1 are computed for the implicit part of the solution, weighted by RatioImplicit.
-            a1[i] = -kx[i] * RatioImplicit
-            b1[i] = 1 + RatioImplicit * (kx[i] + ky[i])
-            cc1[i] = -ky[i] * RatioImplicit
+            # Arrays a1, b1, and cc1 are computed for the implicit part of the solution, weighted by ratio_implicit.
+            a1[i] = -kx[i] * self.ratio_implicit
+            b1[i] = 1 + self.ratio_implicit * (kx[i] + ky[i])
+            cc1[i] = -ky[i] * self.ratio_implicit
             if iv == 1:
                 j = self.soil_horizon_number[i]
-                a1[i] = a1[i] - 0.001 * kx[i] * RatioImplicit
-                cc1[i] = cc1[i] + 0.001 * ky[i] * RatioImplicit
+                a1[i] = a1[i] - 0.001 * kx[i] * self.ratio_implicit
+                cc1[i] = cc1[i] + 0.001 * ky[i] * self.ratio_implicit
             # The water content of each soil cell is converted to water potential by function psiq and stored in array d1 (in bar units).
             d1[i] = psiq(q1[i], qr1[i], qs1[i], alpha[j], vanGenuchtenBeta[j])
         # The solution of the simultaneous equations in the implicit method alternates between the two directions along the arrays. The reason for this is because the direction of the solution may cause some cumulative bias. The counter numiter determines the direction of the solution.
@@ -3409,6 +3403,7 @@ cdef class Simulation:
     cdef public double row_space  # average row spacing, cm.
     cdef public double site_parameters[17]
     cdef public double skip_row_width  # the smaller distance between skip rows, cm
+    cdef public double ratio_implicit  # the ratio for the implicit numerical solution of the water transport equation (used in FLUXI and in SFLUX.
     cdef public State _current_state
     cdef double defkgh  # amount of defoliant applied, kg per ha
     cdef double tdfkgh  # total cumulative amount of defoliant
