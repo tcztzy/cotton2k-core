@@ -76,7 +76,6 @@ cdef double vanGenuchtenBeta[9]  # parameter of the Van Genuchten equation.
 cdef double SaturatedHydCond[9]  # saturated hydraulic conductivity, cm per day.
 cdef double BulkDensity[9]  # bulk density of soil in a horizon, g cm-3.
 cdef double thad[40]  # residual volumetric water content of soil layers (at air-dry condition), cm3 cm-3.
-cdef double SoilTemp[40][20]  # hourly soil temperature oK.
 cdef double PotGroAllSquares  # sum of potential growth rates of all squares, g plant-1 day-1.
 cdef double PotGroAllBolls  # sum of potential growth rates of seedcotton in all bolls, g plant-1 day-1.
 cdef double PotGroAllBurrs  # sum of potential growth rates of burrs in all bolls, g plant-1 day-1.
@@ -366,6 +365,8 @@ cdef class State:
     cdef Simulation _sim
     cdef numpy.ndarray root_impedance  # root mechanical impedance for a soil cell, kg cm-2.
     cdef unsigned int _ordinal
+    cdef public numpy.ndarray soil_temperature  # daily average soil temperature, oK.
+    cdef public numpy.ndarray hourly_soil_temperature  # hourly soil temperature oK.
     cdef public numpy.ndarray root_growth_factor  # root growth correction factor in a soil cell (0 to 1).
     cdef public numpy.ndarray root_weights
     cdef public numpy.ndarray root_weight_capable_uptake  # root weight capable of uptake, in g per soil cell.
@@ -465,7 +466,6 @@ cdef class State:
     actual_root_growth = np.zeros((40, 20), dtype=np.float64)
     _root_potential_growth = np.zeros((40, 20), dtype=np.float64)  # potential root growth in a soil cell (g per day).
     root_age = np.zeros((40, 20), dtype=np.float64)
-    soil_temperature = np.zeros((40, 20), dtype=np.float64)  # daily average soil temperature, oK.
     hours = np.empty(24, dtype=object)
 
     def __init__(self, sim, version):
@@ -801,7 +801,7 @@ cdef class State:
         cdef double psi  # matric soil moisture potential at seed location.
         cdef double te  # soil temperature at seed depth, C.
         psi = self.soil_psi[self.seed_layer_number, plant_row_column]
-        te = SoilTemp[self.seed_layer_number][plant_row_column] - 273.161
+        te = self.hourly_soil_temperature[hour, self.seed_layer_number, plant_row_column] - 273.161
         te = max(te, 10)
 
         # Phase 1 of of germination - imbibition. This phase is executed when the moisture content of germinating seeds is not more than 80%.
@@ -2757,7 +2757,7 @@ cdef class State:
 
     cdef public long soil_heat_flux_numiter  # number of this iteration.
 
-    def soil_heat_flux(self, double dlt, int iv, int nn, int layer, int n0, double row_space):
+    def soil_heat_flux(self, double dlt, int iv, int nn, int layer, int n0, double row_space, ihr):
         """Computes heat flux in one direction between soil cells.
 
         NOTE: the units are:
@@ -2778,7 +2778,7 @@ cdef class State:
             number of layer or column of this array
         nn
             number of soil cells in the array.
-            """
+        """
         # Constant parameters:
         cdef double beta1 = 0.90  # weighting factor for the implicit method of computation.
         cdef double ca = 0.0003  # heat capacity of air (cal cm-3 oC-1).
@@ -2792,11 +2792,11 @@ cdef class State:
             if iv == 1:
                 l = i
                 q1[i] = self.soil_water_content[i, n0]
-                ts1[i] = SoilTemp[i][n0]
+                ts1[i] = self.hourly_soil_temperature[ihr, i, n0]
                 dz[i] = self.layer_depth[i]
             else:
                 q1[i] = self.soil_water_content[n0, i]
-                ts1[i] = SoilTemp[n0][i]
+                ts1[i] = self.hourly_soil_temperature[ihr, n0, i]
                 dz[i] = self._sim.column_width[i]
             hcap[i] = HeatCapacitySoilSolid[l] + q1[i] + (PoreSpace[l] - q1[i]) * ca
             asoi[i] = self.soil_thermal_conductivity(q1[i], ts1[i], l) / hcap[i]
@@ -2881,9 +2881,9 @@ cdef class State:
         # Set values of SoiTemp
         for i in range(nn):
             if iv == 1:
-                SoilTemp[i][n0] = ts1[i]
+                self.hourly_soil_temperature[ihr, i, n0] = ts1[i]
             else:
-                SoilTemp[n0][i] = ts1[i]
+                self.hourly_soil_temperature[ihr, n0, i] = ts1[i]
 
     def water_uptake(self, row_space, per_plant_area):
         """This function computes the uptake of water by plant roots from the soil (i.e., actual transpiration rate)."""
@@ -3634,9 +3634,7 @@ cdef class Simulation:
         # Set initial values
         cdef double sf = 1 - self.relative_radiation_received_by_a_soil_column[k]
         cdef double thet = hour.temperature + 273.161  # air temperature, K
-        cdef double so = SoilTemp[0][k]  # soil surface temperature, K
-        cdef double so2 = SoilTemp[1][k]  # 2nd soil layer temperature, K
-        cdef double so3 = SoilTemp[2][k]  # 3rd soil layer temperature, K
+        so, so2, so3 = state.hourly_soil_temperature[ihr, :3, k]  # soil surface temperature, K
         # Compute soil surface albedo (based on Horton and Chung, 1991):
         ag = compute_soil_surface_albedo(state.soil_water_content[0, k], FieldCapacity[0], thad[0], self.site_parameters[15], self.site_parameters[16])
 
@@ -3702,9 +3700,7 @@ cdef class Simulation:
         # After convergence - set global variables for the following temperatures:
         if sf >= 0.05:
             FoliageTemp[k] = tv
-        SoilTemp[0][k] = so
-        SoilTemp[1][k] = so2
-        SoilTemp[2][k] = so3
+        state.hourly_soil_temperature[ihr, :3, k] = [so, so2, so3]
 
     def _soil_temperature_init(self):
         """This function is called from SoilTemperature() at the start of the simulation. It sets initial values to soil and canopy temperatures."""
@@ -3723,14 +3719,11 @@ cdef class Simulation:
         tsi1 /= 10
         # The temperature of the last soil layer (lower boundary) is computed as a sinusoidal function of day of year, with site-specific parameters.
         state0.deep_soil_temperature = self.site_parameters[9] + self.site_parameters[10] * sin(2 * pi * (self.start_date.timetuple().tm_yday - self.site_parameters[11]) / 365) + 273.161
-        # SoilTemp is assigned to all columns, converted to degrees K.
+        # hourly_soil_temperature is assigned to all columns, converted to degrees K.
         tsi1 += 273.161
-        for l in range(40):
-            # The temperatures of the other soil layers are linearly interpolated.
-            # tsi = computed initial soil temperature, C, for each layer
-            tsi = ((40 - l - 1) * tsi1 + l * state0.deep_soil_temperature) / (40 - 1)
-            for k in range(20):
-                SoilTemp[l][k] = tsi
+        # The temperatures of the other soil layers are linearly interpolated.
+        # tsi = computed initial soil temperature, C, for each layer
+        state0.hourly_soil_temperature[0] = ((np.arange(40) * state0.deep_soil_temperature + ((40 - 1) - np.arange(40)) * tsi1) / (40 - 1))[:, None].repeat(20, axis=1)
 
     def _soil_temperature(self, u):
         """
@@ -3815,8 +3808,6 @@ cdef class Simulation:
 
             if nshadedcol > 0:
                 shadeav = shadetot / nshadedcol
-        # Set daily averages of soil temperature to zero.
-        state.soil_temperature[:] = 0
         # es and ActualSoilEvaporation are computed as the average for the whole soil slab, weighted by column widths.
         cdef double es = 0  # potential evaporation rate, mm day-1
         state.actual_soil_evaporation = 0
@@ -3829,8 +3820,8 @@ cdef class Simulation:
                 etp0 = state.actual_transpiration * state.hours[ihr].ref_et / state.evapotranspiration / dlt
             # Compute vertical transport for each column
             for k in range(kk):
-                #  Set SoilTemp for the lowest soil layer.
-                SoilTemp[nl - 1][k] = state.deep_soil_temperature
+                #  Set hourly_soil_temperature for the lowest soil layer.
+                state.hourly_soil_temperature[ihr, nl - 1, k] = state.deep_soil_temperature
                 # Compute transpiration from each column, weighted by its relative shading.
                 etp1 = 0  # actual hourly transpiration (mm s-1) for a column.
                 if shadeav > 0.000001:
@@ -3855,12 +3846,12 @@ cdef class Simulation:
             layer = 0  # soil layer number
             # Loop over kk columns, and call SoilHeatFlux().
             for k in range(kk):
-                state.soil_heat_flux(dlt, iv, nn, layer, k, self.row_space)
-            # If no horizontal heat flux is assumed, make all array members of SoilTemp equal to the value computed for the first column. Also, do the same for array memebers of cell.water_content.
+                state.soil_heat_flux(dlt, iv, nn, layer, k, self.row_space, ihr)
+            # If no horizontal heat flux is assumed, make all array members of hourly_soil_temperature equal to the value computed for the first column. Also, do the same for array memebers of cell.water_content.
             if self.emerge_switch <= 1:
                 for l in range(nl):
                     for k in range(nk):
-                        SoilTemp[l][k] = SoilTemp[l][0]
+                        state.hourly_soil_temperature[ihr, l, k] = state.hourly_soil_temperature[ihr, l, 0]
                         if l == 0:
                             state.soil_water_content[l, k] = state.soil_water_content[l, 0]
             # Compute horizontal transport for each layer
@@ -3872,13 +3863,12 @@ cdef class Simulation:
                 nn = nk
                 for l in range(nl):
                     layer = l
-                    state.soil_heat_flux(dlt, iv, nn, layer, l, self.row_space)
+                    state.soil_heat_flux(dlt, iv, nn, layer, l, self.row_space, ihr)
             # Compute average temperature of soil layers, in degrees C.
             tsolav = [0] * nl  # hourly average soil temperature C, of a soil layer.
             for l in range(nl):
                 for k in range(nk):
-                    state.soil_temperature[l][k] += SoilTemp[l][k]
-                    tsolav[l] += SoilTemp[l][k] - 273.161
+                    tsolav[l] += state.hourly_soil_temperature[ihr, l, k] - 273.161
                 tsolav[l] /= nk
             # Compute average temperature of foliage, in degrees C. The average is weighted by the canopy shading of each column, only columns which are shaded 5% or more by canopy are used.
             tfc = 0  # average foliage temperature, weighted by shading in each column
@@ -3895,6 +3885,8 @@ cdef class Simulation:
                 if emerge_date is not None:
                     self.emerge_date = emerge_date
                     self.emerge_switch = 2
+            if ihr < 23:
+                state.hourly_soil_temperature[ihr + 1] = state.hourly_soil_temperature[ihr]
         # At the end of the day compute actual daily evaporation and its cumulative sum.
         if kk == 1:
             es /= self.column_width[1]
@@ -3903,7 +3895,7 @@ cdef class Simulation:
             es /= self.row_space
             state.actual_soil_evaporation /= self.row_space
         # compute daily averages.
-        state.soil_temperature[:] /= iter1
+        state.soil_temperature = state.hourly_soil_temperature.mean(axis=0)
 
     def _stress(self, u):
         state = self._current_state

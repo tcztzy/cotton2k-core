@@ -307,6 +307,8 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             if hasattr(value, "copy") and callable(value.copy):
                 value = value.copy()
             setattr(post, attr, value)
+        post.hourly_soil_temperature = np.zeros((24, 40, 20), dtype=np.double)
+        post.hourly_soil_temperature[0] = pre.hourly_soil_temperature[23]
         self.states.append(State(post, self, self.state(i)))
         self._current_state = post  # pylint: disable=attribute-defined-outside-init
 
@@ -399,6 +401,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             (3, 30, 5), dtype=np.double
         )
         state0.soil_psi = np.zeros((40, 20), dtype=np.double)
+        state0.hourly_soil_temperature = np.zeros((24, 40, 20), dtype=np.double)
         self._current_state = state0
         super()._init_state()
         self.states = [State(state0, self)]
