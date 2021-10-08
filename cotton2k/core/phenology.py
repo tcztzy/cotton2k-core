@@ -498,11 +498,11 @@ class Phenology:
         # Compute the cumulative delay for the appearance of the next node on the
         # fruiting branch, caused by carbohydrate, nitrogen, and water stresses.
         fb = self.vegetative_branches[k].fruiting_branches[l]
-        fb.delay_for_new_node += (
+        self.node_delay[k, l] += (
             self.phenological_delay_for_fruiting_by_carbon_stress
             + vfrtnod[0] * self.phenological_delay_by_nitrogen_stress
         )
-        fb.delay_for_new_node += vfrtnod[1] * (1 - self.water_stress)
+        self.node_delay[k, l] += vfrtnod[1] * (1 - self.water_stress)
         # Define nnid, and compute the average temperature of the last node of this
         # fruiting branch, from the time it was formed.
         nnid = (
@@ -525,7 +525,7 @@ class Phenology:
         )
         TimeToNextFruNode = (
             TimeToNextFruNode * (1 + var37 * (1 - density_factor))
-            + fb.delay_for_new_node
+            + self.node_delay[k, l]
         )
         # Check if the the age of the last node on the fruiting branch exceeds
         # TimeToNextFruNode.
@@ -563,7 +563,7 @@ class Phenology:
         self.fruiting_nodes_average_temperature[
             k, l, nnid + 1
         ] = self.average_temperature
-        fb.delay_for_new_node = 0
+        self.node_delay[k, l] = 0
 
     def create_first_square(self, stemNRatio, first_square_leaf_area):
         """Initiates the first square."""

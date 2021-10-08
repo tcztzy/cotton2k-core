@@ -25,7 +25,6 @@ from .thermology import canopy_balance
 
 ctypedef struct cFruitingBranch:
     unsigned int number_of_fruiting_nodes  # number of nodes on each fruiting branch.
-    double delay_for_new_node  # cumulative effect of stresses on delaying the formation of a new node on a fruiting branch.
 
 ctypedef struct cVegetativeBranch:
     unsigned int number_of_fruiting_branches  # number of fruiting branches at each vegetative branch.
@@ -248,14 +247,6 @@ cdef class FruitingBranch:
     def number_of_fruiting_nodes(self, value):
         self._[0].number_of_fruiting_nodes = value
 
-    @property
-    def delay_for_new_node(self):
-        return self._[0].delay_for_new_node
-
-    @delay_for_new_node.setter
-    def delay_for_new_node(self, value):
-        self._[0].delay_for_new_node = value
-
     @staticmethod
     cdef FruitingBranch from_ptr(cFruitingBranch *_ptr, unsigned int k, unsigned int l):
         """Factory function to create WrapperClass objects from
@@ -393,6 +384,7 @@ cdef class State:
     cdef public numpy.ndarray main_stem_leaf_petiole_weight  # weight of mainstem leaf petiole at each node, g.
     cdef public numpy.ndarray square_weights  # weight of each square, g per plant.
     cdef public numpy.ndarray square_potential_growth  # potential growth in weight of an individual fruiting node squares, g day-1.
+    cdef public numpy.ndarray node_delay  # cumulative effect of stresses on delaying the formation of a new node on a fruiting branch.
     cdef public numpy.ndarray node_leaf_age  # leaf age at each fruiting site, physiological days.
     cdef public numpy.ndarray node_leaf_area  # leaf area at each fruiting site, dm2.
     cdef public numpy.ndarray node_leaf_weight  # leaf weight at each fruiting site, g.
@@ -3606,9 +3598,7 @@ cdef class Simulation:
         for k in range(3):
             state0._.vegetative_branches[k].number_of_fruiting_branches = 0
             for l in range(30):
-                state0._.vegetative_branches[k].fruiting_branches[
-                    l].number_of_fruiting_nodes = 0
-                state0._.vegetative_branches[k].fruiting_branches[l].delay_for_new_node = 0
+                state0._.vegetative_branches[k].fruiting_branches[l].number_of_fruiting_nodes = 0
 
     def _initialize_root_data(self):
         """ This function initializes the root submodel parameters and variables."""
