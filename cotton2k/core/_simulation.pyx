@@ -122,7 +122,6 @@ PercentDefoliation = 0
 
 LwpMinX = np.zeros(3, dtype=np.double)  # array of values of min_leaf_water_potential for the last 3 days.
 LwpX = np.zeros(3, dtype=np.double)  # array of values of min_leaf_water_potential + max_leaf_water_potential for the last 3 days.
-FoliageTemp = np.ones(20, dtype=np.double) * 295  # average foliage temperature (oK).
 
 DefoliationDate = np.zeros(5, dtype=np.int_)  # Dates (DOY) of defoliant applications.
 DefoliationMethod = np.zeros(5, dtype=np.int_)  # code number of method of application of defoliants:  0 = 'banded'; 1 = 'sprinkler'; 2 = 'broaddcast'.
@@ -365,6 +364,7 @@ cdef class State:
     cdef Simulation _sim
     cdef numpy.ndarray root_impedance  # root mechanical impedance for a soil cell, kg cm-2.
     cdef unsigned int _ordinal
+    cdef public numpy.ndarray foliage_temperature  # average foliage temperature (oK).
     cdef public numpy.ndarray soil_temperature  # daily average soil temperature, oK.
     cdef public numpy.ndarray hourly_soil_temperature  # hourly soil temperature oK.
     cdef public numpy.ndarray root_growth_factor  # root growth correction factor in a soil cell (0 to 1).
@@ -3655,7 +3655,7 @@ cdef class Simulation:
         cdef double c2  # multiplier for sensible heat transfer (at plant surface).
         cdef double rsv  # global radiation absorbed by the vegetation
         if sf >= 0.05:  # a shaded soil column
-            tv = FoliageTemp[k]  # vegetation temperature
+            tv = state.foliage_temperature[k]  # vegetation temperature
             # Short wave radiation intercepted by the canopy:
             rsv = (
                     rzero * (1 - hour.albedo) * sf * cswint  # from above
@@ -3699,7 +3699,7 @@ cdef class Simulation:
             raise RuntimeError  # If more than 30 iterations are needed - stop simulation.
         # After convergence - set global variables for the following temperatures:
         if sf >= 0.05:
-            FoliageTemp[k] = tv
+            state.foliage_temperature[k] = tv
         state.hourly_soil_temperature[ihr, :3, k] = [so, so2, so3]
 
     def _soil_temperature_init(self):
@@ -3849,11 +3849,8 @@ cdef class Simulation:
                 state.soil_heat_flux(dlt, iv, nn, layer, k, self.row_space, ihr)
             # If no horizontal heat flux is assumed, make all array members of hourly_soil_temperature equal to the value computed for the first column. Also, do the same for array memebers of cell.water_content.
             if self.emerge_switch <= 1:
-                for l in range(nl):
-                    for k in range(nk):
-                        state.hourly_soil_temperature[ihr, l, k] = state.hourly_soil_temperature[ihr, l, 0]
-                        if l == 0:
-                            state.soil_water_content[l, k] = state.soil_water_content[l, 0]
+                state.hourly_soil_temperature[ihr, :, :] = state.hourly_soil_temperature[ihr, :, 0][:, None].repeat(20, axis=1)
+                state.soil_water_content[0, :] = state.soil_water_content[0, 0]
             # Compute horizontal transport for each layer
 
             # Compute soil temperature flux in the horizontal direction, when self.emerge_switch = 2.
@@ -3864,21 +3861,15 @@ cdef class Simulation:
                 for l in range(nl):
                     layer = l
                     state.soil_heat_flux(dlt, iv, nn, layer, l, self.row_space, ihr)
-            # Compute average temperature of soil layers, in degrees C.
-            tsolav = [0] * nl  # hourly average soil temperature C, of a soil layer.
-            for l in range(nl):
-                for k in range(nk):
-                    tsolav[l] += state.hourly_soil_temperature[ihr, l, k] - 273.161
-                tsolav[l] /= nk
             # Compute average temperature of foliage, in degrees C. The average is weighted by the canopy shading of each column, only columns which are shaded 5% or more by canopy are used.
             tfc = 0  # average foliage temperature, weighted by shading in each column
             shading = 0  # sum of shaded area in all shaded columns, used to compute TFC
             for k in range(nk):
                 if self.relative_radiation_received_by_a_soil_column[k] <= 0.95:
-                    tfc += (FoliageTemp[k] - 273.161) * (1 - self.relative_radiation_received_by_a_soil_column[k])
+                    tfc += (state.foliage_temperature[k] - 273.161) * (1 - self.relative_radiation_received_by_a_soil_column[k])
                     shading += 1 - self.relative_radiation_received_by_a_soil_column[k]
             if shading >= 0.01:
-                tfc = tfc / shading
+                tfc /= shading
             # If emergence date is to be simulated, call predict_emergence().
             if self.emerge_switch == 0 and state.date >= self.plant_date:
                 emerge_date = state.predict_emergence(self.plant_date, ihr, self.plant_row_column)

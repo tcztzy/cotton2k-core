@@ -272,6 +272,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             # ndarrays
             "burr_weight",
             "burr_potential_growth",
+            "foliage_temperature",
             "fruiting_nodes_age",
             "fruiting_nodes_average_temperature",
             "fruiting_nodes_boll_age",
@@ -402,6 +403,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
         )
         state0.soil_psi = np.zeros((40, 20), dtype=np.double)
         state0.hourly_soil_temperature = np.zeros((24, 40, 20), dtype=np.double)
+        state0.foliage_temperature = np.ones(20, dtype=np.double) * 295
         self._current_state = state0
         super()._init_state()
         self.states = [State(state0, self)]
