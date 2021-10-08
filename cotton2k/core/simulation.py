@@ -267,6 +267,8 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             "taproot_length",
             "total_required_nitrogen",
             # ndarrays
+            "burr_weight",
+            "burr_potential_growth",
             "fruiting_nodes_age",
             "fruiting_nodes_average_temperature",
             "fruiting_nodes_boll_age",
@@ -280,6 +282,8 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             "node_leaf_area",
             "node_leaf_area_potential_growth",
             "node_leaf_weight",
+            "node_petiole_potential_growth",
+            "node_petiole_weight",
             "root_weights",
             "root_growth_factor",
             "root_weight_capable_uptake",
@@ -362,6 +366,10 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
         state0.main_stem_leaf_area = np.zeros((3, 30), dtype=np.double)
         state0.square_potential_growth = np.zeros((3, 30, 5), dtype=np.double)
         state0.square_weights = np.zeros((3, 30, 5), dtype=np.double)
+        state0.burr_weight = np.zeros((3, 30, 5), dtype=np.double)
+        state0.burr_potential_growth = np.zeros((3, 30, 5), dtype=np.double)
+        state0.node_petiole_weight = np.zeros((3, 30, 5), dtype=np.double)
+        state0.node_petiole_potential_growth = np.zeros((3, 30, 5), dtype=np.double)
         state0.node_leaf_age = np.zeros((3, 30, 5), dtype=np.double)
         state0.node_leaf_area = np.zeros((3, 30, 5), dtype=np.double)
         state0.node_leaf_area_potential_growth = np.zeros((3, 30, 5), dtype=np.double)

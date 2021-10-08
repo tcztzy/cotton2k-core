@@ -23,16 +23,6 @@ from .utils import date2doy, doy2date
 from .thermology import canopy_balance
 
 
-ctypedef struct cBurr:
-    double potential_growth  # potential growth rate of burrs in an individual boll, g day-1.
-    double weight  # weight of burrs for each site, g per plant.
-ctypedef struct cPetiole:
-    double potential_growth  # potential growth in weight of an individual fruiting node petiole, g day-1.
-    double weight  # petiole weight at each fruiting site, g.
-ctypedef struct FruitingSite:
-    cBurr burr
-    cPetiole petiole
-
 ctypedef struct cMainStemLeaf:
     double leaf_weight  # mainstem leaf weight at each node, g.
     double petiole_weight  # weight of mainstem leaf petiole at each node, g.
@@ -44,7 +34,6 @@ ctypedef struct cFruitingBranch:
     unsigned int number_of_fruiting_nodes  # number of nodes on each fruiting branch.
     double delay_for_new_node  # cumulative effect of stresses on delaying the formation of a new node on a fruiting branch.
     cMainStemLeaf main_stem_leaf
-    FruitingSite nodes[5]
 
 ctypedef struct cVegetativeBranch:
     unsigned int number_of_fruiting_branches  # number of fruiting branches at each vegetative branch.
@@ -254,86 +243,6 @@ cdef class SoilInit:
             psand[i] = layer["sand"]
 
 
-cdef class Petiole:
-    cdef cPetiole *_
-
-    @property
-    def potential_growth(self):
-        return self._[0].potential_growth
-
-    @potential_growth.setter
-    def potential_growth(self, value):
-        self._[0].potential_growth = value
-
-    @property
-    def weight(self):
-        return self._[0].weight
-
-    @weight.setter
-    def weight(self, value):
-        self._[0].weight = value
-
-    @staticmethod
-    cdef Petiole from_ptr(cPetiole *_ptr):
-        cdef Petiole petiole = Petiole.__new__(Petiole)
-        petiole._ = _ptr
-        return petiole
-
-
-cdef class Burr:
-    cdef cBurr *_
-    cdef unsigned int k
-    cdef unsigned int l
-    cdef unsigned int m
-
-    @property
-    def potential_growth(self):
-        return self._[0].potential_growth
-
-    @potential_growth.setter
-    def potential_growth(self, value):
-        self._[0].potential_growth = value
-
-    @property
-    def weight(self):
-        return self._[0].weight
-
-    @weight.setter
-    def weight(self, value):
-        self._[0].weight = value
-
-    @staticmethod
-    cdef Burr from_ptr(cBurr *_ptr, unsigned int k, unsigned int l, unsigned int m):
-        cdef Burr burr = Burr.__new__(Burr)
-        burr._ = _ptr
-        burr.k = k
-        burr.l = l
-        burr.m = m
-        return burr
-
-
-cdef class FruitingNode:
-    cdef FruitingSite *_
-    cdef public unsigned int k
-    cdef public unsigned int l
-    cdef public unsigned int m
-    cdef public Petiole petiole
-
-    @property
-    def burr(self):
-        return Burr.from_ptr(&self._[0].burr, self.k, self.l, self.m)
-
-    @staticmethod
-    cdef FruitingNode from_ptr(FruitingSite *_ptr, unsigned int k, unsigned int l, unsigned int m):
-        cdef FruitingNode node = FruitingNode.__new__(FruitingNode)
-        node._ = _ptr
-        node.k = k
-        node.l = l
-        node.m = m
-        node.petiole = Petiole.from_ptr(&_ptr[0].petiole)
-        return node
-
-
 cdef class MainStemLeaf:
     cdef cMainStemLeaf *_
 
@@ -415,11 +324,6 @@ cdef class FruitingBranch:
     @property
     def main_stem_leaf(self):
         return MainStemLeaf.from_ptr(&self._[0].main_stem_leaf)
-
-    @property
-    def nodes(self):
-        return [FruitingNode.from_ptr(&self._.nodes[i], self.k, self.l, i) for i in
-                range(self._.number_of_fruiting_nodes)]
 
     @staticmethod
     cdef FruitingBranch from_ptr(cFruitingBranch *_ptr, unsigned int k, unsigned int l):
@@ -546,6 +450,10 @@ cdef class State:
     cdef public numpy.ndarray root_growth_factor  # root growth correction factor in a soil cell (0 to 1).
     cdef public numpy.ndarray root_weights
     cdef public numpy.ndarray root_weight_capable_uptake  # root weight capable of uptake, in g per soil cell.
+    cdef public numpy.ndarray burr_weight  # weight of burrs for each site, g per plant.
+    cdef public numpy.ndarray burr_potential_growth  # potential growth rate of burrs in an individual boll, g day-1.
+    cdef public numpy.ndarray node_petiole_weight  # petiole weight at each fruiting site, g.
+    cdef public numpy.ndarray node_petiole_potential_growth  # potential growth in weight of an individual fruiting node petiole, g day-1.
     cdef public numpy.ndarray main_stem_leaf_area
     cdef public numpy.ndarray square_weights  # weight of each square, g per plant.
     cdef public numpy.ndarray square_potential_growth  # potential growth in weight of an individual fruiting node squares, g day-1.
@@ -1180,11 +1088,10 @@ cdef class State:
                 # Update leaf weight (LeafWeightNodes), petiole weight (PetioleWeightNodes) and leaf area (LeafAreaNodes) for each fruiting node leaf.
                 # Compute total leaf weight (state.leaf_weight), total petiole weight (PetioleWeightNodes) .
                 for m in range(self._.vegetative_branches[k].fruiting_branches[l].number_of_fruiting_nodes):  # loop of nodes on a fruiting branch
-                    site = self.vegetative_branches[k].fruiting_branches[l].nodes[m]
                     self.node_leaf_weight[k, l, m] += self.node_leaf_area_potential_growth[k, l, m] * self.leaf_weight_area_ratio * vratio
                     self.leaf_weight += self.node_leaf_weight[k, l, m]
-                    site.petiole.weight += site.petiole.potential_growth * vratio
-                    self.petiole_weight += site.petiole.weight
+                    self.node_petiole_weight[k, l, m] += self.node_petiole_potential_growth[k, l, m] * vratio
+                    self.petiole_weight += self.node_petiole_weight[k, l, m]
                     self.node_leaf_area[k, l, m] += self.node_leaf_area_potential_growth[k, l, m] * vratio
 
     def actual_fruit_growth(self):
@@ -1198,7 +1105,7 @@ cdef class State:
         # Begin loops over all fruiting sites.
         for k, vegetative_branch in enumerate(self.vegetative_branches):
             for l, fruiting_branch in enumerate(vegetative_branch.fruiting_branches):
-                for m, site in enumerate(fruiting_branch.nodes):
+                for m in range(fruiting_branch.number_of_fruiting_nodes):
                     # If this site is a square, the actual dry weight added to it (dwsq) is proportional to its potential growth.
                     # Update the weight of this square (SquareWeight), sum of today's added dry weight to squares (state.actual_square_growth).
                     if self.fruiting_nodes_stage[k, l, m] == Stage.Square:
@@ -1214,10 +1121,10 @@ cdef class State:
                         self.actual_boll_growth += dwboll
                         self.green_bolls_weight += self.fruiting_nodes_boll_weight[k, l, m]
                         # dry weight added to the burrs in a boll.
-                        dwburr = site.burr.potential_growth * self.fruit_growth_ratio
-                        site.burr.weight += dwburr
+                        dwburr = self.burr_potential_growth[k, l, m] * self.fruit_growth_ratio
+                        self.burr_weight[k, l, m] += dwburr
                         self.actual_burr_growth += dwburr
-                        self.green_bolls_burr_weight += site.burr.weight
+                        self.green_bolls_burr_weight += self.burr_weight[k, l, m]
 
     def dry_matter_balance(self, per_plant_area) -> float:
         """This function computes the cotton plant dry matter (carbon) balance, its allocation to growing plant parts, and carbon stress. It is called from PlantGrowth()."""
@@ -1767,14 +1674,13 @@ cdef class State:
                     main_stem_leaf.weight = 0
                     main_stem_leaf.petiole_weight = 0
                 else:  # leaves on fruit nodes
-                    site = self.vegetative_branches[k].fruiting_branches[l].nodes[m]
                     self.leaf_nitrogen -= self.node_leaf_weight[k, l, m] * self.leaf_nitrogen_concentration
                     self.leaf_weight -= self.node_leaf_weight[k, l, m]
-                    self.petiole_nitrogen -= site.petiole.weight * self.petiole_nitrogen_concentration
-                    self.petiole_weight -= site.petiole.weight
+                    self.petiole_nitrogen -= self.node_petiole_weight[k, l, m] * self.petiole_nitrogen_concentration
+                    self.petiole_weight -= self.node_petiole_weight[k, l, m]
                     self.node_leaf_area[k, l, m] = 0
                     self.node_leaf_weight[k, l, m] = 0
-                    site.petiole.weight = 0
+                    self.node_petiole_weight[k, l, m] = 0
                 numLeavesToShed -= 1
 
     #begin phenology
@@ -1821,15 +1727,14 @@ cdef class State:
                 for k in range(self.number_of_vegetative_branches):
                     for l in range(self.vegetative_branches[k].number_of_fruiting_branches):
                         for m in range(self.vegetative_branches[k].fruiting_branches[l].number_of_fruiting_nodes):
-                            site = self.vegetative_branches[k].fruiting_branches[l].nodes[m]
                             if self.fruiting_nodes_stage[k, l, m] in (Stage.Square, Stage.YoungGreenBoll, Stage.GreenBoll):
                                 # ratio of abscission for a fruiting site.
                                 abscissionRatio = self.site_abscission_ratio(k, l, m, lt)
                                 if abscissionRatio > 0:
                                     if self.fruiting_nodes_stage[k, l, m] == Stage.Square:
-                                        self.square_abscission(site, abscissionRatio)
+                                        self.square_abscission((k, l, m), abscissionRatio)
                                     else:
-                                        self.boll_abscission(site, abscissionRatio, self.ginning_percent if self.ginning_percent > 0 else self.fruiting_nodes_ginning_percent[k, l, m])
+                                        self.boll_abscission((k, l, m), abscissionRatio, self.ginning_percent if self.ginning_percent > 0 else self.fruiting_nodes_ginning_percent[k, l, m])
                 # Assign zero to the array members for this day.
                 ShedByCarbonStress[lt] = 0
                 ShedByNitrogenStress[lt] = 0
@@ -1851,7 +1756,6 @@ cdef class State:
         lt
             lag index for this node.
         """
-        site = self.vegetative_branches[k].fruiting_branches[l].nodes[m]
         # The following constant parameters are used:
         cdef double[5] vabsc = [21.0, 2.25, 0.60, 5.0, 0.20]
         VarPar = self._sim.cultivar_parameters
@@ -1894,14 +1798,13 @@ cdef class State:
         # Actual abscission of tagged sites (abscissionRatio) is a product of pabs, shedt and DayInc for this day. It can not be greater than 1.
         return min(pabs * shedt * self.day_inc, 1)
 
-    def square_abscission(self, site, abscissionRatio):
+    def square_abscission(self, index, abscissionRatio):
         """Simulates the abscission of a single square at site (k, l, m).
 
         Arguments
         ---------
         abscissionRatio
             ratio of abscission of a fruiting site."""
-        index = (site.k, site.l, site.m)
         # Compute the square weight lost by shedding (wtlos) as a proportion of SquareWeight of this site. Update state.square_nitrogen, CumPlantNLoss, SquareWeight[k][l][m], BloomWeightLoss and FruitFraction[k][l][m].
         cdef double wtlos = self.square_weights[index] * abscissionRatio  # weight lost by shedding at this site.
         self.square_nitrogen -= wtlos * self.square_nitrogen_concentration
@@ -1912,9 +1815,9 @@ cdef class State:
             self.fruiting_nodes_fraction[index] = 0
             self.square_nitrogen -= self.square_weights[index] * self.square_nitrogen_concentration
             self.square_weights[index] = 0
-            self.fruiting_nodes_stage[site.k, site.l, site.m] = Stage.AbscisedAsSquare
+            self.fruiting_nodes_stage[index] = Stage.AbscisedAsSquare
 
-    def boll_abscission(self, site, abscissionRatio, gin1):
+    def boll_abscission(self, index, abscissionRatio, gin1):
         """This function simulates the abscission of a single green boll at site (k, l, m). It is called from function FruitingSitesAbscission() if this site is a green boll.
 
         Arguments
@@ -1924,27 +1827,26 @@ cdef class State:
         gin1
             percent of seeds in seedcotton, used to compute lost nitrogen.
         """
-        # Update state.seed_nitrogen, state.burr_nitrogen, CumPlantNLoss, state.green_bolls_weight, state.green_bolls_burr_weight, BollWeight[k][l][m], state.site[k][l][m].burr.weight, and FruitFraction[k][l][m].
-        index = (site.k, site.l, site.m)
+        # Update state.seed_nitrogen, state.burr_nitrogen, CumPlantNLoss, state.green_bolls_weight, state.green_bolls_burr_weight, boll_weight, burr_weight, and FruitFraction[k][l][m].
         self.seed_nitrogen -= self.fruiting_nodes_boll_weight[index] * abscissionRatio * (1 - gin1) * self.seed_nitrogen_concentration
-        self.burr_nitrogen -= site.burr.weight * abscissionRatio * self.burr_nitrogen_concentration
+        self.burr_nitrogen -= self.burr_weight[index] * abscissionRatio * self.burr_nitrogen_concentration
         self.green_bolls_weight -= self.fruiting_nodes_boll_weight[index] * abscissionRatio
-        self.green_bolls_burr_weight -= site.burr.weight * abscissionRatio
+        self.green_bolls_burr_weight -= self.burr_weight[index] * abscissionRatio
         self.fruiting_nodes_boll_weight[index] *= (1 - abscissionRatio)
-        site.burr.weight -= site.burr.weight * abscissionRatio
+        self.burr_weight[index] *= (1 - abscissionRatio)
         self.fruiting_nodes_fraction[index] *= (1 - abscissionRatio)
 
-        # If FruitFraction[k][l][m] is less than 0.001 make it zero, update state.seed_nitrogen, state.burr_nitrogen, CumPlantNLoss, state.green_bolls_weight, state.green_bolls_burr_weight, BollWeight[k][l][m], state.site[k][l][m].burr.weight, and assign 4 to FruitingCode.
+        # If FruitFraction[k][l][m] is less than 0.001 make it zero, update state.seed_nitrogen, state.burr_nitrogen, CumPlantNLoss, state.green_bolls_weight, state.green_bolls_burr_weight, boll_weight, burr_weight, and assign 4 to FruitingCode.
 
         if self.fruiting_nodes_fraction[index] <= 0.001:
-            self.fruiting_nodes_stage[site.k, site.l, site.m] = Stage.AbscisedAsBoll
+            self.fruiting_nodes_stage[index] = Stage.AbscisedAsBoll
             self.seed_nitrogen -= self.fruiting_nodes_boll_weight[index] * (1 - gin1) * self.seed_nitrogen_concentration
-            self.burr_nitrogen -= site.burr.weight * self.burr_nitrogen_concentration
+            self.burr_nitrogen -= self.burr_weight[index] * self.burr_nitrogen_concentration
             self.fruiting_nodes_fraction[index] = 0
             self.green_bolls_weight -= self.fruiting_nodes_boll_weight[index]
-            self.green_bolls_burr_weight -= site.burr.weight
+            self.green_bolls_burr_weight -= self.burr_weight[index]
             self.fruiting_nodes_boll_weight[index] = 0
-            site.burr.weight = 0
+            self.burr_weight[index] = 0
 
     def compute_site_numbers(self):
         """Calculates square, green boll, open boll, and abscised site numbers (NumSquares, NumGreenBolls, NumOpenBolls, and AbscisedFruitSites, respectively), as the sums of FruitFraction in all sites with appropriate FruitingCode."""
@@ -1952,19 +1854,17 @@ cdef class State:
         for k in range(self.number_of_vegetative_branches):
             for l in range(self.vegetative_branches[k].number_of_fruiting_branches):
                 for m in range(self.vegetative_branches[k].fruiting_branches[l].number_of_fruiting_nodes):
-                    site = self.vegetative_branches[k].fruiting_branches[l].nodes[m]
                     if self.fruiting_nodes_stage[k, l, m] in [Stage.YoungGreenBoll, Stage.GreenBoll]:
                         self.number_of_green_bolls += self.fruiting_nodes_fraction[k, l, m]
 
-    def new_boll_formation(self, site):
+    def new_boll_formation(self, index):
         """Simulates the formation of a new boll at a fruiting site."""
-        index = (site.k, site.l, site.m)
         # The following constant parameters are used:
         cdef double seedratio = 0.64  # ratio of seeds in seedcotton weight.
         cdef double[2] vnewboll = [0.31, 0.02]
         # If bPollinSwitch is false accumulate number of blooms to be dropped, and define FruitingCode as 6.
         if not self.pollination_switch:
-            self.fruiting_nodes_stage[site.k, site.l, site.m] = Stage.AbscisedAsFlower
+            self.fruiting_nodes_stage[index] = Stage.AbscisedAsFlower
             self.fruiting_nodes_fraction[index] = 0
             self.square_weights[index] = 0
             return
@@ -1973,7 +1873,7 @@ cdef class State:
         cdef double bolinit  # initial weight of boll after flowering.
         bolinit = vnewboll[0] * self.square_weights[index]
         self.fruiting_nodes_boll_weight[index] = 0.2 * bolinit
-        site.burr.weight = bolinit - self.fruiting_nodes_boll_weight[index]
+        self.burr_weight[index] = bolinit - self.fruiting_nodes_boll_weight[index]
 
         cdef double sqr1n  # the nitrogen content of one square before flowering.
         sqr1n = self.square_nitrogen_concentration * self.square_weights[index]
@@ -1986,7 +1886,7 @@ cdef class State:
         self.burr_nitrogen += sqr1n - seed1n
 
         self.green_bolls_weight += self.fruiting_nodes_boll_weight[index]
-        self.green_bolls_burr_weight += site.burr.weight
+        self.green_bolls_burr_weight += self.burr_weight[index]
         self.square_weights[index] = 0
     #end phenology
 
@@ -3782,17 +3682,6 @@ cdef class Simulation:
                     potential_growth_for_leaf_weight=0,
                     potential_growth_for_petiole_weight=0,
                 )
-                for m in range(5):
-                    state0._.vegetative_branches[k].fruiting_branches[l].nodes[m] = dict(
-                        burr=dict(
-                            potential_growth=0,
-                            weight=0,
-                        ),
-                        petiole=dict(
-                            potential_growth=0,
-                            weight=0,
-                        ),
-                    )
 
     def _initialize_root_data(self):
         """ This function initializes the root submodel parameters and variables."""
@@ -4214,15 +4103,15 @@ cdef class Simulation:
                             ratebur = vpotfrt[4] * tfrt * wfdb
                         # Potential boll (seeds and lint) growth rate (ratebol) and potential burr growth rate (ratebur) are multiplied by FruitFraction to compute PotGroBolls and PotGroBurrs for node (k,l,m).
                         state.fruiting_nodes_boll_potential_growth[k, l, m] = ratebol * state.fruiting_nodes_fraction[k, l, m]
-                        state.vegetative_branches[k].fruiting_branches[l].nodes[m].burr.potential_growth = ratebur * state.fruiting_nodes_fraction[k, l, m]
+                        state.burr_potential_growth[k, l, m] = ratebur * state.fruiting_nodes_fraction[k, l, m]
                         # Sum potential growth rates of bolls and burrs as PotGroAllBolls and PotGroAllBurrs, respectively.
                         PotGroAllBolls += state.fruiting_nodes_boll_potential_growth[k, l, m]
-                        PotGroAllBurrs += state.vegetative_branches[k].fruiting_branches[l].nodes[m].burr.potential_growth
+                        PotGroAllBurrs += state.burr_potential_growth[k, l, m]
 
                     # If these are not green bolls, their potential growth is 0. End loop.
                     else:
                         state.fruiting_nodes_boll_potential_growth[k, l, m] = 0
-                        state.vegetative_branches[k].fruiting_branches[l].nodes[m].burr.potential_growth = 0
+                        state.burr_potential_growth[k, l, m] = 0
 
     def _potential_leaf_growth(self, u):
         """
@@ -4310,10 +4199,10 @@ cdef class Simulation:
                 # Loop over the nodes of this fruiting branch.
                 smaxx = smax  # value of smax for the corresponding main stem leaf.
                 cc = c  # value of c for the corresponding main stem leaf.
-                for m, node in enumerate(fruiting_branch.nodes):
+                for m in range(fruiting_branch.number_of_fruiting_nodes):
                     if state.node_leaf_area[k, l, m] <= 0:
                         state.node_leaf_area_potential_growth[k, l, m] = 0
-                        node.petiole.potential_growth = 0
+                        state.node_petiole_potential_growth[k, l, m] = 0
                     # Compute potential growth of leaf area and leaf weight for leaf on fruiting branch node (k,l,m).
                     # Add leaf and petiole weight potential growth to spdwl and spdwp.
                     else:
@@ -4329,9 +4218,9 @@ cdef class Simulation:
                         if rate >= 1e-12:
                             # Growth rate is modified by water stress. Potential growth is computed as a function of average temperature.
                             state.node_leaf_area_potential_growth[k, l, m] = rate * wstrlf * temperature_on_leaf_growth_rate(state.average_temperature)
-                            node.petiole.potential_growth = state.node_leaf_area_potential_growth[k, l, m] * state.leaf_weight_area_ratio * vpotlf[13]
+                            state.node_petiole_potential_growth[k, l, m] = state.node_leaf_area_potential_growth[k, l, m] * state.leaf_weight_area_ratio * vpotlf[13]
                             state.leaf_potential_growth += state.node_leaf_area_potential_growth[k, l, m] * state.leaf_weight_area_ratio
-                            state.petiole_potential_growth += node.petiole.potential_growth
+                            state.petiole_potential_growth += state.node_petiole_potential_growth[k, l, m]
 
     def _defoliate(self, u):
         """This function simulates the effects of defoliating chemicals applied on the cotton. It is called from SimulateThisDay()."""

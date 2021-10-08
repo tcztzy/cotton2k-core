@@ -51,6 +51,7 @@ class Stage(IntEnum):
 class Phenology:
     _sim: Any
     average_temperature: float
+    burr_weight: npt.NDArray[np.double]
     date: datetime.date
     day_inc: float
     fruiting_nodes_age: npt.NDArray[np.double]
@@ -154,7 +155,7 @@ class Phenology:
             # Loop over all existing fruiting branches, and call add_fruiting_node() to
             # decide if a new node on this fruiting branch is to be added.
             for l, fb in enumerate(vb.fruiting_branches):
-                if len(fb.nodes) < nidmax:
+                if fb.number_of_fruiting_nodes < nidmax:
                     self.add_fruiting_node(
                         k,
                         l,
@@ -167,7 +168,7 @@ class Phenology:
                 # Loop over all existing fruiting nodes, and call
                 # simulate_fruiting_site() to simulate the condition of each fruiting
                 # node.
-                for m in range(len(fb.nodes)):
+                for m in range(fb.number_of_fruiting_nodes):
                     first_bloom = self.simulate_fruiting_site(
                         k,
                         l,
@@ -225,7 +226,6 @@ class Phenology:
         ]
         # FruitingCode = 0 indicates that this node has not yet been formed.
         # In this case, assign zero to boltmp and return.
-        site = self.vegetative_branches[k].fruiting_branches[l].nodes[m]
         if self.fruiting_nodes_stage[k, l, m] == Stage.NotYetFormed:
             self.fruiting_nodes_boll_cumulative_temperature[k, l, m] = 0
             return None
@@ -280,7 +280,7 @@ class Phenology:
                 ] = self.average_temperature
                 self.fruiting_nodes_boll_age[k, l, m] = self.day_inc
                 self.fruiting_nodes_stage[k, l, m] = Stage.YoungGreenBoll
-                self.new_boll_formation(site)
+                self.new_boll_formation((k, l, m))
                 # If this is the first flower, define FirstBloom.
                 if first_bloom_date is None and self.green_bolls_weight > 0:
                     return self.date
@@ -319,7 +319,6 @@ class Phenology:
             return None
         if self.fruiting_nodes_stage[k, l, m] == Stage.GreenBoll:
             self.boll_opening(
-                site,
                 (k, l, m),
                 defoliate_date,
                 var39,
@@ -528,7 +527,7 @@ class Phenology:
         # If so, form the new node:
         if (
             self.fruiting_nodes_age[k, l, nnid] < TimeToNextFruNode
-            or len(fb.nodes) >= 5
+            or fb.number_of_fruiting_nodes >= 5
         ):
             return
         # Increment NumNodes, define newnod, and assign 1 to FruitFraction and
@@ -599,7 +598,6 @@ class Phenology:
 
     def boll_opening(
         self,
-        site,
         site_index: tuple[int, int, int],
         defoliate_date: Optional[datetime.date],
         var39,
@@ -646,9 +644,9 @@ class Phenology:
         # If green boll is old enough (AgeOfBoll greater than dehiss), make it an open
         # boll, set stage to MatureBoll, and update boll and burr weights.
         self.fruiting_nodes_stage[site_index] = Stage.MatureBoll
-        self.open_bolls_burr_weight += site.burr.weight
+        self.open_bolls_burr_weight += self.burr_weight[site_index]
         self.green_bolls_weight -= self.fruiting_nodes_boll_weight[site_index]
-        self.green_bolls_burr_weight -= site.burr.weight
+        self.green_bolls_burr_weight -= self.burr_weight[site_index]
         # Compute the ginning percentage as a function of boll temperature.
         # Compute the average ginning percentage of all the bolls opened until now
         # (self.ginning_percent).
@@ -773,20 +771,19 @@ class Phenology:
         # Assign zero to LeafAreaNodes, PetioleWeightNodes and LeafWeightNodes of this
         # leaf.
         # If this is after defoliation.
-        site = self.vegetative_branches[k].fruiting_branches[l].nodes[m]
         if (
             self.node_leaf_age[k, l, m] >= droplf
             and self.node_leaf_area[k, l, m] > 0
             and self.leaf_area_index > 0.1
         ):
             self.leaf_weight -= self.node_leaf_weight[k, l, m]
-            self.petiole_weight -= site.petiole.weight
+            self.petiole_weight -= self.node_petiole_weight[k, l, m]
             self.leaf_nitrogen -= (
                 self.node_leaf_weight[k, l, m] * self.leaf_nitrogen_concentration
             )
             self.petiole_nitrogen -= (
-                site.petiole.weight * self.petiole_nitrogen_concentration
+                self.node_petiole_weight[k, l, m] * self.petiole_nitrogen_concentration
             )
             self.node_leaf_area[k, l, m] = 0
             self.node_leaf_weight[k, l, m] = 0
-            site.petiole.weight = 0
+            self.node_petiole_weight[k, l, m] = 0
