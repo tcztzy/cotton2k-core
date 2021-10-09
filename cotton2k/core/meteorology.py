@@ -5,7 +5,6 @@ from math import acos, cos, degrees, exp, pi, radians, sin, sqrt, tan
 from typing import DefaultDict
 
 import numpy as np
-from scipy import constants
 
 from .utils import date2doy
 
@@ -439,24 +438,6 @@ def clearskyemiss(vp: float, tk: float) -> float:
     vp1 = vp * 10  # vapor pressure of the air in mbars.
 
     return min(0.70 + 5.95e-5 * vp1 * exp(1500 / tk), 1)
-
-
-def compute_incoming_long_wave_radiation(
-    humidity: float,
-    temperature: float,
-    cloud_cov: float,
-    cloud_cor: float,
-) -> float:
-    """LONG WAVE RADIATION EMITTED FROM SKY"""
-    vp = 0.01 * humidity * VaporPressure(temperature)  # air vapor pressure, KPa.
-    ea0 = clearskyemiss(
-        vp, temperature + constants.zero_Celsius
-    )  # sky emissivity from clear portions of the sky.
-    # incoming long wave radiation (ly / sec).
-    rlzero = (ea0 * (1 - cloud_cov) + cloud_cov) * constants.sigma * (
-        temperature + constants.zero_Celsius
-    ) ** 4 - cloud_cor
-    return rlzero / constants.calorie / 10_000
 
 
 def tdewest(maxt: float, site5: float, site6: float) -> float:

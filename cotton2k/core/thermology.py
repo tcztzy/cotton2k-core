@@ -1,4 +1,8 @@
-from math import cos, pi
+from math import atan, cos, log, pi, sqrt
+
+from scipy import constants
+
+from .meteorology import VaporPressure, clearskyemiss
 
 
 def canopy_balance(  # pylint: disable=too-many-arguments,too-many-locals
@@ -103,7 +107,184 @@ def canopy_balance(  # pylint: disable=too-many-arguments,too-many-locals
     raise RuntimeError
 
 
-class Thermology:  # pylint: disable=E0203,E1101,R0903,R0912,R0914,R0915,W0201
+def compute_soil_surface_albedo(
+    water_content: float,
+    field_capacity: float,
+    residual_water_content: float,
+    upper_albedo: float,
+    lower_albedo: float,
+) -> float:
+    """Computes albedo of the soil surface
+    Less soil water content, higher albedo
+    :param water_content:
+    :type water_content: float
+    :param field_capacity:
+    :type field_capacity: float
+    :param residual_water_content:
+    :type residual_water_content: float
+    :param upper_albedo:
+    :type upper_albedo: float
+    :param lower_albedo:
+    :type lower_albedo: float
+    """
+    if water_content <= residual_water_content:
+        soil_surface_albedo = upper_albedo
+    elif water_content >= field_capacity:
+        soil_surface_albedo = lower_albedo
+    else:
+        soil_surface_albedo = lower_albedo + (upper_albedo - lower_albedo) * (
+            field_capacity - water_content
+        ) / (field_capacity - residual_water_content)
+    return soil_surface_albedo
+
+
+def compute_incoming_short_wave_radiation(
+    radiation: float, intercepted_short_wave_radiation: float, albedo: float
+) -> tuple[float, float, float]:
+    """SHORT WAVE RADIATION ENERGY BALANCE
+    :return: short wave (global) radiation (ly / sec), global radiation absorbed
+             by soil surface, global radiation reflected up to the vegetation
+    :rtype: tuple[float, float, float]
+    """
+    # Division by 41880 (= 698 * 60) converts from Joules per sq m to
+    # langley (= calories per sq cm) Or: from Watt per sq m to langley per sec.
+    rzero = radiation / 41880  # short wave (global) radiation (ly / sec).
+    rss0 = rzero * (
+        1 - intercepted_short_wave_radiation
+    )  # global radiation after passing through canopy
+    return rzero, rss0 * (1 - albedo), rss0 * albedo
+
+
+def compute_incoming_long_wave_radiation(
+    humidity: float,
+    temperature: float,
+    cloud_cov: float,
+    cloud_cor: float,
+) -> float:
+    """LONG WAVE RADIATION EMITTED FROM SKY"""
+    vp = 0.01 * humidity * VaporPressure(temperature)  # air vapor pressure, KPa.
+    ea0 = clearskyemiss(
+        vp, temperature + constants.zero_Celsius
+    )  # sky emissivity from clear portions of the sky.
+    # incoming long wave radiation (ly / sec).
+    rlzero = (ea0 * (1 - cloud_cov) + cloud_cov) * constants.sigma * (
+        temperature + constants.zero_Celsius
+    ) ** 4 - cloud_cor
+    return rlzero / constants.calorie / 10_000
+
+
+# pylint: disable=R0912,R0914,R0915
+def SensibleHeatTransfer(tsf, tenviron, height, wndcanp) -> float:
+    """Computes the sensible heat transfer coefficient, using the friction potential
+    (shear) temperature (thstar), and the surface friction (shear) velocity (ustar) at
+    the atmospheric boundary. It is called three times from energy_balance(): for
+    canopy or soil surface with their environment.
+
+    Parameters
+    ----------
+    tenviron
+        temperature (K) of the environment - air at 200 cm height for columns with no
+        canopy, or tafk when canopy is present .
+    tsf
+        surface temperature, K, of soil or canopy.
+    wndcanp
+        wind speed in the canopy (if present), cm s-1.
+    height
+        canopy height, cm, or zero for soil surface.
+
+    Returns
+    -------
+    float
+        raw sensible heat transfer coefficient
+    """
+    # Constant values used:
+    grav = 980  # acceleration due to gravity (980 cm sec-2).
+    s40 = 0.13  # calibration constant.
+    s42 = 0.63  # calibration constant.
+    stmin = 5  # minimal value of ustar.
+    vonkar = 0.40  # Von-Karman constant (0.40).
+    zalit1 = 0.0962  # parameter .....
+    # Wind velocity not allowed to be less than 100 cm s-1.
+    u = max(wndcanp, 100)  # wind speed at 200 cm height, cm / s.
+    # Assign initial values to z0 and gtop, and set dt.
+    z0 = max(s40 * height, 1)  # surface roughness parameter, cm.
+    gtop = log(
+        (200 - s42 * height) / z0
+    )  # logarithm of ratio of height of measurement to surface roughness parameter.
+    dt = tsf - tenviron  # temperature difference.
+    # Set approximate initial values for ustar and thstar (to reduce iterations).
+    thstar: float  # friction potential (shear) temperature.
+    ustar: float  # Surface friction (shear) velocity (cm sec-1).
+    if dt >= 0:
+        ustar = 1.873 + 0.570172 * dt + 0.07438568 * u
+        thstar = -0.05573 * dt + 1.987 / u - 6.657 * dt / u
+    else:
+        ustar = max(-4.4017 + 1.067 * dt + 0.25957 * u - 0.001683 * dt * u, 5)
+        thstar = max(-0.0096 - 0.1149 * dt + 0.0000377 * u + 0.0002367 * dt * u, 0.03)
+    tbot1 = (
+        tsf  # surface temperature corrected for friction (shear) potential temperature.
+    )
+    g1: float  # temporary derived variable
+    ug1chk: float  # previous value of ug1.
+    ug1: float  # ratio of ustar to g1.
+    ug1res: float  # residual value of ug1.
+    # Start iterations.
+    for mtest in range(100):
+        ug1chk = 0  # previous value of UG1.
+        if mtest > 0:
+            # Assign values to tbot1, uchek, thekz, and ug1chk.
+            tbot1 = tsf + zalit1 * thstar * pow((ustar * z0 / 15), 0.45) / vonkar
+            uchek = ustar  # previous value of ustar.
+            thekz = thstar  # previous value of thstar.
+            if g1 != 0:
+                ug1chk = ustar / g1
+        # Compute air temperature at 1 cm,, and compute zl and lstar.
+        # nondimensional height.
+        if abs(thstar) < 1e-30:
+            zl = 0
+        else:
+            thetmn = (
+                tenviron + tbot1
+            ) * 0.5  # mean temperature (K) of air and surface.
+            lstar = (thetmn * ustar * ustar) / (vonkar * grav * thstar)
+            zl = min(max((200 - s42 * height) / lstar, -5), 0.5)
+        # Compute g1u, and g2 temporary derived variables.
+        if zl > 0:
+            g1u = -4.7 * zl
+            g2 = max(-6.35135 * zl, -1)
+        else:
+            tmp1 = pow((1 - 15 * zl), 0.25)  # intermediate variable.
+            g1u = (
+                2 * log((1 + tmp1) / 2)
+                + log((1 + tmp1 * tmp1) / 2)
+                - 2 * atan(tmp1 + 1.5708)
+            )
+            g2 = 2 * log((1 + sqrt(1 - 9 * zl)) / 2)
+        g2 = min(g2, gtop)
+        # Compute ustar and check for minimum value.
+        ustar = max(vonkar * u / (gtop - g1u), stmin)
+        # Compute g1 and thstar.
+        g1 = 0.74 * (gtop - g2) + zalit1 * pow((ustar * z0 / 0.15), 0.45)
+        thstar = -dt * vonkar / g1
+        # If more than 30 iterations, reduce fluctuations
+        if mtest > 30:
+            thstar = (thstar + thekz) / 2
+            ustar = (ustar + uchek) / 2
+
+        # Compute ug1 and  ug1res to check convergence
+        ug1 = ustar / g1
+        if abs(ug1chk) <= 1.0e-30:
+            ug1res = abs(ug1)
+        else:
+            ug1res = abs((ug1chk - ug1) / ug1chk)
+        # If ug1 did not converge, go to next iteration.
+        if abs(ug1 - ug1chk) <= 0.05 or ug1res <= 0.01:
+            return ustar * vonkar / g1
+    # Stop simulation if no convergence after 100 iterations.
+    raise RuntimeError
+
+
+class Thermology:  # pylint: disable=E0203,E1101,R0912,R0914,R0915,W0201
     def soil_thermology(self):
         """The main part of the soil temperature sub-model.
 
@@ -201,8 +382,6 @@ class Thermology:  # pylint: disable=E0203,E1101,R0903,R0912,R0914,R0915,W0201
         based upon field and laboratory measurements. Soil Sci. Soc. Am. Proc. 33:354-
         360.
         """
-        state = self._current_state
-        u = (state.date - self.start_date).days
         # Compute dts, the daily change in deep soil temperature (C), as a site-
         # dependent function of Daynum.
         dts = (
@@ -213,7 +392,7 @@ class Thermology:  # pylint: disable=E0203,E1101,R0903,R0912,R0914,R0915,W0201
             * cos(
                 2
                 * pi
-                * (state.date.timetuple().tm_yday - self.site_parameters[11])
+                * (self.date.timetuple().tm_yday - self.site_parameters[11])
                 / 365
             )
         )
@@ -239,25 +418,25 @@ class Thermology:  # pylint: disable=E0203,E1101,R0903,R0912,R0914,R0915,W0201
         # es and ActualSoilEvaporation are computed as the average for the whole soil
         # slab, weighted by column widths.
         es = 0  # potential evaporation rate, mm day-1
-        state.actual_soil_evaporation = 0
+        self.actual_soil_evaporation = 0
         # Start hourly loop of iterations.
         for ihr in range(iter1):
             # Update the temperature of the last soil layer (lower boundary conditions).
-            state.deep_soil_temperature += dts * dlt / 86400
+            self.deep_soil_temperature += dts * dlt / 86400
             etp0 = 0  # actual transpiration (mm s-1) for this hour
-            if state.evapotranspiration > 0.000001:
+            if self.evapotranspiration > 0.000001:
                 etp0 = (
-                    state.actual_transpiration
-                    * state.hours[ihr].ref_et
-                    / state.evapotranspiration
+                    self.actual_transpiration
+                    * self.hours[ihr].ref_et
+                    / self.evapotranspiration
                     / dlt
                 )
             # Compute vertical transport for each column
             for k in range(kk):
                 #  Set hourly_soil_temperature for the lowest soil layer.
-                state.hourly_soil_temperature[
+                self.hourly_soil_temperature[
                     ihr, 40 - 1, k
-                ] = state.deep_soil_temperature
+                ] = self.deep_soil_temperature
                 # Compute transpiration from each column, weighted by its relative
                 # shading.
                 etp1 = 0  # actual hourly transpiration (mm s-1) for a column.
@@ -270,25 +449,25 @@ class Thermology:  # pylint: disable=E0203,E1101,R0903,R0912,R0914,R0915,W0201
                 # vapor deficit component of the Penman equation (es2hour).
                 # potential evaporation fron soil surface of a column, mm per hour.
                 escol1k = (
-                    state.hours[ihr].et1 * self.irradiation_soil_surface[k]
-                    + state.hours[ihr].et2
+                    self.hours[ihr].et1 * self.irradiation_soil_surface[k]
+                    + self.hours[ihr].et2
                 )
                 es += escol1k * self.column_width[k]
                 # Compute actual evaporation from soil surface. update water content of
                 # the soil cell, and add to daily sum of actual evaporation.
                 evapmax = (
                     0.9
-                    * (state.soil_water_content[0, k] - self.thad[0])
+                    * (self.soil_water_content[0, k] - self.thad[0])
                     * 10
                     * self.layer_depth[0]
                 )  # maximum possible evaporatio from a soil cell near the surface.
                 escol1k = min(evapmax, escol1k)
-                state.soil_water_content[0, k] -= 0.1 * escol1k / self.layer_depth[0]
-                state.actual_soil_evaporation += escol1k * self.column_width[k]
+                self.soil_water_content[0, k] -= 0.1 * escol1k / self.layer_depth[0]
+                self.actual_soil_evaporation += escol1k * self.column_width[k]
                 ess = escol1k / dlt
-                # Call self._energy_balance to compute soil surface and canopy
+                # Call self.energy_balance to compute soil surface and canopy
                 # temperature.
-                self._energy_balance(u, ihr, k, ess, etp1)
+                self.energy_balance(ihr, k, ess, etp1)
             # Compute soil temperature flux in the vertical direction.
             # Assign iv = 1, layer = 0, nn = nl.
             iv = 1  # indicates vertical (=1) or horizontal (=0) flux.
@@ -296,15 +475,15 @@ class Thermology:  # pylint: disable=E0203,E1101,R0903,R0912,R0914,R0915,W0201
             layer = 0  # soil layer number
             # Loop over kk columns, and call SoilHeatFlux().
             for k in range(kk):
-                state.soil_heat_flux(dlt, iv, nn, layer, k, self.row_space, ihr)
+                self.soil_heat_flux(dlt, iv, nn, layer, k, self.row_space, ihr)
             # If no horizontal heat flux is assumed, make all array members of
             # hourly_soil_temperature equal to the value computed for the first column.
             # Also, do the same for array memebers of soil_water_content.
             if self.emerge_switch <= 1:
-                state.hourly_soil_temperature[
-                    ihr, :, :
-                ] = state.hourly_soil_temperature[ihr, :, 0][:, None].repeat(20, axis=1)
-                state.soil_water_content[0, :] = state.soil_water_content[0, 0]
+                self.hourly_soil_temperature[ihr, :, :] = self.hourly_soil_temperature[
+                    ihr, :, 0
+                ][:, None].repeat(20, axis=1)
+                self.soil_water_content[0, :] = self.soil_water_content[0, 0]
             # Compute horizontal transport for each layer
 
             # Compute soil temperature flux in the horizontal direction, when
@@ -316,7 +495,7 @@ class Thermology:  # pylint: disable=E0203,E1101,R0903,R0912,R0914,R0915,W0201
                 nn = 20
                 for l in range(40):
                     layer = l
-                    state.soil_heat_flux(dlt, iv, nn, layer, l, self.row_space, ihr)
+                    self.soil_heat_flux(dlt, iv, nn, layer, l, self.row_space, ihr)
             # Compute average temperature of foliage, in degrees C. The average is
             # weighted by the canopy shading of each column, only columns which are
             # shaded 5% or more by canopy are used.
@@ -324,30 +503,150 @@ class Thermology:  # pylint: disable=E0203,E1101,R0903,R0912,R0914,R0915,W0201
             shading = 0  # sum of shaded area in all shaded columns, to compute TFC
             for k in range(20):
                 if self.irradiation_soil_surface[k] <= 0.95:
-                    tfc += (state.foliage_temperature[k] - 273.161) * (
+                    tfc += (self.foliage_temperature[k] - 273.161) * (
                         1 - self.irradiation_soil_surface[k]
                     )
                     shading += 1 - self.irradiation_soil_surface[k]
             if shading >= 0.01:
                 tfc /= shading
             # If emergence date is to be simulated, call predict_emergence().
-            if self.emerge_switch == 0 and state.date >= self.plant_date:
-                emerge_date = state.predict_emergence(
+            if self.emerge_switch == 0 and self.date >= self.plant_date:
+                emerge_date = self.predict_emergence(
                     self.plant_date, ihr, self.plant_row_column
                 )
                 if emerge_date is not None:
                     self.emerge_date = emerge_date
                     self.emerge_switch = 2
             if ihr < 23:
-                state.hourly_soil_temperature[ihr + 1] = state.hourly_soil_temperature[
+                self.hourly_soil_temperature[ihr + 1] = self.hourly_soil_temperature[
                     ihr
                 ]
         # At the end of the day compute actual daily evaporation and its cumulative sum
         if kk == 1:
             es /= self.column_width[1]
-            state.actual_soil_evaporation /= self.column_width[1]
+            self.actual_soil_evaporation /= self.column_width[1]
         else:
             es /= self.row_space
-            state.actual_soil_evaporation /= self.row_space
+            self.actual_soil_evaporation /= self.row_space
         # compute daily averages.
-        state.soil_temperature = state.hourly_soil_temperature.mean(axis=0)
+        self.soil_temperature = self.hourly_soil_temperature.mean(axis=0)
+
+    def energy_balance(self, ihr, k, ess, etp1):
+        """Solves the energy balance equations at the soil surface, and at the
+        foliage / atmosphere interface. It computes the resulting temperatures of the
+        soil surface and the plant canopy.
+
+        Units for all energy fluxes are: cal cm-2 sec-1.
+        It is called from SoilTemperature(), on each hourly time step and for each soil
+        column.
+        It calls functions clearskyemiss(), VaporPressure(), SensibleHeatTransfer(),
+        soil_surface_balance() and canopy_balance()
+
+        :param ihr: the time of day in hours.
+        :param k: soil column number.
+        :param ess: evaporation from surface of a soil column (mm / sec).
+        :param etp1: actual transpiration rate (mm / sec).
+        :param sf: fraction of shaded soil area
+        """
+        state = self._current_state
+        hour = state.hours[ihr]
+        # Constants used:
+        wndfac = 0.60  # Ratio of wind speed under partial canopy cover.
+        # proportion of short wave radiation (on fully shaded soil surface) intercepted
+        # by the canopy.
+        cswint = 0.75
+        # Set initial values
+        sf = 1 - self.irradiation_soil_surface[k]
+        thet = hour.temperature + 273.161  # air temperature, K
+        so, so2, so3 = state.hourly_soil_temperature[
+            ihr, :3, k
+        ]  # soil surface temperature, K
+        # Compute soil surface albedo (based on Horton and Chung, 1991):
+        ag = compute_soil_surface_albedo(
+            state.soil_water_content[0, k],
+            self.field_capacity[0],
+            self.thad[0],
+            self.site_parameters[15],
+            self.site_parameters[16],
+        )
+
+        rzero, rss, rsup = compute_incoming_short_wave_radiation(
+            hour.radiation, sf * cswint, ag
+        )
+        rlzero = compute_incoming_long_wave_radiation(
+            hour.humidity, hour.temperature, hour.cloud_cov, hour.cloud_cor
+        )
+
+        # Set initial values of canopy temperature and air temperature in canopy.
+        tv: float  # temperature of plant foliage (K)
+        tafk: float  # temperature (K) of air inside the canopy.
+        if sf < 0.05:  # no vegetation
+            tv = thet
+            tafk = thet
+        # Wind velocity in canopy is converted to cm / s.
+        wndhr = hour.wind_speed * 100  # wind speed in cm /sec
+        # air density * specific heat at constant pressure = 0.24 * 2 * 1013 / 5740
+        rocp: float
+        # divided by tafk.
+        c2: float  # multiplier for sensible heat transfer (at plant surface).
+        rsv: float  # global radiation absorbed by the vegetation
+        if sf >= 0.05:  # a shaded soil column
+            tv = state.foliage_temperature[k]  # vegetation temperature
+            # Short wave radiation intercepted by the canopy:
+            rsv = (
+                rzero * (1 - hour.albedo) * sf * cswint  # from above
+                + rsup * (1 - hour.albedo) * sf * cswint  # reflected from soil surface
+            )
+            # Air temperature inside canopy is the average of soil, air, and plant
+            # temperatures, weighted by 0.1, 0.3, and 0.6, respectively.
+            tafk = (1 - sf) * thet + sf * (0.1 * so + 0.3 * thet + 0.6 * tv)
+
+            # Call SensibleHeatTransfer to compute sensible heat transfer coefficient.
+            # Factor 2.2 for sensible heat transfer: 2 sides of leaf plus stems and
+            # petioles.
+            # sensible heat transfer coefficient for soil
+            varcc = SensibleHeatTransfer(
+                tv, tafk, state.plant_height, wndhr
+            )  # canopy to air
+            rocp = 0.08471 / tafk
+            c2 = 2.2 * sf * rocp * varcc
+        soold = so  # previous value of soil surface temperature
+        tvold = tv  # previous value of vegetation temperature
+        # Starting iterations for soil and canopy energy balance
+        for menit in range(30):
+            soold = so
+            wndcanp = (
+                1 - sf * (1 - wndfac)
+            ) * wndhr  # estimated wind speed under canopy
+            # Call SensibleHeatTransfer() to compute sensible heat transfer for soil
+            # surface to air
+            tafk = (1 - sf) * thet + sf * (0.1 * so + 0.3 * thet + 0.6 * tv)
+            # sensible heat transfer coefficientS for soil
+            varc = SensibleHeatTransfer(so, tafk, 0, wndcanp)
+            rocp = 0.08471 / tafk
+            hsg = (
+                rocp * varc
+            )  # multiplier for computing sensible heat transfer soil to air.
+            # Call soil_surface_balance() for energy balance in soil surface / air
+            # interface.
+            so, so2, so3 = state.soil_surface_balance(
+                ihr, k, ess, rlzero, rss, sf, hsg, so, so2, so3, thet, tv
+            )
+
+            if sf >= 0.05:
+                # This section executed for shaded columns only.
+                tvold = tv
+                # Compute canopy energy balance for shaded columns
+                tv = canopy_balance(etp1, rlzero, rsv, c2, sf, so, thet, tv)
+                if menit >= 10:
+                    # The following is used to reduce fluctuations.
+                    so = (so + soold) / 2
+                    tv = (tv + tvold) / 2
+            if abs(tv - tvold) <= 0.05 and abs(so - soold) <= 0.05:
+                break
+        else:
+            raise RuntimeError  # stop simulation if more than 30 iterations.
+        # After convergence - set global variables for the following temperatures:
+        if sf >= 0.05:
+            state.foliage_temperature[k] = tv
+        state.hourly_soil_temperature[ihr, :3, k] = [so, so2, so3]

@@ -14,11 +14,11 @@ cimport numpy
 import numpy as np
 from scipy.interpolate import interp2d
 
-from .meteorology import compute_incoming_long_wave_radiation, delta, gamma, refalbed, clcor, cloudcov, sunangle, clearskyemiss, VaporPressure, tdewest
+from .meteorology import tdewest
 from .fruit import TemperatureOnFruitGrowthRate
 from .phenology import Stage
 from .leaf import temperature_on_leaf_growth_rate, leaf_resistance_for_transpiration
-from .soil import compute_soil_surface_albedo, compute_incoming_short_wave_radiation, root_psi, SoilTemOnRootGrowth, SoilAirOnRootGrowth, SoilNitrateOnRootGrowth, PsiOnTranspiration, SoilTemperatureEffect, SoilWaterEffect, wcond, qpsi, psiq, SoilMechanicResistance, PsiOsmotic, form
+from .soil import root_psi, SoilTemOnRootGrowth, SoilAirOnRootGrowth, SoilNitrateOnRootGrowth, PsiOnTranspiration, SoilTemperatureEffect, SoilWaterEffect, wcond, qpsi, psiq, SoilMechanicResistance, PsiOsmotic, form
 from .utils import date2doy, doy2date
 from .thermology import canopy_balance
 
@@ -138,7 +138,6 @@ cdef double dclay  # aggregation factor for clay in water.
 cdef double dsand  # aggregation factor for sand in water.
 cdef double HeatCondDrySoil[40]  # the heat conductivity of dry soil.
 cdef double MarginalWaterContent[40]  # marginal soil water content (as a function of soil texture) for computing soil heat conductivity.
-cdef double FieldCapacity[40]  # volumetric water content of soil at field capacity for each soil layer, cm3 cm-3.
 cdef double PoreSpace[40]  # pore space of soil, volume fraction.
 cdef double HeatCapacitySoilSolid[40]  # heat capacity of the solid phase of the soil.
 
@@ -1832,7 +1831,7 @@ cdef class State:
                     self.nitrification((l, k))
                 # denitrification() is called if there are enough water and nitrates in the soil cell. cparmin is the minimum temperature C for denitrification.
                 cparmin = 5
-                if self.soil_nitrate_content[l, k] > 0.001 and self.soil_water_content[l, k] > FieldCapacity[l] and self.soil_temperature[l][k] >= (cparmin + 273.161):
+                if self.soil_nitrate_content[l, k] > 0.001 and self.soil_water_content[l, k] > self.field_capacity[l] and self.soil_temperature[l][k] >= (cparmin + 273.161):
                     self.denitrification((l, k))
 
     def urea_hydrolysis(self, index):
@@ -1874,7 +1873,7 @@ cdef class State:
         ak = max(cak1 + cak2 * oc, 0.25)
         # Compute the effect of soil moisture using function SoilWaterEffect on the rate of urea hydrolysis. The constant swf1 is added to the soil moisture function for mineralization,
         cdef double swf  # soil moisture effect on rate of urea hydrolysis.
-        swf = min(max(SoilWaterEffect(water_content, FieldCapacity[l], thetar[l], thts[l], 0.5) + swf1, 0), 1)
+        swf = min(max(SoilWaterEffect(water_content, self.field_capacity[l], thetar[l], thts[l], 0.5) + swf1, 0), 1)
         # Compute the effect of soil temperature. The following parameters are used for the temperature function: stf1, stf2.
         cdef double stf  # soil temperature effect on rate of urea hydrolysis.
         stf = min(max((soil_temperature - 273.161) / stf1 + stf2, 0), 1)
@@ -1936,7 +1935,7 @@ cdef class State:
 
         # **  Mineralization of fresh organic matter **
         # The effects of soil moisture (wf) and of soil temperature (tfac) are computed.
-        cdef double wf = SoilWaterEffect(water_content, FieldCapacity[l], thetar[l], thts[l], 0.5)
+        cdef double wf = SoilWaterEffect(water_content, self.field_capacity[l], thetar[l], thts[l], 0.5)
         cdef double tfac = SoilTemperatureEffect(soil_temperature - 273.161)
         # The gross release of dry weight and of N from decomposition of fresh organic matter is computed.
         cdef double grossReleaseN  # gross release of N from decomposition, mg/cm3
@@ -2020,7 +2019,7 @@ cdef class State:
         cw: float = cpar01 + cpar02 * soilc
         # The effects of soil moisture (fw) and soil temperature (ft) are computed as 0 to 1 factors.
         # effect of soil moisture on denitrification rate.
-        fw: float = max((self.soil_water_content[l, k] - FieldCapacity[l]) / (thts[l] - FieldCapacity[l]), 0)
+        fw: float = max((self.soil_water_content[l, k] - self.field_capacity[l]) / (thts[l] - self.field_capacity[l]), 0)
         # effect of soil temperature on denitrification rate.
         ft: float = min(0.1 * exp(cparft * (soil_temperature - 273.161)), 1)
         # The actual rate of denitrification is calculated. The equation is modified from CERES to units of mg/cm3/day.
@@ -2053,7 +2052,7 @@ cdef class State:
         # effect of soil depth on nitrification rate.
         tff: float = max((self.layer_depth_cumsum[l] - 30) / 30, 0)
         # Add the effects of NH4 in soil, soil water content, and depth of soil layer.
-        ratenit *= sanc * SoilWaterEffect(self.soil_water_content[l, k], FieldCapacity[l], thetar[l], thts[l], 1) * pow(cpardepth, tff)
+        ratenit *= sanc * SoilWaterEffect(self.soil_water_content[l, k], self.field_capacity[l], thetar[l], thts[l], 1) * pow(cpardepth, tff)
         ratenit = min(max(ratenit, 0), 0.10)
         # Compute the actual amount of N nitrified, and update VolNh4NContent and VolNo3NContent.
         # actual nitrification (mg n cm-3 day-1).
@@ -2206,7 +2205,7 @@ cdef class State:
                         self.soil_nitrate_content[l, k] += (1 - NO3FlowFraction[l]) * wmov * nitconc
                         VolUreaNContent[l][k] += (1 - NO3FlowFraction[l]) * wmov * nurconc
         # For the lowermost soil layer, loop over columns:
-        # It is assumed that the maximum amount of water held at the lowest soil layer (nlx-1) of the slab is equal to FieldCapacity. If water content exceeds max_water_capacity, compute the water drained out (Drainage), update water, nitrate and urea, compute nitrogen lost by drainage, and add it to the cumulative N loss SoilNitrogenLoss.
+        # It is assumed that the maximum amount of water held at the lowest soil layer (nlx-1) of the slab is equal to self.field_capacity. If water content exceeds max_water_capacity, compute the water drained out (Drainage), update water, nitrate and urea, compute nitrogen lost by drainage, and add it to the cumulative N loss SoilNitrogenLoss.
         Drainage: float = 0  # drainage of water out of the slab, cm3 (return value)
         for k in range(20):
             if self.soil_water_content[nlx - 1, k] > self.max_water_capacity[nlx - 1]:
@@ -2734,7 +2733,7 @@ cdef class State:
         cdef double dair  # aggregation factor for air in soil pore spaces.
         cdef double ga  # shape factor for air in pore spaces.
         cdef double hcond  # computed heat conductivity of soil, mcal cm-1 s-1 oc-1.
-        if q0 >= FieldCapacity[l0]:
+        if q0 >= self.field_capacity[l0]:
             # (a) Heat conductivity of soil wetter than field capacity.
             ga = 0.333 - 0.061 * xair / PoreSpace[l0]
             dair = form(cpn, ckw, ga)
@@ -2744,8 +2743,8 @@ cdef class State:
             qq: float  # soil water content for computing ckn and ga.
             ckn: float  # heat conductivity of air in pores in soil.
             qq = max(q0, MarginalWaterContent[l0])
-            ckn = cka + (cpn - cka) * qq / FieldCapacity[l0]
-            ga = 0.041 + 0.244 * (qq - MarginalWaterContent[l0]) / (FieldCapacity[l0] - MarginalWaterContent[l0])
+            ckn = cka + (cpn - cka) * qq / self.field_capacity[l0]
+            ga = 0.041 + 0.244 * (qq - MarginalWaterContent[l0]) / (self.field_capacity[l0] - MarginalWaterContent[l0])
             dair = form(ckn, ckw, ga)
             hcond = (qq * ckw + dsand * bsand * self._sim.soil_sand_volume_fraction[l0] + dclay * bclay * self._sim.soil_clay_volume_fraction[l0] + dair * ckn * xair) / (qq + dsand * self._sim.soil_sand_volume_fraction[l0] + dclay * self._sim.soil_clay_volume_fraction[l0] + dair * xair)
             # When soil moisture content is less than the limiting value MarginalWaterContent, modify the value of hcond.
@@ -3196,7 +3195,7 @@ cdef class State:
         self._sim.max_water_capacity = np.zeros(40, dtype=np.double)
         for l, j in enumerate(self.soil_horizon_number):
             # bdl, thad, thts are defined for each soil layer, using the respective input variables BulkDensity, airdr, thetas.
-            # FieldCapacity, max_water_capacity and thetar are computed for each layer, as water content (cm3 cm-3) of each layer corresponding to matric potentials of psisfc (for field capacity), psidra (for free drainage) and -15 bars (for permanent wilting point), respectively, using function qpsi.
+            # self.field_capacity, max_water_capacity and thetar are computed for each layer, as water content (cm3 cm-3) of each layer corresponding to matric potentials of psisfc (for field capacity), psidra (for free drainage) and -15 bars (for permanent wilting point), respectively, using function qpsi.
             # pore space volume (PoreSpace) is also computed for each layer.
             # make sure that saturated water content is not more than pore space.
             bdl[l] = BulkDensity[j]
@@ -3205,12 +3204,12 @@ cdef class State:
                 thetas[j] = PoreSpace[l]
             self._sim.thad[l] = airdr[j]
             thts[l] = thetas[j]
-            FieldCapacity[l] = qpsi(psisfc, self.thad[l], thts[l], alpha[j], vanGenuchtenBeta[j])
+            self._sim.field_capacity[l] = qpsi(psisfc, self.thad[l], thts[l], alpha[j], vanGenuchtenBeta[j])
             self._sim.max_water_capacity[l] = qpsi(psidra, self.thad[l], thts[l], alpha[j], vanGenuchtenBeta[j])
             thetar[l] = qpsi(-15., self.thad[l], thts[l], alpha[j], vanGenuchtenBeta[j])
             # When the saturated hydraulic conductivity (SaturatedHydCond) is not given, it is computed from the hydraulic conductivity at field capacity (condfc), using the wcond function.
             if SaturatedHydCond[j] <= 0:
-                SaturatedHydCond[j] = condfc[j] / wcond(FieldCapacity[l], self.thad[l], thts[l], vanGenuchtenBeta[j], 1, 1)
+                SaturatedHydCond[j] = condfc[j] / wcond(self.field_capacity[l], self.thad[l], thts[l], vanGenuchtenBeta[j], 1, 1)
         self.soil_water_content = np.zeros((40, 20), dtype=np.double)
         self.soil_fresh_organic_matter = np.zeros((40, 20), dtype=np.double)
         self.soil_nitrate_content = np.zeros((40, 20), dtype=np.double)
@@ -3243,7 +3242,7 @@ cdef class State:
             # Compute the initial volumetric water content (cell.water_content) of each layer, and check that it will not be less than the air-dry value or more than pore space volume.
             j = min(int((sumdl - 1) / LayerDepth), 13)
             n = self.soil_horizon_number[l]
-            self.soil_water_content[l, 0] = min(max(FieldCapacity[l] * h2oint[j] / 100, airdr[n]), PoreSpace[l])
+            self.soil_water_content[l, 0] = min(max(self.field_capacity[l] * h2oint[j] / 100, airdr[n]), PoreSpace[l])
             # Initial values of ammonium N (rnnh4, VolNh4NContent) and nitrate N (rnno3, VolNo3NContent) are converted from kgs per ha to mg / cm3 for each soil layer, after checking for minimal amounts.
             rnno3[j] = max(rnno3[j], 2.0)
             rnnh4[j] = max(rnnh4[j], 0.2)
@@ -3269,103 +3268,6 @@ cdef class State:
         self.initialize_soil_temperature()
 
 
-def SensibleHeatTransfer(tsf, tenviron, height, wndcanp) -> float:
-    """This function computes the sensible heat transfer coefficient, using the friction potential (shear) temperature (thstar), and the surface friction (shear) velocity (ustar) at the atmospheric boundary. It is called three times from EnergyBalance(): for canopy or soil surface with their environment.
-
-    Parameters
-    ----------
-    tenviron
-        temperature (K) of the environment - air at 200 cm height for columns with no canopy, or tafk when canopy is present .
-    tsf
-        surface temperature, K, of soil or canopy.
-    wndcanp
-        wind speed in the canopy (if present), cm s-1.
-    height
-        canopy height, cm, or zero for soil surface.
-
-    Returns
-    -------
-    float
-        raw sensible heat transfer coefficient
-    """
-    # Constant values used:
-    grav = 980  # acceleration due to gravity (980 cm sec-2).
-    s40 = 0.13  # calibration constant.
-    s42 = 0.63  # calibration constant.
-    stmin = 5  # minimal value of ustar.
-    vonkar = 0.40  # Von-Karman constant (0.40).
-    zalit1 = 0.0962  # parameter .....
-    # Wind velocity not allowed to be less than 100 cm s-1.
-    cdef double u = max(wndcanp, 100)  # wind speed at 200 cm height, cm / s.
-    # Assign initial values to z0 and gtop, and set dt.
-    cdef double z0 = max(s40 * height, 1)  # surface roughness parameter, cm.
-    cdef double gtop = log((200 - s42 * height) / z0)  # logarithm of ratio of height of measurement to surface roughness parameter.
-    cdef double dt = tsf - tenviron  # temperature difference.
-    # Set approximate initial values for ustar and thstar (to reduce iterations).
-    cdef double thstar  # friction potential (shear) temperature.
-    cdef double ustar  # Surface friction (shear) velocity (cm sec-1).
-    if dt >= 0:
-        ustar = 1.873 + 0.570172 * dt + .07438568 * u
-        thstar = -0.05573 * dt + 1.987 / u - 6.657 * dt / u
-    else:
-        ustar = max(-4.4017 + 1.067 * dt + 0.25957 * u - 0.001683 * dt * u, 5)
-        thstar = max(-0.0096 - 0.1149 * dt + 0.0000377 * u + 0.0002367 * dt * u, 0.03)
-    cdef double tbot1 = tsf  # surface temperature corrected for friction (shear) potential temperature.
-    cdef double g1  # temporary derived variable
-    cdef double ug1chk  # previous value of ug1.
-    cdef double ug1  # ratio of ustar to g1.
-    cdef double ug1res  # residual value of ug1.
-    # Start iterations.
-    for mtest in range(100):
-        ug1chk = 0  # previous value of UG1.
-        if mtest > 0:
-            # Assign values to tbot1, uchek, thekz, and ug1chk.
-            tbot1 = tsf + zalit1 * thstar * pow((ustar * z0 / 15), 0.45) / vonkar
-            uchek = ustar  # previous value of ustar.
-            thekz = thstar  # previous value of thstar.
-            if g1 != 0:
-                ug1chk = ustar / g1
-        # Compute air temperature at 1 cm,, and compute zl and lstar.
-        # nondimensional height.
-        if abs(thstar) < 1e-30:
-            zl = 0
-        else:
-            thetmn = (tenviron + tbot1) * 0.5  # mean temperature (K) of air and surface.
-            lstar = (thetmn * ustar * ustar) / (vonkar * grav * thstar)
-            zl = min(max((200 - s42 * height) / lstar, -5), 0.5)
-        # Compute g1u, and g2 temporary derived variables.
-        if zl > 0:
-            g1u = -4.7 * zl
-            g2 = max(-6.35135 * zl, -1)
-        else:
-            tmp1 = pow((1 - 15 * zl), 0.25)  # intermediate variable.
-            g1u = 2 * log((1 + tmp1) / 2) + log((1 + tmp1 * tmp1) / 2) - 2 * atan(tmp1 + 1.5708)
-            g2 = 2 * log((1 + sqrt(1 - 9 * zl)) / 2)
-        g2 = min(g2, gtop)
-        # Compute ustar and check for minimum value.
-        ustar = max(vonkar * u / (gtop - g1u), stmin)
-        # Compute g1 and thstar.
-        g1 = 0.74 * (gtop - g2) + zalit1 * pow((ustar * z0 / 0.15), 0.45)
-        thstar = -dt * vonkar / g1
-        # If more than 30 iterations, reduce fluctuations
-        if mtest > 30:
-            thstar = (thstar + thekz) / 2
-            ustar = (ustar + uchek) / 2
-
-        # Compute ug1 and  ug1res to check convergence
-        ug1 = ustar / g1
-        if abs(ug1chk) <= 1.e-30:
-            ug1res = abs(ug1)
-        else:
-            ug1res = abs((ug1chk - ug1) / ug1chk)
-        # If ug1 did not converge, go to next iteration.
-        if abs(ug1 - ug1chk) <= 0.05 or ug1res <= 0.01:
-            return ustar * vonkar / g1
-    else:
-        # Stop simulation if no convergence after 100 iterations.
-        raise RuntimeError
-
-
 cdef class Simulation:
     cdef uint32_t _emerge_day
     cdef uint32_t _start_day
@@ -3385,6 +3287,7 @@ cdef class Simulation:
     cdef public numpy.ndarray soil_horizon_number  # the soil horizon number associated with each soil layer in the slab.
     cdef public numpy.ndarray max_water_capacity  # volumetric water content of a soil layer at maximum capacity, before drainage, cm3 cm-3.
     cdef public numpy.ndarray thad  # residual volumetric water content of soil layers (at air-dry condition), cm3 cm-3.
+    cdef public numpy.ndarray field_capacity  # volumetric water content of soil at field capacity for each soil layer, cm3 cm-3.
     cdef public object meteor
     cdef public unsigned int emerge_switch
     cdef public unsigned int version
@@ -3611,96 +3514,6 @@ cdef class Simulation:
 
     def _copy_state(self, State from_, State to_):
         to_._ = from_._
-
-    def _energy_balance(self, u, ihr, k, ess, etp1):
-        """
-        This function solves the energy balance equations at the soil surface, and at the foliage / atmosphere interface. It computes the resulting temperatures of the soil surface and the plant canopy.
-
-        Units for all energy fluxes are: cal cm-2 sec-1.
-        It is called from SoilTemperature(), on each hourly time step and for each soil column.
-        It calls functions clearskyemiss(), VaporPressure(), SensibleHeatTransfer(), soil_surface_balance() and canopy_balance()
-
-        :param ihr: the time of day in hours.
-        :param k: soil column number.
-        :param ess: evaporation from surface of a soil column (mm / sec).
-        :param etp1: actual transpiration rate (mm / sec).
-        :param sf: fraction of shaded soil area
-        """
-        state = self._current_state
-        hour = state.hours[ihr]
-        # Constants used:
-        cdef double wndfac = 0.60  # Ratio of wind speed under partial canopy cover.
-        cdef double cswint = 0.75  # proportion of short wave radiation (on fully shaded soil surface) intercepted by the canopy.
-        # Set initial values
-        cdef double sf = 1 - self.irradiation_soil_surface[k]
-        cdef double thet = hour.temperature + 273.161  # air temperature, K
-        so, so2, so3 = state.hourly_soil_temperature[ihr, :3, k]  # soil surface temperature, K
-        # Compute soil surface albedo (based on Horton and Chung, 1991):
-        ag = compute_soil_surface_albedo(state.soil_water_content[0, k], FieldCapacity[0], self.thad[0], self.site_parameters[15], self.site_parameters[16])
-
-        rzero, rss, rsup = compute_incoming_short_wave_radiation(hour.radiation, sf * cswint, ag)
-        rlzero = compute_incoming_long_wave_radiation(hour.humidity, hour.temperature, hour.cloud_cov, hour.cloud_cor)
-
-        # Set initial values of canopy temperature and air temperature in canopy.
-        cdef double tv  # temperature of plant foliage (K)
-        cdef double tafk  # temperature (K) of air inside the canopy.
-        if sf < 0.05:  # no vegetation
-            tv = thet
-            tafk = thet
-        # Wind velocity in canopy is converted to cm / s.
-        cdef double wndhr  # wind speed in cm /sec
-        wndhr = hour.wind_speed * 100
-        cdef double rocp  # air density * specific heat at constant pressure = 0.24 * 2 * 1013 / 5740
-        # divided by tafk.
-        cdef double c2  # multiplier for sensible heat transfer (at plant surface).
-        cdef double rsv  # global radiation absorbed by the vegetation
-        if sf >= 0.05:  # a shaded soil column
-            tv = state.foliage_temperature[k]  # vegetation temperature
-            # Short wave radiation intercepted by the canopy:
-            rsv = (
-                    rzero * (1 - hour.albedo) * sf * cswint  # from above
-                    + rsup * (1 - hour.albedo) * sf * cswint  # reflected from soil surface
-            )
-            # Air temperature inside canopy is the average of soil, air, and plant temperatures, weighted by 0.1, 0.3, and 0.6, respectively.
-            tafk = (1 - sf) * thet + sf * (0.1 * so + 0.3 * thet + 0.6 * tv)
-
-            # Call SensibleHeatTransfer() to compute sensible heat transfer coefficient. Factor 2.2 for sensible heat transfer: 2 sides of leaf plus stems and petioles.
-            # sensible heat transfer coefficient for soil
-            varcc = SensibleHeatTransfer(tv, tafk, state.plant_height, wndhr)  # canopy to air
-            rocp = 0.08471 / tafk
-            c2 = 2.2 * sf * rocp * varcc
-        cdef double soold = so  # previous value of soil surface temperature
-        cdef double tvold = tv  # previous value of vegetation temperature
-        # Starting iterations for soil and canopy energy balance
-        for menit in range(30):
-            soold = so
-            wndcanp = (1 - sf * (1 - wndfac)) * wndhr  # estimated wind speed under canopy
-            # Call SensibleHeatTransfer() to compute sensible heat transfer for soil surface to air
-            tafk = (1 - sf) * thet + sf * (0.1 * so + 0.3 * thet + 0.6 * tv)
-            # sensible heat transfer coefficientS for soil
-            varc = SensibleHeatTransfer(so, tafk, 0, wndcanp)
-            rocp = 0.08471 / tafk
-            hsg = rocp * varc  # multiplier for computing sensible heat transfer soil to air.
-            # Call soil_surface_balance() for energy balance in soil surface / air interface.
-            so, so2, so3 = state.soil_surface_balance(ihr, k, ess, rlzero, rss, sf, hsg, so, so2, so3, thet, tv)
-
-            if sf >= 0.05:
-                # This section executed for shaded columns only.
-                tvold = tv
-                # Compute canopy energy balance for shaded columns
-                tv = canopy_balance(etp1, rlzero, rsv, c2, sf, so, thet, tv)
-                if menit >= 10:
-                    # The following is used to reduce fluctuations.
-                    so = (so + soold) / 2
-                    tv = (tv + tvold) / 2
-            if abs(tv - tvold) <= 0.05 and abs(so - soold) <= 0.05:
-                break
-        else:
-            raise RuntimeError  # If more than 30 iterations are needed - stop simulation.
-        # After convergence - set global variables for the following temperatures:
-        if sf >= 0.05:
-            state.foliage_temperature[k] = tv
-        state.hourly_soil_temperature[ihr, :3, k] = [so, so2, so3]
 
     def _soil_temperature_init(self):
         """This function is called from SoilTemperature() at the start of the simulation. It sets initial values to soil and canopy temperatures."""

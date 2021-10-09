@@ -223,6 +223,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             else int(start_date[:4])
         )
         self.thad = np.zeros(40, dtype=np.double)
+        self.field_capacity = np.zeros(40, dtype=np.double)
         self.initialize_state0()
         self.read_input(**kwargs)
 
