@@ -111,7 +111,6 @@ class Photosynthesis:
         plant_row_column,
         column_width,
         max_leaf_area_index,
-        relative_radiation_received_by_a_soil_column,
     ):
         zint = 1.0756 * self.plant_height / row_space
         for k in range(20):
@@ -130,7 +129,7 @@ class Photosynthesis:
                     and self.leaf_area_index < max_leaf_area_index
                 ):
                     shade *= self.light_interception / zint
-            relative_radiation_received_by_a_soil_column[k0] = max(0.05, 1 - shade)
+            self.irradiation_soil_surface[k0] = max(0.05, 1 - shade)
 
     def compute_light_interception(
         self,

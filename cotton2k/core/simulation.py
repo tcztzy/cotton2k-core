@@ -18,6 +18,7 @@ from .photo import Photosynthesis
 from .root import RootGrowth
 from .soil import SoilProcedure
 from .stem import StemGrowth
+from .thermology import Thermology
 
 
 class State(
@@ -29,6 +30,7 @@ class State(
     RootGrowth,
     SoilProcedure,
     StemGrowth,
+    Thermology,
 ):  # pylint: disable=too-many-instance-attributes,too-many-ancestors
     _: CyState
     sim: "Simulation"
@@ -220,6 +222,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             if isinstance(start_date, datetime.date)
             else int(start_date[:4])
         )
+        self.thad = np.zeros(40, dtype=np.double)
         self.initialize_state0()
         self.read_input(**kwargs)
 
@@ -460,17 +463,14 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
                 self.plant_row_column,
                 self._column_width,
                 self.max_leaf_area_index,
-                self.relative_radiation_received_by_a_soil_column,
             )
         else:
             state.kday = 0
             state.light_interception = 0
-            self.relative_radiation_received_by_a_soil_column[:] = 1
+            self.irradiation_soil_surface[:] = 1
         # The following functions are executed each day (also before emergence).
         state.daily_meteorology()  # computes climate variables for today.
-        self._soil_temperature(
-            u
-        )  # executes all modules of soil and canopy temperature.
+        state.soil_thermology()  # executes all modules of soil and canopy temperature.
         state.soil_procedures()  # executes all other soil processes.
         state.soil_nitrogen()  # computes nitrogen transformations in the soil.
         # The following is executed each day after plant emergence:
