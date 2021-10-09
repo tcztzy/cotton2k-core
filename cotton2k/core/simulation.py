@@ -48,7 +48,10 @@ class State(
                 (3, 30, 5), dtype=np.double
             )
         else:
-            for attr in ("fruiting_nodes_boll_cumulative_temperature",):
+            for attr in (
+                "fruiting_nodes_boll_cumulative_temperature",
+                "soil_heat_flux_numiter",
+            ):
                 value = getattr(pre_state, attr)
                 if hasattr(value, "copy") and callable(value.copy):
                     value = value.copy()
@@ -224,6 +227,8 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
         )
         self.thad = np.zeros(40, dtype=np.double)
         self.field_capacity = np.zeros(40, dtype=np.double)
+        self.pore_space = np.zeros(40, dtype=np.double)
+        self.heat_capacity_soil_solid = np.zeros(40, dtype=np.double)
         self.initialize_state0()
         self.read_input(**kwargs)
 
@@ -268,7 +273,6 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             "pre_fruiting_leaf_area",
             "seed_layer_number",
             "seed_moisture",
-            "soil_heat_flux_numiter",
             "stem_weight",
             "taproot_layer_number",
             "taproot_length",

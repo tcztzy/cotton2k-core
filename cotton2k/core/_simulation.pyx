@@ -138,35 +138,6 @@ cdef double dclay  # aggregation factor for clay in water.
 cdef double dsand  # aggregation factor for sand in water.
 cdef double HeatCondDrySoil[40]  # the heat conductivity of dry soil.
 cdef double MarginalWaterContent[40]  # marginal soil water content (as a function of soil texture) for computing soil heat conductivity.
-cdef double PoreSpace[40]  # pore space of soil, volume fraction.
-cdef double HeatCapacitySoilSolid[40]  # heat capacity of the solid phase of the soil.
-
-
-# arrays with file scope:
-cdef double dz[40]  # equal to the dl array in a columnn, or wk in a row.
-cdef double ts1[40]  # array of soil temperatures.
-cdef double ts0[40]  # array of previous soil temperatures.
-cdef double hcap[40]  # heat capacity of soil layer (cal cm-3 oC-1).
-
-
-cdef void HeatBalance(int nn):
-    """This function checks and corrects the heat balance in the soil soil cells, within a soil layer. It is called by function SoilHeatFlux() only for horizontal flux.
-
-    The implicit part of the solution may cause some deviation in the total heat sum to occur. This module corrects the heat balance if the sum of absolute deviations is not zero, so that the total amount of heat in the array does not change. The correction is proportional to the difference between the previous and present heat amounts.
-
-    Arguments
-    ---------
-    nn
-        the number of soil cells in this layer or column.
-    """
-    dabs = 0  # Sum of absolute value of differences in heat content in the array between beginning and end of this time step.
-    dev = 0  # Sum of differences of heat amount in soil.
-    for i in range(nn):
-        dev += dz[i] * hcap[i] * (ts1[i] - ts0[i])
-        dabs += abs(ts1[i] - ts0[i])
-    if dabs > 0:
-        for i in range(nn):
-            ts1[i] = ts1[i] - abs(ts1[i] - ts0[i]) * dev / (dabs * dz[i] * hcap[i])
 
 
 cdef class SoilInit:
@@ -755,22 +726,22 @@ cdef class State:
             MarginalWaterContent[l] = 0.1 - 0.07 * psand[i1] / 100
             # The volume fractions of clay (self.soil_clay_volume_fraction) and of sand plus silt (self.soil_sand_volume_fraction), are calculated.
             ra = (mmo / ro) / (mm / rm)  # volume ratio of organic to mineral soil fractions.
-            xo = (1 - PoreSpace[l]) * ra / (1 + ra)  # organic fraction of soil (by volume).
-            xm = (1 - PoreSpace[l]) - xo  # mineral fraction of soil (by volume).
+            xo = (1 - self.pore_space[l]) * ra / (1 + ra)  # organic fraction of soil (by volume).
+            xm = (1 - self.pore_space[l]) - xo  # mineral fraction of soil (by volume).
             self._sim.soil_clay_volume_fraction[l] = pclay[i1] * xm / mm / 100
-            self._sim.soil_sand_volume_fraction[l] = 1 - PoreSpace[l] - self._sim.soil_clay_volume_fraction[l]
+            self._sim.soil_sand_volume_fraction[l] = 1 - self.pore_space[l] - self._sim.soil_clay_volume_fraction[l]
             # Heat capacity of the solid soil fractions (mineral + organic, by volume )
-            HeatCapacitySoilSolid[l] = xm * cmin + xo * corg
+            self._sim.heat_capacity_soil_solid[l] = xm * cmin + xo * corg
             # The heat conductivity of dry soil (HeatCondDrySoil) is computed using the procedure suggested by De Vries.
             HeatCondDrySoil[l] = (
                 1.25
                 * (
-                    PoreSpace[l] * cka
+                    self.pore_space[l] * cka
                     + dsandair * bsand * self._sim.soil_sand_volume_fraction[l]
                     + dclayair * bclay * self._sim.soil_clay_volume_fraction[l]
                 )
                 / (
-                    PoreSpace[l]
+                    self.pore_space[l]
                     + dsandair * self._sim.soil_sand_volume_fraction[l]
                     + dclayair * self._sim.soil_clay_volume_fraction[l]
                 )
@@ -951,7 +922,7 @@ cdef class State:
             dumyrs = 1.001
         # Compute hydraulic conductivity (cond), and soil resistance near the root surface  (rsoil).
         cdef double cond  # soil hydraulic conductivity near the root surface.
-        cond = wcond(vh2, self.thad[0], thts[0], vanGenuchtenBeta[0], SaturatedHydCond[0], PoreSpace[0]) / 24
+        cond = wcond(vh2, self.thad[0], thts[0], vanGenuchtenBeta[0], SaturatedHydCond[0], self.pore_space[0]) / 24
         cond = cond * 2 * sumlv / rootvol / log(dumyrs)
         cond = max(cond, vpsil[6])
         cdef double rsoil = 0.0001 / (2 * pi * cond)  # soil resistance, Mpa hours per cm.
@@ -1221,7 +1192,7 @@ cdef class State:
             if self.root_age[l][k] > thdth[i]:
                 # the computed proportion of roots dying in each class.
                 dthfac = dth[i]
-                if self.soil_water_content[l, k] >= PoreSpace[l]:
+                if self.soil_water_content[l, k] >= self.pore_space[l]:
                     dthfac = dthmax
                 else:
                     if i <= 1 and self.soil_psi[l, k] <= psi0:
@@ -1243,7 +1214,7 @@ cdef class State:
         # It is assumed that taproot elongation takes place irrespective of the supply of carbon to the roots. This elongation occurs in the two columns of the slab where the plant is located.
         # Tap root elongation does not occur in water logged soil (water table).
         cdef int klocp1 = plant_row_column + 1  # the second column in which taproot growth occurs.
-        if self.soil_water_content[self.taproot_layer_number, plant_row_column] >= PoreSpace[self.taproot_layer_number] or self.soil_water_content[self.taproot_layer_number, klocp1] >= PoreSpace[self.taproot_layer_number]:
+        if self.soil_water_content[self.taproot_layer_number, plant_row_column] >= self.pore_space[self.taproot_layer_number] or self.soil_water_content[self.taproot_layer_number, klocp1] >= self.pore_space[self.taproot_layer_number]:
             return
         # Average soil resistance (avres) is computed at the root tip.
         # avres = average value of RootGroFactor for the two soil cells at the tip of the taproot.
@@ -1334,7 +1305,7 @@ cdef class State:
         # Potential growth rate (u) is modified by the soil temperature function,
         # and the linearly modified effect of soil resistance (RootGroFactor).
         # Lateral root elongation does not occur in water logged soil.
-        if self.soil_water_content[l, ktip] < PoreSpace[l]:
+        if self.soil_water_content[l, ktip] < self.pore_space[l]:
             self.rlat1[l] += rlatr * temprg * (1 - p1 + self.root_growth_factor[l, ktip] * p1)
             # If the lateral reaches a new soil soil cell: a proportion (tran) of mass of roots is transferred to the new soil cell.
             if self.rlat1[l] > sumwk and ktip > 0:
@@ -1373,7 +1344,7 @@ cdef class State:
                 break
         # Compute growth of the lateral root to the right. Potential growth rate is modified by the soil temperature function, and the linearly modified effect of soil resistance (RootGroFactor).
         # Lateral root elongation does not occur in water logged soil.
-        if self.soil_water_content[l, ktip] < PoreSpace[l]:
+        if self.soil_water_content[l, ktip] < self.pore_space[l]:
             self.rlat2[l] += rlatr * temprg * (1 - p1 + self.root_growth_factor[l, ktip] * p1)
             # If the lateral reaches a new soil soil cell: a proportion (tran) of mass of roots is transferred to the new soil cell.
             if self.rlat2[l] > sumwk and ktip < nk - 1:
@@ -1429,7 +1400,7 @@ cdef class State:
                     rtimpdmin = min(rtimpd0, rtimpdkm1, rtimpdkp1, rtimpdlp1)  # minimum value of rtimpd
                     rtpct = SoilMechanicResistance(rtimpdmin)  # effect of soil mechanical resistance on root growth (returned from SoilMechanicResistance).
                     # effect of oxygen deficiency on root growth (returned from SoilAirOnRootGrowth).
-                    rtrdo = SoilAirOnRootGrowth(self.soil_psi[l, k], PoreSpace[l], self.soil_water_content[l, k])
+                    rtrdo = SoilAirOnRootGrowth(self.soil_psi[l, k], self.pore_space[l], self.soil_water_content[l, k])
                     # effect of nitrate deficiency on root growth (returned from SoilNitrateOnRootGrowth).
                     rtrdn = SoilNitrateOnRootGrowth(self.soil_nitrate_content[l, k])
                     # The root growth resistance factor RootGroFactor(l,k), which can take a value between 0 and 1, is computed as the minimum of these resistance factors. It is further modified by multiplying it by the soil moisture function root_psi().
@@ -2096,7 +2067,7 @@ cdef class State:
                 nur[l] = VolUreaNContent[l][k]
                 _dl[l] = self.layer_depth[l]
             # Call the following functions: water_flux() calculates the water flow caused by potential gradients; NitrogenFlow() computes the movement of nitrates caused by the flow of water.
-            self.water_flux(q1, psi1, _dl, self.thad, thts, PoreSpace, 40, iv, 0, self.numiter, noitr)
+            self.water_flux(q1, psi1, _dl, self.thad, thts, self.pore_space, 40, iv, 0, self.numiter, noitr)
             NitrogenFlow(nl, q01, q1, _dl, nit, nur)
             # Reassign the updated values of q1, nit, nur and psi1 back to cell.water_content, VolNo3NContent, VolUreaNContent and SoilPsi.
             for l in range(40):
@@ -2104,7 +2075,7 @@ cdef class State:
                 self.soil_nitrate_content[l, k] = nit[l]
                 VolUreaNContent[l][k] = nur[l]
                 self.soil_psi[l, k] = psi1[l] - PsiOsmotic(self.soil_water_content[l, k], thts[l], ElCondSatSoilToday)
-        cdef double pp1[40]  # one dimensional array of a layer or a column of PP.
+        cdef numpy.ndarray pp1  # one dimensional array of a layer or a column of PP.
         cdef numpy.ndarray qr1  # one dimensional array of a layer or a column of THAD.
         cdef double qs1[40]  # one dimensional array of a layer or a column of THTS.
 
@@ -2113,12 +2084,12 @@ cdef class State:
         # Loop over all layers. Define the horizon number j for this layer. Temporary one-dimensional arrays are defined for each layer: assign the cell.water_content values to  q1 and q01. Assign SoilPsi, VolNo3NContent, VolUreaNContent, thad and thts values of the soil cells to arrays psi1, nit, nur, qr1 and qs1, respectively.
         for l in range(40):
             qr1 = np.repeat(self.thad[l], 20)
+            pp1 = np.repeat(self.pore_space[l], 20)
             for k in range(20):
                 q1[k] = self.soil_water_content[l, k]
                 q01[k] = self.soil_water_content[l, k]
                 psi1[k] = self.soil_psi[l][k] + PsiOsmotic(self.soil_water_content[l, k], thts[l], ElCondSatSoilToday)
                 qs1[k] = thts[l]
-                pp1[k] = PoreSpace[l]
                 nit[k] = self.soil_nitrate_content[l, k]
                 nur[k] = VolUreaNContent[l][k]
                 wk1[k] = self._sim.column_width[k]
@@ -2231,7 +2202,7 @@ cdef class State:
     //
     //     The following global variables are referenced:
     //       dl, LocationColumnDrip, LocationLayerDrip, max_water_capacity,
-    //       nk, nl, NO3FlowFraction, PoreSpace, wk
+    //       nk, nl, NO3FlowFraction, self.pore_space, wk
     //
     //     The following global variables are set:
     //       CumWaterDrained, SoilNitrogenLoss, VolNo3NContent, VolUreaNContent
@@ -2303,7 +2274,7 @@ cdef class State:
             dist: float  # distance (cm) of a cell center from drip location
             # Loop over all soil cells
             for l in range(1, 40):
-                # Upper limit of water content is the porespace volume in layers below the water table, max_water_capacity in other layers.
+                # Upper limit of water content is the self.pore_space volume in layers below the water table, max_water_capacity in other layers.
                 uplimit = self.max_water_capacity[l]
                 for k in range(20):
                     # Compute the sums sv, st, sn, sn1, su and su1 within the radius limits of this ring. The array defcit is the sum of difference between uplimit and cell.water_content of each cell.
@@ -2378,7 +2349,7 @@ cdef class State:
                 return
             # Repeat all these procedures for the next ring.
 
-    cdef water_flux(self, double q1[], double psi1[], double dd[], numpy.ndarray qr1, double qs1[], double pp1[], int nn, int iv, int ll, long numiter, int noitr):
+    cdef water_flux(self, double q1[], double psi1[], double dd[], numpy.ndarray qr1, double qs1[], numpy.ndarray pp1, int nn, int iv, int ll, long numiter, int noitr):
         """Computes the movement of water in the soil, caused by potential differences between cells in a soil column or in a soil layer. It is called by function CapillaryFlow(). It calls functions WaterBalance(), psiq(), qpsi() and wcond().
 
         Arguments
@@ -2729,13 +2700,13 @@ cdef class State:
         # (b) for less wet soil.
         # In each case compute first ga, and then dair.
         cdef double xair  # air content of soil, per volume.
-        xair = max(PoreSpace[l0] - q0, 0)
+        xair = max(self.pore_space[l0] - q0, 0)
         cdef double dair  # aggregation factor for air in soil pore spaces.
         cdef double ga  # shape factor for air in pore spaces.
         cdef double hcond  # computed heat conductivity of soil, mcal cm-1 s-1 oc-1.
         if q0 >= self.field_capacity[l0]:
             # (a) Heat conductivity of soil wetter than field capacity.
-            ga = 0.333 - 0.061 * xair / PoreSpace[l0]
+            ga = 0.333 - 0.061 * xair / self.pore_space[l0]
             dair = form(cpn, ckw, ga)
             hcond = (q0 * ckw + dsand * bsand * self._sim.soil_sand_volume_fraction[l0] + dclay * bclay * self._sim.soil_clay_volume_fraction[l0] + dair * cpn * xair) / (q0 + dsand * self._sim.soil_sand_volume_fraction[l0] + dclay * self._sim.soil_clay_volume_fraction[l0] + dair * xair)
         else:
@@ -2752,136 +2723,6 @@ cdef class State:
                 hcond = (hcond - HeatCondDrySoil[l0]) * q0 / MarginalWaterContent[l0] + HeatCondDrySoil[l0]
         # The result is hcond converted from mcal to cal.
         return hcond / 1000
-
-    cdef public long soil_heat_flux_numiter  # number of this iteration.
-
-    def soil_heat_flux(self, double dlt, int iv, int nn, int layer, int n0, double row_space, ihr):
-        """Computes heat flux in one direction between soil cells.
-
-        NOTE: the units are:
-        thermal conductivity = cal cm-1 s-1 oC-1;
-        heat capacity = cal cm-3 oC-1;
-        thermal diffusivity = cm2 s-1;
-        ckx and cky are dimensionless;
-
-        Arguments
-        ---------
-        dlt
-            time (seconds) of one iteration.
-        iv
-            = 1 for vertical flux, = 0 for horizontal flux.
-        layer
-            soil layer number.
-        n0
-            number of layer or column of this array
-        nn
-            number of soil cells in the array.
-        """
-        # Constant parameters:
-        cdef double beta1 = 0.90  # weighting factor for the implicit method of computation.
-        cdef double ca = 0.0003  # heat capacity of air (cal cm-3 oC-1).
-        # Set soil layer number l (needed to define HeatCapacitySoilSolid, PoreSpace, soil_thermal_conductivity).
-        # Compute for each soil cell the heat capacity and heat diffusivity.
-
-        cdef int l = layer  # soil layer number.
-        cdef double q1[40]  # array of water content.
-        cdef double asoi[40]  # array of thermal diffusivity of soil cells (cm2 s-1).
-        for i in range(nn):
-            if iv == 1:
-                l = i
-                q1[i] = self.soil_water_content[i, n0]
-                ts1[i] = self.hourly_soil_temperature[ihr, i, n0]
-                dz[i] = self.layer_depth[i]
-            else:
-                q1[i] = self.soil_water_content[n0, i]
-                ts1[i] = self.hourly_soil_temperature[ihr, n0, i]
-                dz[i] = self._sim.column_width[i]
-            hcap[i] = HeatCapacitySoilSolid[l] + q1[i] + (PoreSpace[l] - q1[i]) * ca
-            asoi[i] = self.soil_thermal_conductivity(q1[i], ts1[i], l) / hcap[i]
-        # The numerical solution of the flow equation is a combination of the implicit method (weighted by beta1) and the explicit method (weighted by 1-beta1).
-        cdef double dltt  # computed time step required.
-        cdef double avdif[40]  # average thermal diffusivity between adjacent cells.
-        cdef double dy[40]  # array of distances between centers of adjacent cells (cm).
-        cdef double dltmin = dlt  # minimum time step for the explicit solution.
-        avdif[0] = 0
-        dy[0] = 0
-        for i in range(1, nn):
-            # Compute average diffusivities avdif between layer i and the previous (i-1), and dy(i), distance (cm) between centers of layer i and the previous (i-1)
-            avdif[i] = (asoi[i] + asoi[i - 1]) / 2
-            dy[i] = (dz[i - 1] + dz[i]) / 2
-            # Determine the minimum time step required for the explicit solution.
-            dltt = 0.2 * dy[i] * dz[i] / avdif[i] / (1 - beta1)
-            if dltt < dltmin:
-                dltmin = dltt
-        # Use time step of dlt1 seconds, for iterx iterations
-        iterx = int(dlt / dltmin)  # computed number of iterations.
-        if dltmin < dlt:
-            iterx += 1
-        cdef double dlt1 = dlt / iterx  # computed time (seconds) of an iteration.
-        # start iterations. Store temperature data in array ts0. count iterations.
-        for ii in range(iterx):
-            for i in range(nn):
-                ts0[i] = ts1[i]
-                if iv == 1:
-                    l = i
-                asoi[i] = self.soil_thermal_conductivity(q1[i], ts1[i], l) / hcap[i]
-                if i > 0:
-                    avdif[i] = (asoi[i] + asoi[i - 1]) / 2
-            self.soil_heat_flux_numiter += 1
-            # The solution of the simultaneous equations in the implicit method alternates between the two directions along the arrays. The reason for this is because the direction of the solution may cause some cumulative bias. The counter numiter determines the direction of the solution.
-            # arrays used for the implicit numerical solution.
-            cau = np.zeros(40, dtype=np.double)
-            dau = np.zeros(40, dtype=np.double)
-            # nondimensional diffusivities to next and previous layers.
-            ckx: float
-            cky: float
-            # used for computing the implicit solution.
-            vara: float
-            varb: float
-            if self.soil_heat_flux_numiter % 2 == 0:
-                # 1st direction of computation, for an even iteration number:
-                dau[0] = 0
-                cau[0] = ts1[0]
-                # Loop from the second to the last but one soil cells. Compute nondimensional diffusivities to next and previous layers.
-                for i in range(1, nn - 1):
-                    ckx = avdif[i + 1] * dlt1 / (dz[i] * dy[i + 1])
-                    cky = avdif[i] * dlt1 / (dz[i] * dy[i])
-                    # Correct value of layer 1 for explicit heat movement to/from layer 2
-                    if i == 1:
-                        cau[0] = ts1[0] - (1 - beta1) * (ts1[0] - ts1[1]) * cky * dz[1] / dz[0]
-                    vara = 1 + beta1 * (ckx + cky) - beta1 * ckx * dau[i - 1]
-                    dau[i] = beta1 * cky / vara
-                    varb = ts1[i] + (1 - beta1) * (cky * ts1[i - 1] + ckx * ts1[i + 1] - (cky + ckx) * ts1[i])
-                    cau[i] = (varb + beta1 * ckx * cau[i - 1]) / vara
-                # Correct value of last layer (nn-1) for explicit heat movement to/from layer nn-2
-                ts1[nn - 1] = ts1[nn - 1] - (1 - beta1) * (ts1[nn - 1] - ts1[nn - 2]) * ckx * dz[nn - 2] / dz[nn - 1]
-                # Continue with the implicit solution
-                for i in range(nn - 2, -1, -1):
-                    ts1[i] = dau[i] * ts1[i + 1] + cau[i]
-            else:
-                # Alternate direction of computation for odd iteration number
-                dau[nn - 1] = 0
-                cau[nn - 1] = ts1[nn - 1]
-                for i in range(nn - 2, 0, -1):
-                    ckx = avdif[i + 1] * dlt1 / (dz[i] * dy[i + 1])
-                    cky = avdif[i] * dlt1 / (dz[i] * dy[i])
-                    if i == nn - 2:
-                        cau[nn - 1] = ts1[nn - 1] - (1 - beta1) * (ts1[nn - 1] - ts1[nn - 2]) * ckx * dz[nn - 2] / dz[nn - 1]
-                    vara = 1 + beta1 * (ckx + cky) - beta1 * cky * dau[i + 1]
-                    dau[i] = beta1 * ckx / vara
-                    varb = ts1[i] + (1 - beta1) * (ckx * ts1[i + 1] + cky * ts1[i - 1] - (cky + ckx) * ts1[i])
-                    cau[i] = (varb + beta1 * cky * cau[i + 1]) / vara
-                ts1[0] = ts1[0] - (1 - beta1) * (ts1[0] - ts1[1]) * cky * dz[1] / dz[0]
-                for i in range(1, nn):
-                    ts1[i] = dau[i] * ts1[i - 1] + cau[i]
-            # Call HeatBalance to correct quantitative deviations caused by the imlicit part of the solution.
-            HeatBalance(nn)
-        # Set values of SoiTemp
-        for i in range(nn):
-            if iv == 1:
-                self.hourly_soil_temperature[ihr, i, n0] = ts1[i]
-            else:
-                self.hourly_soil_temperature[ihr, n0, i] = ts1[i]
 
     def water_uptake(self, row_space, per_plant_area):
         """This function computes the uptake of water by plant roots from the soil (i.e., actual transpiration rate)."""
@@ -3196,12 +3037,12 @@ cdef class State:
         for l, j in enumerate(self.soil_horizon_number):
             # bdl, thad, thts are defined for each soil layer, using the respective input variables BulkDensity, airdr, thetas.
             # self.field_capacity, max_water_capacity and thetar are computed for each layer, as water content (cm3 cm-3) of each layer corresponding to matric potentials of psisfc (for field capacity), psidra (for free drainage) and -15 bars (for permanent wilting point), respectively, using function qpsi.
-            # pore space volume (PoreSpace) is also computed for each layer.
+            # pore space volume (self.pore_space) is also computed for each layer.
             # make sure that saturated water content is not more than pore space.
             bdl[l] = BulkDensity[j]
-            PoreSpace[l] = 1 - BulkDensity[j] / rm
-            if thetas[j] > PoreSpace[l]:
-                thetas[j] = PoreSpace[l]
+            self.pore_space[l] = 1 - BulkDensity[j] / rm
+            if thetas[j] > self.pore_space[l]:
+                thetas[j] = self.pore_space[l]
             self._sim.thad[l] = airdr[j]
             thts[l] = thetas[j]
             self._sim.field_capacity[l] = qpsi(psisfc, self.thad[l], thts[l], alpha[j], vanGenuchtenBeta[j])
@@ -3242,7 +3083,7 @@ cdef class State:
             # Compute the initial volumetric water content (cell.water_content) of each layer, and check that it will not be less than the air-dry value or more than pore space volume.
             j = min(int((sumdl - 1) / LayerDepth), 13)
             n = self.soil_horizon_number[l]
-            self.soil_water_content[l, 0] = min(max(self.field_capacity[l] * h2oint[j] / 100, airdr[n]), PoreSpace[l])
+            self.soil_water_content[l, 0] = min(max(self.field_capacity[l] * h2oint[j] / 100, airdr[n]), self.pore_space[l])
             # Initial values of ammonium N (rnnh4, VolNh4NContent) and nitrate N (rnno3, VolNo3NContent) are converted from kgs per ha to mg / cm3 for each soil layer, after checking for minimal amounts.
             rnno3[j] = max(rnno3[j], 2.0)
             rnnh4[j] = max(rnnh4[j], 0.2)
@@ -3277,6 +3118,8 @@ cdef class Simulation:
     cdef uint32_t _defoliate_day
     cdef uint32_t _first_bloom_day
     cdef uint32_t _first_square_day
+    cdef public numpy.ndarray heat_capacity_soil_solid  # heat capacity of the solid phase of the soil.
+    cdef public numpy.ndarray pore_space  # pore space of soil, volume fraction.
     cdef public numpy.ndarray cell_area
     cdef public numpy.ndarray column_width
     cdef public numpy.ndarray column_width_cumsum
@@ -3428,7 +3271,6 @@ cdef class Simulation:
 
     def _init_state(self):
         cdef State state0 = self._current_state
-        state0.soil_heat_flux_numiter = 0
         state0.date = self.start_date
         state0.plant_height = 4.0
         state0.stem_weight = 0.2

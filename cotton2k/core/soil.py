@@ -71,7 +71,7 @@ def SoilAirOnRootGrowth(psislk: float, pore_space: float, vh2oclk: float) -> flo
     psislk
         value of SoilPsi for this cell.
     pore_space
-        value of PoreSpace (v/v) for this layer.
+        value of self.pore_space (v/v) for this layer.
     vh2oclk
         water content (v/v) of this cell
 
@@ -243,7 +243,7 @@ def wcond(  # pylint: disable=too-many-arguments
     # For very low values of water content (near the residual water content) wcond is 0
     if (q - qr) < 0.0001:
         return 0
-    # Water content for saturated conductivity is minimum of PoreSpace and qsat.
+    # Water content for saturated conductivity is minimum of self.pore_space and qsat.
 
     # For very high values of water content (exceeding the saturated water content or
     # pore space) conductivity is SaturatedHydCond.

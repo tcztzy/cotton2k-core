@@ -1,5 +1,7 @@
 from math import atan, cos, log, pi, sqrt
 
+import numpy as np
+import numpy.typing as npt
 from scipy import constants
 
 from .meteorology import VaporPressure, clearskyemiss
@@ -475,7 +477,7 @@ class Thermology:  # pylint: disable=E0203,E1101,R0912,R0914,R0915,W0201
             layer = 0  # soil layer number
             # Loop over kk columns, and call SoilHeatFlux().
             for k in range(kk):
-                self.soil_heat_flux(dlt, iv, nn, layer, k, self.row_space, ihr)
+                self.soil_heat_flux(dlt, iv, nn, layer, k, ihr)
             # If no horizontal heat flux is assumed, make all array members of
             # hourly_soil_temperature equal to the value computed for the first column.
             # Also, do the same for array memebers of soil_water_content.
@@ -495,7 +497,7 @@ class Thermology:  # pylint: disable=E0203,E1101,R0912,R0914,R0915,W0201
                 nn = 20
                 for l in range(40):
                     layer = l
-                    self.soil_heat_flux(dlt, iv, nn, layer, l, self.row_space, ihr)
+                    self.soil_heat_flux(dlt, iv, nn, layer, l, ihr)
             # Compute average temperature of foliage, in degrees C. The average is
             # weighted by the canopy shading of each column, only columns which are
             # shaded 5% or more by canopy are used.
@@ -650,3 +652,230 @@ class Thermology:  # pylint: disable=E0203,E1101,R0912,R0914,R0915,W0201
         if sf >= 0.05:
             state.foliage_temperature[k] = tv
         state.hourly_soil_temperature[ihr, :3, k] = [so, so2, so3]
+
+    soil_heat_flux_numiter: int = 0  # number of this iteration.
+
+    # equal to the dl array in a columnn, or wk in a row.
+    dz: npt.NDArray[np.double] = np.zeros(40)
+    # heat capacity of soil layer (cal cm-3 oC-1).
+    hcap: npt.NDArray[np.double] = np.zeros(40)
+    # array of previous soil temperatures.
+    ts0: npt.NDArray[np.double] = np.zeros(40)
+    # array of soil temperatures.
+    ts1: npt.NDArray[np.double] = np.zeros(40)
+
+    def heat_balance(self, nn):
+        """Checks and corrects the heat balance in the soil soil cells, within a soil
+        layer. It is called by function soil_heat_flux only for horizontal flux.
+
+        The implicit part of the solution may cause some deviation in the total heat
+        sum to occur. This module corrects the heat balance if the sum of absolute
+        deviations is not zero, so that the total amount of heat in the array does not
+        change. The correction is proportional to the difference between the previous
+        and present heat amounts.
+
+        Arguments
+        ---------
+        nn
+            the number of soil cells in this layer or column.
+        """
+        # Sum of absolute value of differences in heat content in the array between
+        # beginning and end of this time step.
+        dabs = np.abs(self.ts1 - self.ts0)[:nn].sum()
+        dev = 0  # Sum of differences of heat amount in soil.
+        for i in range(nn):
+            dev += self.dz[i] * self.hcap[i] * (self.ts1[i] - self.ts0[i])
+        if dabs > 0:
+            for i in range(nn):
+                self.ts1[i] = self.ts1[i] - abs(self.ts1[i] - self.ts0[i]) * dev / (
+                    dabs * self.dz[i] * self.hcap[i]
+                )
+
+    def soil_heat_flux(self, dlt, iv, nn, layer, n0, ihr):  # pylint: disable=R0913
+        """Computes heat flux in one direction between soil cells.
+
+        NOTE: the units are:
+        thermal conductivity = cal cm-1 s-1 oC-1;
+        heat capacity = cal cm-3 oC-1;
+        thermal diffusivity = cm2 s-1;
+        ckx and cky are dimensionless;
+
+        Arguments
+        ---------
+        dlt
+            time (seconds) of one iteration.
+        iv
+            = 1 for vertical flux, = 0 for horizontal flux.
+        layer
+            soil layer number.
+        n0
+            number of layer or column of this array
+        nn
+            number of soil cells in the array.
+        """
+        # Constant parameters:
+        beta1 = 0.90  # weighting factor for the implicit method of computation.
+        ca = 0.0003  # heat capacity of air (cal cm-3 oC-1).
+        # Set soil layer number l (needed to define heat_capacity_soil_solid,
+        # pore_space, soil_thermal_conductivity).
+        # Compute for each soil cell the heat capacity and heat diffusivity.
+
+        l = layer  # soil layer number.
+        q1 = np.zeros(40, dtype=np.double)  # array of water content.
+        asoi = np.zeros(
+            40, dtype=np.double
+        )  # array of thermal diffusivity of soil cells (cm2 s-1).
+        for i in range(nn):
+            if iv == 1:
+                l = i
+                q1[i] = self.soil_water_content[i, n0]
+                self.ts1[i] = self.hourly_soil_temperature[ihr, i, n0]
+                self.dz[i] = self.layer_depth[i]
+            else:
+                q1[i] = self.soil_water_content[n0, i]
+                self.ts1[i] = self.hourly_soil_temperature[ihr, n0, i]
+                self.dz[i] = self._sim.column_width[i]
+            self.hcap[i] = (
+                self.heat_capacity_soil_solid[l]
+                + q1[i]
+                + (self.pore_space[l] - q1[i]) * ca
+            )
+            asoi[i] = (
+                self.soil_thermal_conductivity(q1[i], self.ts1[i], l) / self.hcap[i]
+            )
+        # The numerical solution of the flow equation is a combination of the implicit
+        # method (weighted by beta1) and the explicit method (weighted by 1-beta1).
+        dltt: float  # computed time step required.
+        avdif = np.zeros(
+            40, dtype=np.double
+        )  # average thermal diffusivity between adjacent cells.
+        dy = np.zeros(
+            40, dtype=np.double
+        )  # array of distances between centers of adjacent cells (cm).
+        dltmin = dlt  # minimum time step for the explicit solution.
+        avdif[0] = 0
+        dy[0] = 0
+        for i in range(1, nn):
+            # Compute average diffusivities avdif between layer i and the previous
+            # (i-1), and dy(i), distance (cm) between centers of layer i and the
+            # previous (i-1)
+            avdif[i] = (asoi[i] + asoi[i - 1]) / 2
+            dy[i] = (self.dz[i - 1] + self.dz[i]) / 2
+            # Determine the minimum time step required for the explicit solution.
+            dltt = 0.2 * dy[i] * self.dz[i] / avdif[i] / (1 - beta1)
+            if dltt < dltmin:
+                dltmin = dltt
+        # Use time step of dlt1 seconds, for iterx iterations
+        iterx = int(dlt / dltmin)  # computed number of iterations.
+        if dltmin < dlt:
+            iterx += 1
+        dlt1 = dlt / iterx  # computed time (seconds) of an iteration.
+        # start iterations. Store temperature data in array ts0. count iterations.
+        for _ in range(iterx):
+            for i in range(nn):
+                self.ts0[i] = self.ts1[i]
+                if iv == 1:
+                    l = i
+                asoi[i] = (
+                    self.soil_thermal_conductivity(q1[i], self.ts1[i], l) / self.hcap[i]
+                )
+                if i > 0:
+                    avdif[i] = (asoi[i] + asoi[i - 1]) / 2
+            self.soil_heat_flux_numiter += 1
+            # The solution of the simultaneous equations in the implicit method
+            # alternates between the two directions along the arrays. The reason for
+            # this is because the direction of the solution may cause some cumulative
+            # bias. The counter numiter determines the direction of the solution.
+            # arrays used for the implicit numerical solution.
+            cau = np.zeros(40, dtype=np.double)
+            dau = np.zeros(40, dtype=np.double)
+            # nondimensional diffusivities to next and previous layers.
+            ckx: float
+            cky: float
+            # used for computing the implicit solution.
+            vara: float
+            varb: float
+            if self.soil_heat_flux_numiter % 2 == 0:
+                # 1st direction of computation, for an even iteration number:
+                dau[0] = 0
+                cau[0] = self.ts1[0]
+                # Loop from the second to the last but one soil cells. Compute
+                # nondimensional diffusivities to next and previous layers.
+                for i in range(1, nn - 1):
+                    ckx = avdif[i + 1] * dlt1 / (self.dz[i] * dy[i + 1])
+                    cky = avdif[i] * dlt1 / (self.dz[i] * dy[i])
+                    # Correct value of layer 1 for explicit heat movement to/from
+                    # layer 2
+                    if i == 1:
+                        cau[0] = (
+                            self.ts1[0]
+                            - (1 - beta1)
+                            * (self.ts1[0] - self.ts1[1])
+                            * cky
+                            * self.dz[1]
+                            / self.dz[0]
+                        )
+                    vara = 1 + beta1 * (ckx + cky) - beta1 * ckx * dau[i - 1]
+                    dau[i] = beta1 * cky / vara
+                    varb = self.ts1[i] + (1 - beta1) * (
+                        cky * self.ts1[i - 1]
+                        + ckx * self.ts1[i + 1]
+                        - (cky + ckx) * self.ts1[i]
+                    )
+                    cau[i] = (varb + beta1 * ckx * cau[i - 1]) / vara
+                # Correct value of last layer (nn-1) for explicit heat movement to/from
+                # layer nn-2
+                self.ts1[nn - 1] = (
+                    self.ts1[nn - 1]
+                    - (1 - beta1)
+                    * (self.ts1[nn - 1] - self.ts1[nn - 2])
+                    * ckx
+                    * self.dz[nn - 2]
+                    / self.dz[nn - 1]
+                )
+                # Continue with the implicit solution
+                for i in range(nn - 2, -1, -1):
+                    self.ts1[i] = dau[i] * self.ts1[i + 1] + cau[i]
+            else:
+                # Alternate direction of computation for odd iteration number
+                dau[nn - 1] = 0
+                cau[nn - 1] = self.ts1[nn - 1]
+                for i in range(nn - 2, 0, -1):
+                    ckx = avdif[i + 1] * dlt1 / (self.dz[i] * dy[i + 1])
+                    cky = avdif[i] * dlt1 / (self.dz[i] * dy[i])
+                    if i == nn - 2:
+                        cau[nn - 1] = (
+                            self.ts1[nn - 1]
+                            - (1 - beta1)
+                            * (self.ts1[nn - 1] - self.ts1[nn - 2])
+                            * ckx
+                            * self.dz[nn - 2]
+                            / self.dz[nn - 1]
+                        )
+                    vara = 1 + beta1 * (ckx + cky) - beta1 * cky * dau[i + 1]
+                    dau[i] = beta1 * ckx / vara
+                    varb = self.ts1[i] + (1 - beta1) * (
+                        ckx * self.ts1[i + 1]
+                        + cky * self.ts1[i - 1]
+                        - (cky + ckx) * self.ts1[i]
+                    )
+                    cau[i] = (varb + beta1 * cky * cau[i + 1]) / vara
+                self.ts1[0] = (
+                    self.ts1[0]
+                    - (1 - beta1)
+                    * (self.ts1[0] - self.ts1[1])
+                    * cky
+                    * self.dz[1]
+                    / self.dz[0]
+                )
+                for i in range(1, nn):
+                    self.ts1[i] = dau[i] * self.ts1[i - 1] + cau[i]
+            # Call heat_balance to correct quantitative deviations caused by the imlicit
+            # part of the solution.
+            self.heat_balance(nn)
+        # Set values of SoiTemp
+        for i in range(nn):
+            if iv == 1:
+                self.hourly_soil_temperature[ihr, i, n0] = self.ts1[i]
+            else:
+                self.hourly_soil_temperature[ihr, n0, i] = self.ts1[i]
