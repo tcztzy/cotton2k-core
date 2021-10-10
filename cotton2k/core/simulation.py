@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import json
+from functools import cached_property
 from pathlib import Path
 from typing import Any, Union
 
@@ -16,7 +17,7 @@ from .nitrogen import PlantNitrogen
 from .phenology import Phenology, Stage
 from .photo import Photosynthesis
 from .root import RootGrowth
-from .soil import SoilProcedure
+from .soil import SoilProcedure, form
 from .stem import StemGrowth
 from .thermology import Thermology
 
@@ -61,7 +62,10 @@ class State(
         try:
             return getattr(self._, name)
         except AttributeError:
-            return getattr(self, name)
+            try:
+                return getattr(self._sim, name)
+            except AttributeError:
+                return getattr(self, name)
 
     def __setattr__(self, name: str, value: Any) -> None:
         if name in ("_", "_sim"):
@@ -519,3 +523,18 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
     @property
     def _column_width(self):
         return self.row_space / 20
+
+    bclay = 7  # heat conductivity of clay (mcal cm-1 s-1 C-1).
+    bsand = 20  # heat conductivity of sand and silt (mcal cm-1 s-1 C-1).
+    ckw = 1.45  # heat conductivity of water (mcal cm-1 s-1 C-1).
+    ga = 0.144  # shape factor for air in pore spaces.
+
+    @cached_property
+    def dclay(self):
+        """aggregation factor for clay in water."""
+        return form(self.bclay, self.ckw, self.ga)
+
+    @cached_property
+    def dsand(self):
+        """aggregation factor for sand in water."""
+        return form(self.bsand, self.ckw, self.ga)

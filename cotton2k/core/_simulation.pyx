@@ -3710,18 +3710,3 @@ cdef class Simulation:
         k = np.searchsorted(self.column_width_cumsum, x)
         l = np.searchsorted(self.layer_depth_cumsum, y)
         return l, k
-
-    bclay = 7  # heat conductivity of clay (mcal cm-1 s-1 C-1).
-    bsand = 20  # heat conductivity of sand and silt (mcal cm-1 s-1 C-1).
-    ckw = 1.45  # heat conductivity of water (mcal cm-1 s-1 C-1).
-    ga = 0.144  # shape factor for air in pore spaces.
-
-    @property
-    def dclay(self):
-        """aggregation factor for clay in water."""
-        return form(self.bclay, self.ckw, self.ga)
-
-    @property
-    def dsand(self):
-        """aggregation factor for sand in water."""
-        return form(self.bsand, self.ckw, self.ga)
