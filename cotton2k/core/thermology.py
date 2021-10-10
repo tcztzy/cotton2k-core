@@ -289,7 +289,7 @@ def SensibleHeatTransfer(tsf, tenviron, height, wndcanp) -> float:
     raise RuntimeError
 
 
-class Thermology:  # pylint: disable=E0203,E1101,R0912,R0914,R0915,W0201
+class Thermology:  # pylint: disable=E0203,E1101,R0902,R0912,R0914,R0915,W0201
     bclay: float
     bsand: float
     cka: float
@@ -699,7 +699,7 @@ class Thermology:  # pylint: disable=E0203,E1101,R0912,R0914,R0915,W0201
         """
         # Sum of absolute value of differences in heat content in the array between
         # beginning and end of this time step.
-        dabs = np.abs(self.ts1 - self.ts0)[:nn].sum()
+        dabs = np.abs(self.ts1[:nn] - self.ts0[:nn]).sum()
         dev = 0  # Sum of differences of heat amount in soil.
         for i in range(nn):
             dev += self.dz[i] * self.hcap[i] * (self.ts1[i] - self.ts0[i])
@@ -739,28 +739,29 @@ class Thermology:  # pylint: disable=E0203,E1101,R0912,R0914,R0915,W0201
         # Compute for each soil cell the heat capacity and heat diffusivity.
 
         l = layer  # soil layer number.
-        q1 = np.zeros(40, dtype=np.double)  # array of water content.
-        asoi = np.zeros(
-            40, dtype=np.double
-        )  # array of thermal diffusivity of soil cells (cm2 s-1).
-        for i in range(nn):
-            if iv == 1:
-                l = i
-                q1[i] = self.soil_water_content[i, n0]
-                self.ts1[i] = self.hourly_soil_temperature[ihr, i, n0]
-                self.dz[i] = self.layer_depth[i]
-            else:
-                q1[i] = self.soil_water_content[n0, i]
-                self.ts1[i] = self.hourly_soil_temperature[ihr, n0, i]
-                self.dz[i] = self._sim.column_width[i]
-            self.hcap[i] = (
-                self.heat_capacity_soil_solid[l]
-                + q1[i]
-                + (self.pore_space[l] - q1[i]) * ca
+        q1: npt.NDArray[np.double]  # array of water content.
+        # array of thermal diffusivity of soil cells (cm2 s-1).
+        asoi: npt.NDArray[np.double]
+        if iv == 1:
+            q1 = self.soil_water_content[:, n0]
+            self.ts1 = self.hourly_soil_temperature[ihr, :, n0]
+            self.dz = self.layer_depth[:]
+        else:
+            q1 = self.soil_water_content[n0]
+            self.ts1 = self.hourly_soil_temperature[ihr, n0]
+            self.dz = self.column_width[:]
+        self.hcap = (
+            q1 + self.heat_capacity_soil_solid[l] + (self.pore_space[l] - q1) * ca
+        )
+        asoi = (
+            np.array(
+                [
+                    self.soil_thermal_conductivity(q1[i], self.ts1[i], l)
+                    for i in range(nn)
+                ]
             )
-            asoi[i] = (
-                self.soil_thermal_conductivity(q1[i], self.ts1[i], l) / self.hcap[i]
-            )
+            / self.hcap
+        )
         # The numerical solution of the flow equation is a combination of the implicit
         # method (weighted by beta1) and the explicit method (weighted by 1-beta1).
         dltt: float  # computed time step required.
@@ -892,11 +893,10 @@ class Thermology:  # pylint: disable=E0203,E1101,R0912,R0914,R0915,W0201
             # part of the solution.
             self.heat_balance(nn)
         # Set values of SoiTemp
-        for i in range(nn):
-            if iv == 1:
-                self.hourly_soil_temperature[ihr, i, n0] = self.ts1[i]
-            else:
-                self.hourly_soil_temperature[ihr, n0, i] = self.ts1[i]
+        if iv == 1:
+            self.hourly_soil_temperature[ihr, :, n0] = self.ts1
+        else:
+            self.hourly_soil_temperature[ihr, n0, :] = self.ts1
 
     def soil_surface_balance(  # pylint: disable=R0913
         self, ihr, k, ess, rlzero, rss, sf, hsg, so, so2, so3, thet, tv
