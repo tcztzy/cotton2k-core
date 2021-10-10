@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Union
 
 import numpy as np
+import numpy.typing as npt
 
 from ._simulation import Simulation as CySimulation  # pylint: disable=E0611
 from ._simulation import SoilInit  # pylint: disable=E0611
@@ -219,6 +220,21 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
         self.cell_area = self.layer_depth[:, None] * self.column_width[None, :]
         self.ratio_implicit = (
             kwargs.get("soil", {}).get("hydrology", {}).get("ratio_implicit", 0)
+        )
+        self.pclay = np.array(
+            [
+                l["clay"]
+                for l in kwargs.get("soil", {}).get("hydrology", {}).get("layers", [])
+            ]
+        )
+        self.psand = np.array(
+            [
+                l["sand"]
+                for l in kwargs.get("soil", {}).get("hydrology", {}).get("layers", [])
+            ]
+        )
+        self.oma = np.array(
+            [l["organic_matter"] for l in kwargs.get("soil", {}).get("initial", [])]
         )
         SoilInit(**kwargs.pop("soil", {}))  # type: ignore[arg-type]
         start_date = kwargs["start_date"]
@@ -439,6 +455,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
                 self.irrigation[d] = ao
         self._read_agricultural_input(agricultural_inputs)
         self._initialize_soil_data()
+        self.initialize_soil_temperature()
         self._initialize_root_data()
 
     def run(self):
@@ -527,6 +544,9 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
     bclay = 7  # heat conductivity of clay (mcal cm-1 s-1 C-1).
     bsand = 20  # heat conductivity of sand and silt (mcal cm-1 s-1 C-1).
     ckw = 1.45  # heat conductivity of water (mcal cm-1 s-1 C-1).
+    cka = 0.0615  # heat conductivity of air (mcal cm-1 s-1 C-1).
+    cmin = 0.46  # heat capacity of the mineral fraction of the soil.
+    corg = 0.6  # heat capacity of the organic fraction of the soil.
     ga = 0.144  # shape factor for air in pore spaces.
 
     @cached_property
@@ -538,3 +558,73 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
     def dsand(self):
         """aggregation factor for sand in water."""
         return form(self.bsand, self.ckw, self.ga)
+
+    # marginal soil water content (as a function of soil texture) for computing soil
+    # heat conductivity.
+    marginal_water_content = np.zeros(40, dtype=np.double)
+    # the heat conductivity of dry soil.
+    heat_conductivity_dry_soil = np.zeros(40, dtype=np.double)
+    input_layer_depth = 15
+
+    pclay: npt.NDArray[np.double]  # percentage of clay in soil of horizon layers.
+    psand: npt.NDArray[np.double]  # percentage of sand in soil of horizon layers.
+
+    def initialize_soil_temperature(self):
+        """Initializes the variables needed for the simulation of soil temperature, and
+        variables used by functions soil_thermal_conductivity() and SoilHeatFlux().
+        """
+        rm = 2.65  # specific weight of mineral fraction of soil.
+        ro = 1.3  # specific weight of organic fraction of soil.
+        # Compute aggregation factors:
+        # aggregation factor for sand in air
+        dsandair = form(self.bsand, self.cka, self.ga)
+        # aggregation factor for clay in air
+        dclayair = form(self.bclay, self.cka, self.ga)
+        # Loop over all soil layers, and define indices for some soil arrays.
+        self.soil_sand_volume_fraction = np.zeros(40, dtype=np.double)
+        self.soil_clay_volume_fraction = np.zeros(40, dtype=np.double)
+        for l, sumdl in enumerate(self.layer_depth_cumsum):
+            j = min(
+                int((sumdl + self.input_layer_depth - 1) / self.input_layer_depth) - 1,
+                13,
+            )  # layer definition for oma
+            # Using the values of the clay and organic matter percentages in the soil,
+            # compute mineral and organic fractions of the soil, by weight and volume.
+            mmo = self.oma[j] / 100  # organic matter fraction of dry soil (by weight).
+            mm = 1 - mmo  # mineral fraction of dry soil (by weight).
+            # MarginalWaterContent is set as a function of the sand fraction of the
+            # soil.
+            i1 = self.soil_horizon_number[
+                l
+            ]  # layer definition as in soil hydrology input file.
+            self.marginal_water_content[l] = 0.1 - 0.07 * self.psand[i1] / 100
+            # The volume fractions of clay (self.soil_clay_volume_fraction) and of sand
+            # plus silt (self.soil_sand_volume_fraction), are calculated.
+            ra = (mmo / ro) / (
+                mm / rm
+            )  # volume ratio of organic to mineral soil fractions.
+            xo = (
+                (1 - self.pore_space[l]) * ra / (1 + ra)
+            )  # organic fraction of soil (by volume).
+            xm = (1 - self.pore_space[l]) - xo  # mineral fraction of soil (by volume).
+            self.soil_clay_volume_fraction[l] = self.pclay[i1] * xm / mm / 100
+            self.soil_sand_volume_fraction[l] = (
+                1 - self.pore_space[l] - self.soil_clay_volume_fraction[l]
+            )
+            # Heat capacity of the solid soil fractions (mineral + organic, by volume)
+            self.heat_capacity_soil_solid[l] = xm * self.cmin + xo * self.corg
+            # The heat conductivity of dry soil is computed using the procedure
+            # suggested by De Vries.
+            self.heat_conductivity_dry_soil[l] = (
+                1.25
+                * (
+                    self.pore_space[l] * self.cka
+                    + dsandair * self.bsand * self.soil_sand_volume_fraction[l]
+                    + dclayair * self.bclay * self.soil_clay_volume_fraction[l]
+                )
+                / (
+                    self.pore_space[l]
+                    + dsandair * self.soil_sand_volume_fraction[l]
+                    + dclayair * self.soil_clay_volume_fraction[l]
+                )
+            )

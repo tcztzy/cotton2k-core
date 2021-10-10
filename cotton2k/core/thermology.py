@@ -1,3 +1,5 @@
+# pylint: disable=too-many-lines
+import datetime
 from math import atan, cos, log, pi, sqrt
 
 import numpy as np
@@ -5,6 +7,7 @@ import numpy.typing as npt
 from scipy import constants
 
 from .meteorology import VaporPressure, clearskyemiss
+from .soil import form
 
 
 def canopy_balance(  # pylint: disable=too-many-arguments,too-many-locals
@@ -287,6 +290,22 @@ def SensibleHeatTransfer(tsf, tenviron, height, wndcanp) -> float:
 
 
 class Thermology:  # pylint: disable=E0203,E1101,R0912,R0914,R0915,W0201
+    bclay: float
+    bsand: float
+    cka: float
+    ckw: float
+    date: datetime.date
+    dclay: float
+    dsand: float
+    field_capacity: npt.NDArray[np.double]
+    heat_conductivity_dry_soil: npt.NDArray[np.double]
+    layer_depth: npt.NDArray[np.double]
+    marginal_water_content: npt.NDArray[np.double]
+    pore_space: npt.NDArray[np.double]
+    soil_clay_volume_fraction: npt.NDArray[np.double]
+    soil_sand_volume_fraction: npt.NDArray[np.double]
+    soil_water_content: npt.NDArray[np.double]
+
     def soil_thermology(self):
         """The main part of the soil temperature sub-model.
 
@@ -550,8 +569,7 @@ class Thermology:  # pylint: disable=E0203,E1101,R0912,R0914,R0915,W0201
         :param etp1: actual transpiration rate (mm / sec).
         :param sf: fraction of shaded soil area
         """
-        state = self._current_state
-        hour = state.hours[ihr]
+        hour = self.hours[ihr]
         # Constants used:
         wndfac = 0.60  # Ratio of wind speed under partial canopy cover.
         # proportion of short wave radiation (on fully shaded soil surface) intercepted
@@ -560,12 +578,12 @@ class Thermology:  # pylint: disable=E0203,E1101,R0912,R0914,R0915,W0201
         # Set initial values
         sf = 1 - self.irradiation_soil_surface[k]
         thet = hour.temperature + 273.161  # air temperature, K
-        so, so2, so3 = state.hourly_soil_temperature[
+        so, so2, so3 = self.hourly_soil_temperature[
             ihr, :3, k
         ]  # soil surface temperature, K
         # Compute soil surface albedo (based on Horton and Chung, 1991):
         ag = compute_soil_surface_albedo(
-            state.soil_water_content[0, k],
+            self.soil_water_content[0, k],
             self.field_capacity[0],
             self.thad[0],
             self.site_parameters[15],
@@ -593,7 +611,7 @@ class Thermology:  # pylint: disable=E0203,E1101,R0912,R0914,R0915,W0201
         c2: float  # multiplier for sensible heat transfer (at plant surface).
         rsv: float  # global radiation absorbed by the vegetation
         if sf >= 0.05:  # a shaded soil column
-            tv = state.foliage_temperature[k]  # vegetation temperature
+            tv = self.foliage_temperature[k]  # vegetation temperature
             # Short wave radiation intercepted by the canopy:
             rsv = (
                 rzero * (1 - hour.albedo) * sf * cswint  # from above
@@ -608,7 +626,7 @@ class Thermology:  # pylint: disable=E0203,E1101,R0912,R0914,R0915,W0201
             # petioles.
             # sensible heat transfer coefficient for soil
             varcc = SensibleHeatTransfer(
-                tv, tafk, state.plant_height, wndhr
+                tv, tafk, self.plant_height, wndhr
             )  # canopy to air
             rocp = 0.08471 / tafk
             c2 = 2.2 * sf * rocp * varcc
@@ -631,7 +649,7 @@ class Thermology:  # pylint: disable=E0203,E1101,R0912,R0914,R0915,W0201
             )  # multiplier for computing sensible heat transfer soil to air.
             # Call soil_surface_balance() for energy balance in soil surface / air
             # interface.
-            so, so2, so3 = state.soil_surface_balance(
+            so, so2, so3 = self.soil_surface_balance(
                 ihr, k, ess, rlzero, rss, sf, hsg, so, so2, so3, thet, tv
             )
 
@@ -650,8 +668,8 @@ class Thermology:  # pylint: disable=E0203,E1101,R0912,R0914,R0915,W0201
             raise RuntimeError  # stop simulation if more than 30 iterations.
         # After convergence - set global variables for the following temperatures:
         if sf >= 0.05:
-            state.foliage_temperature[k] = tv
-        state.hourly_soil_temperature[ihr, :3, k] = [so, so2, so3]
+            self.foliage_temperature[k] = tv
+        self.hourly_soil_temperature[ihr, :3, k] = [so, so2, so3]
 
     soil_heat_flux_numiter: int = 0  # number of this iteration.
 
@@ -879,3 +897,235 @@ class Thermology:  # pylint: disable=E0203,E1101,R0912,R0914,R0915,W0201
                 self.hourly_soil_temperature[ihr, i, n0] = self.ts1[i]
             else:
                 self.hourly_soil_temperature[ihr, n0, i] = self.ts1[i]
+
+    def soil_surface_balance(  # pylint: disable=R0913
+        self, ihr, k, ess, rlzero, rss, sf, hsg, so, so2, so3, thet, tv
+    ) -> tuple[float, float, float]:
+        """Solves the energy balance equations at the soil surface, and computes the
+        resulting temperature of the soil surface.
+
+        Units for all energy fluxes are: cal cm-2 sec-1.
+
+        :param ihr: the time in hours.
+        :param k: soil column number.
+        :param ess: evaporation from soil surface (mm / sec).
+        :param rlzero: incoming long wave
+        :param rss: global radiation absorbed by soil surface
+        :param sf: fraction of shaded soil area
+        :param hsg: multiplier for computing sensible heat transfer from soil to air.
+        :param thet: air temperature (K).
+        :param tv: temperature of plant canopy (K).
+        """
+        # Constants:
+        ef = 0.95  # emissivity of the foliage surface
+        eg = 0.95  # emissivity of the soil surface
+        stefa1 = 1.38e-12  # Stefan-Boltsman constant.
+        # Long wave radiation reaching the soil:
+        rls1: float  # long wave energy reaching soil surface
+        if sf >= 0.05:  # haded column
+            rls1 = (
+                # from sky on unshaded soil surface
+                (1 - sf) * eg * rlzero
+                # from foliage on shaded soil surface
+                + sf * eg * ef * stefa1 * tv ** 4
+            )
+        else:
+            rls1 = eg * rlzero  # from sky in unshaded column
+        # rls4 is the multiplier of so**4 for emitted long wave radiation from soil
+        rls4 = eg * stefa1
+        bbex: float  # previous value of bbadjust.
+        soex = so  # previous value of so.
+        # Start itrations for soil surface enegy balance.
+        for mon in range(50):
+            # Compute latent heat flux from soil evaporation: convert from mm sec-1 to
+            # cal cm-2 sec-1. Compute derivative of hlat
+            # hlat is the energy used for evaporation from soil surface (latent heat)
+            hlat = (75.5255 - 0.05752 * so) * ess
+            dhlat = -0.05752 * ess  # derivative of hlat
+            # Compute the thermal conductivity of layers 1 to 3 by
+            # soil_thermal_conductivity().
+            # heat conductivity of n-th soil layer in cal / (cm sec deg).
+            rosoil1 = self.soil_thermal_conductivity(
+                self.soil_water_content[0, k], so, 1
+            )
+            rosoil2 = self.soil_thermal_conductivity(
+                self.soil_water_content[1, k], so2, 2
+            )
+            rosoil3 = self.soil_thermal_conductivity(
+                self.soil_water_content[2, k], so3, 3
+            )
+            surface_layer_depth = self.layer_depth[:3]
+            # Compute average rosoil between layers 1 to 3,and heat transfer from soil
+            # surface to 3rd soil layer.
+            # multiplier for heat flux between 1st and 3rd soil layers.
+            rosoil = (
+                (np.array([rosoil1, rosoil2, rosoil3]) * surface_layer_depth).sum()
+                / surface_layer_depth.sum()
+                / (np.array([0.5, 1, 0.5]) * surface_layer_depth).sum()
+            )
+            # bbsoil is the heat energy transfer by conductance from surface to inner
+            bbsoil = rosoil * (so - so3)
+            # emtlw is emitted long wave radiation from soil surface
+            emtlw = rls4 * pow(so, 4)
+            # Sensible heat transfer and its derivative
+            # average air temperature above soil surface (K)
+            tafk = (1 - sf) * thet + sf * (0.1 * so + 0.3 * thet + 0.6 * tv)
+            senheat = hsg * (so - tafk)  # sensible heat transfer from soil surface
+            dsenheat = hsg * (1 - sf * 0.1)  # derivative of senheat
+            # Compute the energy balance bb. (positive direction is upward)
+            bb = (
+                emtlw  # long wave radiation emitted from soil surface
+                - rls1  # long wave radiation reaching the soil surface
+                + bbsoil  # (b) heat transfer from soil surface to next soil layer
+                + hlat  # (c) latent heat transfer
+                - rss  # global radiation reaching the soil surface
+                + senheat  # (d) heat transfer from soil surface to air
+            )
+
+            if abs(bb) < 1e-5:
+                return so, so2, so3  # end computation for so
+            # If bb is not small enough, compute its derivative by so.
+
+            demtlw = (
+                4 * rls4 * so ** 3
+            )  # The derivative of emitted long wave radiation (emtlw)
+            # Compute derivative of bbsoil
+            sop001 = so + 0.001  # soil surface temperature plus 0.001
+            # heat conductivity of 1st soil layer for so+0.001
+            rosoil1p = self.soil_thermal_conductivity(
+                self.soil_water_content[0, k], sop001, 1
+            )
+            # rosoil for so+0.001
+            rosoilp = (
+                (np.array([rosoil1p, rosoil2, rosoil3]) * surface_layer_depth).sum()
+                / surface_layer_depth.sum()
+                / (np.array([0.5, 1, 0.5]) * surface_layer_depth).sum()
+            )
+            drosoil = (rosoilp - rosoil) / 0.001  # derivative of rosoil
+            dbbsoil = rosoil + drosoil * (so - so3)  # derivative of bbsoil
+            # The derivative of the energy balance function
+            bbp = demtlw + dbbsoil + dhlat + dsenheat  # (a)  # (b)  # (c)  # (d)
+            # Correct the upper soil temperature by the ratio of bb to bbp.
+            # the adjustment of soil surface temperature before next iteration
+            bbadjust = bb / bbp
+            # If adjustment is small enough, no more iterations are needed.
+            if abs(bbadjust) < 0.002:
+                return so, so2, so3
+            # If bbadjust is not the same sign as bbex, reduce fluctuations
+            if mon <= 1:
+                bbex = 0
+            elif mon >= 2:
+                if abs(bbadjust + bbex) < abs(bbadjust - bbex):
+                    bbadjust = (bbadjust + bbex) / 2
+                    so = (so + soex) / 2
+
+            bbadjust = min(max(bbadjust, -10), 10)
+
+            so -= bbadjust
+            so2 += (so - soex) / 2
+            so3 += (so - soex) / 3
+            soex = so
+            bbex = bbadjust
+            mon += 1
+        # If (mon >= 50) send message on error and end simulation.
+        raise RuntimeError(
+            "\n".join(
+                (
+                    "Infinite loop in soil_surface_balance(). Abnormal stop!!",
+                    "Daynum, ihr, k = %s %3d %3d" % (self.date.isoformat(), ihr, k),
+                    "so = %10.3g" % so,
+                    "so2 = %10.3g" % so2,
+                    "so3 = %10.3g" % so3,
+                )
+            )
+        )
+
+    def soil_thermal_conductivity(self, q0: float, t0: float, l0: int) -> float:
+        """Computes and returns the thermal conductivity of the soil
+        (cal cm-1 s-1 oC-1). It is based on the work of De Vries(1963).
+
+        Arguments
+        ---------
+        l0
+            soil layer.
+        q0
+            volumetric soil moisture content.
+        t0
+            soil temperature (K).
+        """
+        # Convert soil temperature to degrees C.
+        tcel = t0 - 273.161  # soil temperature, in C.
+        # Compute cpn, the apparent heat conductivity of air in soil pore spaces, when
+        # saturated with water vapor, using a function of soil temperature, which
+        # changes linearly between 36 and 40 C.
+        # effect of temperature on heat conductivity of air saturated with water vapor.
+        bb: float
+        if tcel <= 36:
+            bb = 0.06188
+        elif 36 < tcel <= 40:
+            bb = 0.06188 + (tcel - 36) * (0.05790 - 0.06188) / (40 - 36)
+        else:
+            bb = 0.05790
+        # apparent heat conductivity of air in soil pore spaces, when it is saturated
+        # with water vapor.
+        cpn = self.cka + 0.05 * np.exp(bb * tcel)
+        # Compute xair, air content of soil per volume, from soil porosity and moisture
+        # content.
+        # Compute thermal conductivity
+        # (a) for wet soil (soil moisture higher than field capacity),
+        # (b) for less wet soil.
+        # In each case compute first ga, and then dair.
+        # air content of soil, per volume.
+        xair = max(self.pore_space[l0] - q0, 0)
+        dair: float  # aggregation factor for air in soil pore spaces.
+        ga: float  # shape factor for air in pore spaces.
+        hcond: float  # computed heat conductivity of soil, mcal cm-1 s-1 oc-1.
+        if q0 >= self.field_capacity[l0]:
+            # (a) Heat conductivity of soil wetter than field capacity.
+            ga = 0.333 - 0.061 * xair / self.pore_space[l0]
+            dair = form(cpn, self.ckw, ga)
+            hcond = (
+                q0 * self.ckw
+                + self.dsand * self.bsand * self.soil_sand_volume_fraction[l0]
+                + self.dclay * self.bclay * self.soil_clay_volume_fraction[l0]
+                + dair * cpn * xair
+            ) / (
+                q0
+                + self.dsand * self.soil_sand_volume_fraction[l0]
+                + self.dclay * self.soil_clay_volume_fraction[l0]
+                + dair * xair
+            )
+        else:
+            # (b) For soil less wet than field capacity, compute also ckn (heat
+            # conductivity of air in the soil pores).
+            qq: float  # soil water content for computing ckn and ga.
+            ckn: float  # heat conductivity of air in pores in soil.
+            qq = max(q0, self.marginal_water_content[l0])
+            ckn = self.cka + (cpn - self.cka) * qq / self.field_capacity[l0]
+            ga = 0.041 + 0.244 * (qq - self.marginal_water_content[l0]) / (
+                self.field_capacity[l0] - self.marginal_water_content[l0]
+            )
+            dair = form(ckn, self.ckw, ga)
+            hcond = (
+                qq * self.ckw
+                + self.dsand * self.bsand * self.soil_sand_volume_fraction[l0]
+                + self.dclay * self.bclay * self.soil_clay_volume_fraction[l0]
+                + dair * ckn * xair
+            ) / (
+                qq
+                + self.dsand * self.soil_sand_volume_fraction[l0]
+                + self.dclay * self.soil_clay_volume_fraction[l0]
+                + dair * xair
+            )
+            # When soil moisture content is less than the limiting value
+            # marginal_water_content, modify the value of hcond.
+            if qq <= self.marginal_water_content[l0]:
+                hcond = (
+                    hcond - self.heat_conductivity_dry_soil[l0]
+                ) * q0 / self.marginal_water_content[
+                    l0
+                ] + self.heat_conductivity_dry_soil[
+                    l0
+                ]
+        # The result is hcond converted from mcal to cal.
+        return hcond / 1000
