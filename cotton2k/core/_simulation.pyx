@@ -134,8 +134,6 @@ PotGroPetioleWeightPreFru = np.zeros(9, dtype=np.double)  # potentially added we
 
 FreshOrganicNitrogen = np.zeros((40, 20), dtype=np.double)  # N in fresh organic matter in a soil cell, mg cm-3.
 
-cdef double dclay  # aggregation factor for clay in water.
-cdef double dsand  # aggregation factor for sand in water.
 cdef double HeatCondDrySoil[40]  # the heat conductivity of dry soil.
 cdef double MarginalWaterContent[40]  # marginal soil water content (as a function of soil texture) for computing soil heat conductivity.
 
@@ -696,7 +694,6 @@ cdef class State:
 
         It is executed once at the beginning of the simulation.
         """
-        global dclay, dsand
         cdef double bsand = 20    # heat conductivity of sand and silt (mcal cm-1 s-1 C-1).
         cdef double bclay = 7     # heat conductivity of clay (mcal cm-1 s-1 C-1).
         cdef double cka = 0.0615  # heat conductivity of air (mcal cm-1 s-1 C-1).
@@ -707,8 +704,6 @@ cdef class State:
         cdef double rm = 2.65     # specific weight of mineral fraction of soil.
         cdef double ro = 1.3      # specific weight of organic fraction of soil.
         # Compute aggregation factors:
-        dsand = form(bsand, ckw, ga)  # aggregation factor for sand in water
-        dclay = form(bclay, ckw, ga)  # aggregation factor for clay in water
         cdef double dsandair = form(bsand, cka, ga)  # aggregation factor for sand in air
         cdef double dclayair = form(bclay, cka, ga)  # aggregation factor for clay in air
         # Loop over all soil layers, and define indices for some soil arrays.
@@ -2708,7 +2703,7 @@ cdef class State:
             # (a) Heat conductivity of soil wetter than field capacity.
             ga = 0.333 - 0.061 * xair / self.pore_space[l0]
             dair = form(cpn, ckw, ga)
-            hcond = (q0 * ckw + dsand * bsand * self._sim.soil_sand_volume_fraction[l0] + dclay * bclay * self._sim.soil_clay_volume_fraction[l0] + dair * cpn * xair) / (q0 + dsand * self._sim.soil_sand_volume_fraction[l0] + dclay * self._sim.soil_clay_volume_fraction[l0] + dair * xair)
+            hcond = (q0 * ckw + self.dsand * bsand * self._sim.soil_sand_volume_fraction[l0] + self.dclay * bclay * self._sim.soil_clay_volume_fraction[l0] + dair * cpn * xair) / (q0 + self.dsand * self._sim.soil_sand_volume_fraction[l0] + self.dclay * self._sim.soil_clay_volume_fraction[l0] + dair * xair)
         else:
             # (b) For soil less wet than field capacity, compute also ckn (heat conductivity of air in the soil pores).
             qq: float  # soil water content for computing ckn and ga.
@@ -2717,7 +2712,7 @@ cdef class State:
             ckn = cka + (cpn - cka) * qq / self.field_capacity[l0]
             ga = 0.041 + 0.244 * (qq - MarginalWaterContent[l0]) / (self.field_capacity[l0] - MarginalWaterContent[l0])
             dair = form(ckn, ckw, ga)
-            hcond = (qq * ckw + dsand * bsand * self._sim.soil_sand_volume_fraction[l0] + dclay * bclay * self._sim.soil_clay_volume_fraction[l0] + dair * ckn * xair) / (qq + dsand * self._sim.soil_sand_volume_fraction[l0] + dclay * self._sim.soil_clay_volume_fraction[l0] + dair * xair)
+            hcond = (qq * ckw + self.dsand * bsand * self._sim.soil_sand_volume_fraction[l0] + self.dclay * bclay * self._sim.soil_clay_volume_fraction[l0] + dair * ckn * xair) / (qq + self.dsand * self._sim.soil_sand_volume_fraction[l0] + self.dclay * self._sim.soil_clay_volume_fraction[l0] + dair * xair)
             # When soil moisture content is less than the limiting value MarginalWaterContent, modify the value of hcond.
             if qq <= MarginalWaterContent[l0]:
                 hcond = (hcond - HeatCondDrySoil[l0]) * q0 / MarginalWaterContent[l0] + HeatCondDrySoil[l0]
@@ -3715,3 +3710,18 @@ cdef class Simulation:
         k = np.searchsorted(self.column_width_cumsum, x)
         l = np.searchsorted(self.layer_depth_cumsum, y)
         return l, k
+
+    bclay = 7  # heat conductivity of clay (mcal cm-1 s-1 C-1).
+    bsand = 20  # heat conductivity of sand and silt (mcal cm-1 s-1 C-1).
+    ckw = 1.45  # heat conductivity of water (mcal cm-1 s-1 C-1).
+    ga = 0.144  # shape factor for air in pore spaces.
+
+    @property
+    def dclay(self):
+        """aggregation factor for clay in water."""
+        return form(self.bclay, self.ckw, self.ga)
+
+    @property
+    def dsand(self):
+        """aggregation factor for sand in water."""
+        return form(self.bsand, self.ckw, self.ga)
