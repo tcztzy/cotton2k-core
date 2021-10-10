@@ -682,7 +682,7 @@ class Thermology:  # pylint: disable=E0203,E1101,R0902,R0912,R0914,R0915,W0201
     # array of soil temperatures.
     ts1: npt.NDArray[np.double] = np.zeros(40)
 
-    def heat_balance(self, nn):
+    def heat_balance(self):
         """Checks and corrects the heat balance in the soil soil cells, within a soil
         layer. It is called by function soil_heat_flux only for horizontal flux.
 
@@ -699,15 +699,14 @@ class Thermology:  # pylint: disable=E0203,E1101,R0902,R0912,R0914,R0915,W0201
         """
         # Sum of absolute value of differences in heat content in the array between
         # beginning and end of this time step.
-        dabs = np.abs(self.ts1[:nn] - self.ts0[:nn]).sum()
-        dev = 0  # Sum of differences of heat amount in soil.
-        for i in range(nn):
-            dev += self.dz[i] * self.hcap[i] * (self.ts1[i] - self.ts0[i])
-        if dabs > 0:
-            for i in range(nn):
-                self.ts1[i] = self.ts1[i] - abs(self.ts1[i] - self.ts0[i]) * dev / (
-                    dabs * self.dz[i] * self.hcap[i]
-                )
+        dabs = np.abs(self.ts1 - self.ts0)
+        if dabs.any():
+            dabs /= dabs.sum()
+            # Sum of differences of heat amount in soil.
+            dev = (self.dz * self.hcap * (self.ts1 - self.ts0)).sum()
+            self.ts1 -= dabs * dev / (
+                self.dz * self.hcap
+            )
 
     def soil_heat_flux(self, dlt, iv, nn, layer, n0, ihr):  # pylint: disable=R0913
         """Computes heat flux in one direction between soil cells.
@@ -765,9 +764,9 @@ class Thermology:  # pylint: disable=E0203,E1101,R0902,R0912,R0914,R0915,W0201
         # The numerical solution of the flow equation is a combination of the implicit
         # method (weighted by beta1) and the explicit method (weighted by 1-beta1).
         dltt: float  # computed time step required.
-        avdif = np.zeros(
-            40, dtype=np.double
-        )  # average thermal diffusivity between adjacent cells.
+        avdif = np.zeros(  # average thermal diffusivity between adjacent cells.
+            nn, dtype=np.double
+        )
         dy = np.zeros(
             40, dtype=np.double
         )  # array of distances between centers of adjacent cells (cm).
@@ -791,15 +790,14 @@ class Thermology:  # pylint: disable=E0203,E1101,R0902,R0912,R0914,R0915,W0201
         dlt1 = dlt / iterx  # computed time (seconds) of an iteration.
         # start iterations. Store temperature data in array ts0. count iterations.
         for _ in range(iterx):
+            self.ts0 = self.ts1.copy()
             for i in range(nn):
-                self.ts0[i] = self.ts1[i]
                 if iv == 1:
                     l = i
                 asoi[i] = (
                     self.soil_thermal_conductivity(q1[i], self.ts1[i], l) / self.hcap[i]
                 )
-                if i > 0:
-                    avdif[i] = (asoi[i] + asoi[i - 1]) / 2
+            avdif[1:] = (asoi[1:] + asoi[:-1]) / 2
             self.soil_heat_flux_numiter += 1
             # The solution of the simultaneous equations in the implicit method
             # alternates between the two directions along the arrays. The reason for
@@ -891,7 +889,7 @@ class Thermology:  # pylint: disable=E0203,E1101,R0902,R0912,R0914,R0915,W0201
                     self.ts1[i] = dau[i] * self.ts1[i - 1] + cau[i]
             # Call heat_balance to correct quantitative deviations caused by the imlicit
             # part of the solution.
-            self.heat_balance(nn)
+            self.heat_balance()
         # Set values of SoiTemp
         if iv == 1:
             self.hourly_soil_temperature[ihr, :, n0] = self.ts1
