@@ -758,26 +758,20 @@ class Thermology:  # pylint: disable=E0203,E1101,R0902,R0912,R0914,R0915,W0201
         )
         # The numerical solution of the flow equation is a combination of the implicit
         # method (weighted by beta1) and the explicit method (weighted by 1-beta1).
-        dltt: float  # computed time step required.
         avdif = np.zeros(  # average thermal diffusivity between adjacent cells.
             nn, dtype=np.double
         )
-        dy = np.zeros(
-            40, dtype=np.double
-        )  # array of distances between centers of adjacent cells (cm).
-        dltmin = dlt  # minimum time step for the explicit solution.
-        avdif[0] = 0
-        dy[0] = 0
-        for i in range(1, nn):
-            # Compute average diffusivities avdif between layer i and the previous
-            # (i-1), and dy(i), distance (cm) between centers of layer i and the
-            # previous (i-1)
-            avdif[i] = (asoi[i] + asoi[i - 1]) / 2
-            dy[i] = (self.dz[i - 1] + self.dz[i]) / 2
-            # Determine the minimum time step required for the explicit solution.
-            dltt = 0.2 * dy[i] * self.dz[i] / avdif[i] / (1 - beta1)
-            if dltt < dltmin:
-                dltmin = dltt
+        dy = np.zeros(  # array of distances between centers of adjacent cells (cm).
+            nn, dtype=np.double
+        )
+        # Compute average diffusivities avdif between layer i and the previous
+        # (i-1), and dy(i), distance (cm) between centers of layer i and the
+        # previous (i-1)
+        avdif[1:] = (asoi[1:] + asoi[:-1]) / 2
+        dy[1:] = (self.dz[1:] + self.dz[:-1]) / 2
+        # minimum time step for the explicit solution.
+        # Determine the minimum time step required for the explicit solution.
+        dltmin = min(np.nanmin(0.2 * dy * self.dz / avdif / (1 - beta1)), dlt)
         # Use time step of dlt1 seconds, for iterx iterations
         iterx = int(dlt / dltmin)  # computed number of iterations.
         if dltmin < dlt:
@@ -799,84 +793,72 @@ class Thermology:  # pylint: disable=E0203,E1101,R0902,R0912,R0914,R0915,W0201
             # this is because the direction of the solution may cause some cumulative
             # bias. The counter numiter determines the direction of the solution.
             # arrays used for the implicit numerical solution.
-            cau = np.zeros(40, dtype=np.double)
-            dau = np.zeros(40, dtype=np.double)
+            cau = np.zeros(nn, dtype=np.double)
+            dau = np.zeros(nn, dtype=np.double)
             # nondimensional diffusivities to next and previous layers.
-            ckx: float
-            cky: float
+            ckx = avdif[2:] * dlt1 / (self.dz[1:-1] * dy[2:])
+            cky = avdif[1:-1] * dlt1 / (self.dz[1:-1] * dy[1:-1])
             # used for computing the implicit solution.
             vara: float
             varb: float
             if self.soil_heat_flux_numiter % 2 == 0:
                 # 1st direction of computation, for an even iteration number:
-                dau[0] = 0
-                cau[0] = self.ts1[0]
+                cau[0] = (
+                    self.ts1[0]
+                    - (1 - beta1)
+                    * (self.ts1[0] - self.ts1[1])
+                    * cky[0]
+                    * self.dz[1]
+                    / self.dz[0]
+                )
                 # Loop from the second to the last but one soil cells. Compute
                 # nondimensional diffusivities to next and previous layers.
-                for i in range(1, nn - 1):
-                    ckx = avdif[i + 1] * dlt1 / (self.dz[i] * dy[i + 1])
-                    cky = avdif[i] * dlt1 / (self.dz[i] * dy[i])
+                for i in range(nn - 2):
                     # Correct value of layer 1 for explicit heat movement to/from
                     # layer 2
-                    if i == 1:
-                        cau[0] = (
-                            self.ts1[0]
-                            - (1 - beta1)
-                            * (self.ts1[0] - self.ts1[1])
-                            * cky
-                            * self.dz[1]
-                            / self.dz[0]
-                        )
-                    vara = 1 + beta1 * (ckx + cky) - beta1 * ckx * dau[i - 1]
-                    dau[i] = beta1 * cky / vara
-                    varb = self.ts1[i] + (1 - beta1) * (
-                        cky * self.ts1[i - 1]
-                        + ckx * self.ts1[i + 1]
-                        - (cky + ckx) * self.ts1[i]
+                    vara = 1 + beta1 * (ckx[i] + cky[i]) - beta1 * ckx[i] * dau[i]
+                    dau[i + 1] = beta1 * cky[i] / vara
+                    varb = self.ts1[i + 1] + (1 - beta1) * (
+                        cky[i] * self.ts1[i]
+                        + ckx[i] * self.ts1[i + 2]
+                        - (cky[i] + ckx[i]) * self.ts1[i + 1]
                     )
-                    cau[i] = (varb + beta1 * ckx * cau[i - 1]) / vara
+                    cau[i + 1] = (varb + beta1 * ckx[i] * cau[i]) / vara
                 # Correct value of last layer (nn-1) for explicit heat movement to/from
                 # layer nn-2
-                self.ts1[nn - 1] = (
-                    self.ts1[nn - 1]
-                    - (1 - beta1)
-                    * (self.ts1[nn - 1] - self.ts1[nn - 2])
-                    * ckx
-                    * self.dz[nn - 2]
-                    / self.dz[nn - 1]
+                self.ts1[-1] -= (
+                    (1 - beta1)
+                    * (self.ts1[-1] - self.ts1[-2])
+                    * ckx[-1]
+                    * self.dz[-2]
+                    / self.dz[-1]
                 )
                 # Continue with the implicit solution
                 for i in range(nn - 2, -1, -1):
                     self.ts1[i] = dau[i] * self.ts1[i + 1] + cau[i]
             else:
                 # Alternate direction of computation for odd iteration number
-                dau[nn - 1] = 0
-                cau[nn - 1] = self.ts1[nn - 1]
-                for i in range(nn - 2, 0, -1):
-                    ckx = avdif[i + 1] * dlt1 / (self.dz[i] * dy[i + 1])
-                    cky = avdif[i] * dlt1 / (self.dz[i] * dy[i])
-                    if i == nn - 2:
-                        cau[nn - 1] = (
-                            self.ts1[nn - 1]
-                            - (1 - beta1)
-                            * (self.ts1[nn - 1] - self.ts1[nn - 2])
-                            * ckx
-                            * self.dz[nn - 2]
-                            / self.dz[nn - 1]
-                        )
-                    vara = 1 + beta1 * (ckx + cky) - beta1 * cky * dau[i + 1]
-                    dau[i] = beta1 * ckx / vara
-                    varb = self.ts1[i] + (1 - beta1) * (
-                        ckx * self.ts1[i + 1]
-                        + cky * self.ts1[i - 1]
-                        - (cky + ckx) * self.ts1[i]
-                    )
-                    cau[i] = (varb + beta1 * cky * cau[i + 1]) / vara
-                self.ts1[0] = (
-                    self.ts1[0]
+                cau[-1] = (
+                    self.ts1[-1]
                     - (1 - beta1)
+                    * (self.ts1[-1] - self.ts1[-2])
+                    * ckx[-1]
+                    * self.dz[-2]
+                    / self.dz[-1]
+                )
+                for i in reversed(range(nn - 2)):
+                    vara = 1 + beta1 * (ckx[i] + cky[i]) - beta1 * cky[i] * dau[i + 2]
+                    dau[i + 1] = beta1 * ckx[i] / vara
+                    varb = self.ts1[i + 1] + (1 - beta1) * (
+                        ckx[i] * self.ts1[i + 2]
+                        + cky[i] * self.ts1[i]
+                        - (cky[i] + ckx[i]) * self.ts1[i + 1]
+                    )
+                    cau[i + 1] = (varb + beta1 * cky[i] * cau[i + 2]) / vara
+                self.ts1[0] -= (
+                    (1 - beta1)
                     * (self.ts1[0] - self.ts1[1])
-                    * cky
+                    * cky[0]
                     * self.dz[1]
                     / self.dz[0]
                 )
