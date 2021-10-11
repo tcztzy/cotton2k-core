@@ -1129,7 +1129,7 @@ class Thermology:  # pylint: disable=E0203,E1101,R0902,R0912,R0914,R0915,W0201
         # saturated with water vapor, using a function of soil temperature, which
         # changes linearly between 36 and 40 C.
         # effect of temperature on heat conductivity of air saturated with water vapor.
-        bb = np.polynomial.Polynomial((0.0977, -0.000995))(tcel)
+        bb = 0.0977 - 0.000995 * tcel
         bb[tcel <= 36] = 0.06188
         bb[tcel > 40] = 0.05790
         # apparent heat conductivity of air in soil pore spaces, when it is saturated
