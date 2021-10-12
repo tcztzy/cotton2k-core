@@ -582,6 +582,8 @@ class SoilProcedure:  # pylint: disable=too-few-public-methods,W0201,E1101
         weights[self.root_weights <= 1e-15] = 0
         self.root_weight_capable_uptake = weights.sum(axis=2)
 
+    cumulative_drained_water: float = 0  # mm
+
     def gravity_flow(self, applywat):
         """Computes the water redistribution in the soil or surface irrigation (by
         flooding or sprinklers).
@@ -593,3 +595,4 @@ class SoilProcedure:  # pylint: disable=too-few-public-methods,W0201,E1101
         """
         # Add the applied amount of water to the top soil cell of each column.
         self.soil_water_content[0, :] += 0.10 * applywat / self.layer_depth[0]
+        self.cumulative_drained_water += self.drain() * 10 / self.row_space
