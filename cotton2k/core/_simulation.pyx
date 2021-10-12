@@ -74,7 +74,6 @@ cdef double thetas[9]  # volumetric saturated water content of soil horizon, cm3
 cdef double alpha[9]  # parameter of the Van Genuchten equation.
 cdef double vanGenuchtenBeta[9]  # parameter of the Van Genuchten equation.
 cdef double SaturatedHydCond[9]  # saturated hydraulic conductivity, cm per day.
-cdef double BulkDensity[9]  # bulk density of soil in a horizon, g cm-3.
 cdef double PotGroAllSquares  # sum of potential growth rates of all squares, g plant-1 day-1.
 cdef double PotGroAllBolls  # sum of potential growth rates of seedcotton in all bolls, g plant-1 day-1.
 cdef double PotGroAllBurrs  # sum of potential growth rates of burrs in all bolls, g plant-1 day-1.
@@ -97,9 +96,6 @@ ShedByNitrogenStress = np.zeros(20)  # the effect of nitrogen stress on shedding
 ShedByCarbonStress = np.zeros(20)  # the effect of carbohydrate stress on shedding
 NumSheddingTags = 0  # number of 'box-car' units used for moving values in arrays defining fruit shedding (AbscissionLag, ShedByCarbonStress, ShedByNitrogenStress and ShedByWaterStress).
 
-SOIL = np.array([], dtype=[
-    ("depth", np.double),  # depth from soil surface to the end of horizon layers, cm.
-])
 cdef double condfc[9]  # hydraulic conductivity at field capacity of horizon layers, cm per day.
 cdef double h2oint[14]  # initial soil water content, percent of field capacity,
 # defined by input for consecutive 15 cm soil layers.
@@ -153,14 +149,12 @@ cdef class SoilInit:
             "immediate_drainage_water_potential": psidra,
             "layers": [
                 {
-                    "depth": SOIL["depth"][i],
                     "air_dry": airdr[i],
                     "theta": thetas[i],
                     "alpha": alpha[i],
                     "beta": vanGenuchtenBeta,
                     "saturated_hydraulic_conductivity": SaturatedHydCond[i],
                     "field_capacity_hydraulic_conductivity": condfc[i],
-                    "bulk_density": BulkDensity[i],
                 }
                 for i in range(self.number_of_layers)
             ]
@@ -168,12 +162,10 @@ cdef class SoilInit:
 
     @hydrology.setter
     def hydrology(self, soil_hydrology):
-        global conmax, psisfc, psidra, SOIL
+        global conmax, psisfc, psidra
         conmax = soil_hydrology["max_conductivity"]
         psisfc = soil_hydrology["field_capacity_water_potential"]
         psidra = soil_hydrology["immediate_drainage_water_potential"]
-        SOIL = np.zeros(len(soil_hydrology["layers"]), dtype=[("depth", np.double)])
-        SOIL["depth"] = np.array([layer["depth"] for layer in soil_hydrology["layers"]], dtype=np.double)
         for i, layer in enumerate(soil_hydrology["layers"]):
             airdr[i] = layer["air_dry"]
             thetas[i] = layer["theta"]
@@ -181,7 +173,6 @@ cdef class SoilInit:
             vanGenuchtenBeta[i] = layer["beta"]
             SaturatedHydCond[i] = layer["saturated_hydraulic_conductivity"]
             condfc[i] = layer["field_capacity_hydraulic_conductivity"]
-            BulkDensity[i] = layer["bulk_density"]
 
 
 cdef class FruitingBranch:
@@ -1300,10 +1291,7 @@ cdef class State:
         cdef double rgfac = 0.36  # potential relative growth rate of the roots (g/g/day).
         # Initialize to zero the PotGroRoots array.
         self._root_potential_growth[:] = 0
-        self.compute_root_impedance(np.array([
-            BulkDensity[self.soil_horizon_number[l]]
-            for l in range(40)
-        ], dtype=np.double))
+        self.compute_root_impedance(self.soil_bulk_density)
         for l in range(40):
             for k in range(nk):
                 # Check if this soil cell contains roots (if RootAge is greater than 0), and execute the following if this is true.
@@ -1766,9 +1754,8 @@ cdef class State:
         cdef double stf2 = 0.20  # constant parameters for computing stf.
         cdef double swf1 = 0.20  # constant parameter for computing swf.
         # Compute the organic carbon in the soil (converted from mg / cm3 to % by weight) for the sum of stable and fresh organic matter, assuming 0.4 carbon content in soil organic matter.
-        cdef int j = self.soil_horizon_number[l]  # profile horizon number for this soil layer.
         cdef double oc  # organic carbon in the soil (% by weight).
-        oc = 0.4 * (fresh_organic_matter + HumusOrganicMatter[l][k]) * 0.1 / BulkDensity[j]
+        oc = 0.4 * (fresh_organic_matter + HumusOrganicMatter[l][k]) * 0.1 / self.soil_bulk_density[l]
         # Compute the potential rate of hydrolysis of urea. It is assumed that the potential rate will not be lower than ak0 = 0.25 .
         cdef double ak  # potential rate of urea hydrolysis (day-1).
         ak = max(cak1 + cak2 * oc, 0.25)
@@ -2733,18 +2720,6 @@ cdef class State:
                     upnh4c = upmax / coeff
                 self.supplied_ammonium_nitrogen += upnh4c
 
-    def gravity_flow(self, applywat):
-        """This function computes the water redistribution in the soil or surface irrigation (by flooding or sprinklers). It is called by SoilProcedures(). It calls property drain.
-
-        Arguments
-        ---------
-        applywat
-            amount of water applied, mm.
-        """
-        # Add the applied amount of water to the top soil cell of each column.
-        for k in range(20):
-            self.soil_water_content[0, k] += 0.10 * applywat / self.layer_depth[0]
-
     def average_psi(self, row_space):
         """This function computes and returns the average soil water potential of the root zone of the soil slab. This average is weighted by the amount of active roots (roots capable of uptake) in each soil cell. Soil zones without roots are not included."""
         # Constants used:
@@ -2781,17 +2756,12 @@ cdef class State:
     def initialize_soil_data(self):
         """Computes and sets the initial soil data. It is executed once at the beginning of the simulation, after the soil hydraulic data file has been read. It is called by ReadInput()."""
         cdef double sumdl = 0  # depth to the bottom this layer (cm);
-        cdef double rm = 2.65  # density of the solid fraction of the soil (g / cm3)
-        cdef double bdl[40]  # array of bulk density of soil layers
-        self._sim.soil_horizon_number = np.searchsorted(SOIL["depth"], self.layer_depth_cumsum)
         self._sim.max_water_capacity = np.zeros(40, dtype=np.double)
         for l, j in enumerate(self.soil_horizon_number):
-            # bdl, thad, thts are defined for each soil layer, using the respective input variables BulkDensity, airdr, thetas.
+            # bdl, thad, thts are defined for each soil layer, using the respective input variables bulk_density, airdr, thetas.
             # self.field_capacity, max_water_capacity and thetar are computed for each layer, as water content (cm3 cm-3) of each layer corresponding to matric potentials of psisfc (for field capacity), psidra (for free drainage) and -15 bars (for permanent wilting point), respectively, using function qpsi.
             # pore space volume (self.pore_space) is also computed for each layer.
             # make sure that saturated water content is not more than pore space.
-            bdl[l] = BulkDensity[j]
-            self.pore_space[l] = 1 - BulkDensity[j] / rm
             if thetas[j] > self.pore_space[l]:
                 thetas[j] = self.pore_space[l]
             self._sim.thad[l] = airdr[j]
@@ -2829,7 +2799,7 @@ cdef class State:
                 coeff = 1.2
             else:
                 coeff = 1.6
-            NO3FlowFraction[l] = 1 / (1 + coeff * bdl[l] / self.max_water_capacity[l])
+            NO3FlowFraction[l] = 1 / (1 + coeff * self.soil_bulk_density[l] / self.max_water_capacity[l])
             # Determine the corresponding 15 cm layer of the input file.
             # Compute the initial volumetric water content (cell.water_content) of each layer, and check that it will not be less than the air-dry value or more than pore space volume.
             j = min(int((sumdl - 1) / LayerDepth), 13)
@@ -2841,7 +2811,7 @@ cdef class State:
             self.soil_nitrate_content[l, 0] = rnno3[j] / LayerDepth * 0.01
             VolNh4NContent[l][0] = rnnh4[j] / LayerDepth * 0.01
             # organic matter in mg / cm3 units.
-            om = (self.oma[j] / 100) * bdl[l] * 1000
+            om = (self.oma[j] / 100) * self.soil_bulk_density[l] * 1000
             # potom is the proportion of readily mineralizable om. it is a function of soil depth (sumdl, in cm), modified from GOSSYM (where it probably includes the 0.4 factor for organic C in om).
             potom = max(0.0, 0.15125 - 0.02878 * log(sumdl))
             # FreshOrganicMatter is the readily mineralizable organic matter (= "fresh organic matter" in CERES models). HumusOrganicMatter is the remaining organic matter, which is mineralized very slowly.
@@ -2875,6 +2845,8 @@ cdef class Simulation:
     cdef public numpy.ndarray column_width_cumsum
     cdef public numpy.ndarray layer_depth
     cdef public numpy.ndarray layer_depth_cumsum
+    cdef public numpy.ndarray soil_hydrology
+    cdef public numpy.ndarray soil_bulk_density
     cdef public numpy.ndarray soil_clay_volume_fraction
     cdef public numpy.ndarray soil_sand_volume_fraction
     cdef public numpy.ndarray soil_horizon_number  # the soil horizon number associated with each soil layer in the slab.

@@ -221,6 +221,26 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
         self.ratio_implicit = (
             kwargs.get("soil", {}).get("hydrology", {}).get("ratio_implicit", 0)
         )
+        self.soil_hydrology = np.array(
+            [
+                (layer["depth"], layer["bulk_density"])
+                for layer in kwargs.get("soil", {})
+                .get("hydrology", {})
+                .get("layers", [])
+            ],
+            dtype=[
+                # depth from soil surface to the end of horizon layers, cm.
+                ("depth", np.double),
+                # bulk density of soil in a horizon, g cm-3.
+                ("bulk_density", np.double),
+            ],
+        )
+        self.soil_horizon_number = np.searchsorted(
+            self.soil_hydrology["depth"], self.layer_depth_cumsum
+        )
+        self.soil_bulk_density = self.soil_hydrology["bulk_density"][
+            self.soil_horizon_number
+        ]
         self.pclay = np.array(
             [
                 l["clay"]
@@ -247,7 +267,11 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
         )
         self.thad = np.zeros(40, dtype=np.double)
         self.field_capacity = np.zeros(40, dtype=np.double)
-        self.pore_space = np.zeros(40, dtype=np.double)
+        self.pore_space = (
+            1
+            - self.soil_bulk_density
+            / 2.65  # density of the solid fraction of the soil (g / cm3)
+        )
         self.heat_capacity_soil_solid = np.zeros(40, dtype=np.double)
         self.initialize_state0()
         self.read_input(**kwargs)
@@ -563,7 +587,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
     # heat conductivity.
     marginal_water_content = np.zeros(40, dtype=np.double)
     # the heat conductivity of dry soil.
-    heat_conductivity_dry_soil = np.zeros(40, dtype=np.double)
+    heat_conductivity_dry_soil: npt.NDArray[np.double]
     input_layer_depth = 15
 
     pclay: npt.NDArray[np.double]  # percentage of clay in soil of horizon layers.
@@ -613,18 +637,18 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             )
             # Heat capacity of the solid soil fractions (mineral + organic, by volume)
             self.heat_capacity_soil_solid[l] = xm * self.cmin + xo * self.corg
-            # The heat conductivity of dry soil is computed using the procedure
-            # suggested by De Vries.
-            self.heat_conductivity_dry_soil[l] = (
-                1.25
-                * (
-                    self.pore_space[l] * self.cka
-                    + dsandair * self.bsand * self.soil_sand_volume_fraction[l]
-                    + dclayair * self.bclay * self.soil_clay_volume_fraction[l]
-                )
-                / (
-                    self.pore_space[l]
-                    + dsandair * self.soil_sand_volume_fraction[l]
-                    + dclayair * self.soil_clay_volume_fraction[l]
-                )
+        # The heat conductivity of dry soil is computed using the procedure suggested
+        # by De Vries.
+        self.heat_conductivity_dry_soil = (
+            1.25
+            * (
+                self.pore_space * self.cka
+                + dsandair * self.bsand * self.soil_sand_volume_fraction
+                + dclayair * self.bclay * self.soil_clay_volume_fraction
             )
+            / (
+                self.pore_space
+                + dsandair * self.soil_sand_volume_fraction
+                + dclayair * self.soil_clay_volume_fraction
+            )
+        )
