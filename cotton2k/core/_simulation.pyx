@@ -99,8 +99,6 @@ cdef double h2oint[14]  # initial soil water content, percent of field capacity,
 # defined by input for consecutive 15 cm soil layers.
 cdef double psidra  # soil matric water potential, bars, for which immediate drainage
 # will be simulated (suggested value -0.25 to -0.1).
-cdef double psisfc  # soil matric water potential at field capacity,
-# bars (suggested value -0.33 to -0.1).
 cdef double rnnh4[14]  # residual nitrogen as ammonium in soil at beginning of season, kg per ha.
 # defined by input for consecutive 15 cm soil layers.
 cdef double rnno3[14]  # residual nitrogen as nitrate in soil at beginning of season, kg per ha.
@@ -143,7 +141,6 @@ cdef class SoilInit:
     def hydrology(self):
         return {
             "max_conductivity": conmax,
-            "field_capacity_water_potential": psisfc,
             "immediate_drainage_water_potential": psidra,
             "layers": [
                 {
@@ -159,9 +156,8 @@ cdef class SoilInit:
 
     @hydrology.setter
     def hydrology(self, soil_hydrology):
-        global conmax, psisfc, psidra
+        global conmax, psidra
         conmax = soil_hydrology["max_conductivity"]
-        psisfc = soil_hydrology["field_capacity_water_potential"]
         psidra = soil_hydrology["immediate_drainage_water_potential"]
         for i, layer in enumerate(soil_hydrology["layers"]):
             airdr[i] = layer["air_dry"]
@@ -2759,7 +2755,7 @@ cdef class State:
                 thetas[j] = self.pore_space[l]
             self._sim.thad[l] = airdr[j]
             thts[l] = thetas[j]
-            self._sim.field_capacity[l] = qpsi(psisfc, self.thad[l], thts[l], alpha[j], vanGenuchtenBeta[j])
+            self._sim.field_capacity[l] = qpsi(self.soil_psi_field_capacity, self.thad[l], thts[l], alpha[j], vanGenuchtenBeta[j])
             self._sim.max_water_capacity[l] = qpsi(psidra, self.thad[l], thts[l], alpha[j], vanGenuchtenBeta[j])
             thetar[l] = qpsi(-15., self.thad[l], thts[l], alpha[j], vanGenuchtenBeta[j])
             # When the saturated hydraulic conductivity is not given, it is computed from the hydraulic conductivity at field capacity (condfc), using the wcond function.
@@ -2864,6 +2860,7 @@ cdef class Simulation:
     cdef public double site_parameters[17]
     cdef public double skip_row_width  # the smaller distance between skip rows, cm
     cdef public double ratio_implicit  # the ratio for the implicit numerical solution of the water transport equation (used in FLUXI and in SFLUX.
+    cdef public double soil_psi_field_capacity  # soil matric water potential at field capacity, bars (suggested value -0.33 to -0.1).
     cdef public State _current_state
     cdef double defkgh  # amount of defoliant applied, kg per ha
     cdef double tdfkgh  # total cumulative amount of defoliant

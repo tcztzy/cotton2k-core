@@ -218,15 +218,13 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
         self.layer_depth[-2:] = 10
         self.layer_depth_cumsum = self.layer_depth.cumsum()
         self.cell_area = self.layer_depth[:, None] * self.column_width[None, :]
-        self.ratio_implicit = (
-            kwargs.get("soil", {}).get("hydrology", {}).get("ratio_implicit", 0)
-        )
+        hydrology = kwargs.get("soil", {}).get("hydrology", {})
+        self.ratio_implicit = hydrology.get("ratio_implicit", 0)
+        self.soil_psi_field_capacity = hydrology.get("field_capacity_water_potential", 0)
         self.soil_hydrology = np.array(
             [
                 (layer["depth"], layer["bulk_density"], layer["saturated_hydraulic_conductivity"])
-                for layer in kwargs.get("soil", {})
-                .get("hydrology", {})
-                .get("layers", [])
+                for layer in hydrology.get("layers", [])
             ],
             dtype=[
                 # depth from soil surface to the end of horizon layers, cm.
@@ -246,13 +244,13 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
         self.pclay = np.array(
             [
                 l["clay"]
-                for l in kwargs.get("soil", {}).get("hydrology", {}).get("layers", [])
+                for l in hydrology.get("layers", [])
             ]
         )
         self.psand = np.array(
             [
                 l["sand"]
-                for l in kwargs.get("soil", {}).get("hydrology", {}).get("layers", [])
+                for l in hydrology.get("layers", [])
             ]
         )
         self.oma = np.array(

@@ -288,13 +288,13 @@ def qpsi(psi: float, qr: float, qsat: float, alpha: float, beta: float) -> float
         return qr
     # The soil water matric potential is transformed from bars (psi) to cm in positive
     # value (psix).
-    psix = 1000 * abs(psi + 0.00001)
+    psix = 1000 * np.abs(psi + 0.00001)
     # The following equation is used (in FORTRAN notation):
     #   QPSI = QR + (QSAT-QR) / (1 + (ALPHA*PSIX)**BETA)**(1-1/BETA)
     gama = 1 - 1 / beta
     term = 1 + (alpha * psix) ** beta  # intermediate variable
     swfun = qr + (qsat - qr) / term ** gama  # computed water content
-    return max(qr + 0.0001, swfun)
+    return np.maximum(qr + 0.0001, swfun)
 
 
 def psiq(q: float, qr: float, qsat: float, alpha: float, beta: float) -> float:
