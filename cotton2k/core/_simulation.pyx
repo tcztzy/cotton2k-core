@@ -69,7 +69,6 @@ cdef int maxk = 20
 cdef int nl
 cdef int nk
 cdef double conmax  # the maximum value for non-dimensional hydraulic conductivity
-cdef double airdr[9]  # volumetric water content of soil at "air-dry" for each soil horizon, cm3 cm-3.
 cdef double thetas[9]  # volumetric saturated water content of soil horizon, cm3 cm-3.
 cdef double alpha[9]  # parameter of the Van Genuchten equation.
 cdef double vanGenuchtenBeta[9]  # parameter of the Van Genuchten equation.
@@ -144,7 +143,6 @@ cdef class SoilInit:
             "immediate_drainage_water_potential": psidra,
             "layers": [
                 {
-                    "air_dry": airdr[i],
                     "theta": thetas[i],
                     "alpha": alpha[i],
                     "beta": vanGenuchtenBeta,
@@ -160,7 +158,6 @@ cdef class SoilInit:
         conmax = soil_hydrology["max_conductivity"]
         psidra = soil_hydrology["immediate_drainage_water_potential"]
         for i, layer in enumerate(soil_hydrology["layers"]):
-            airdr[i] = layer["air_dry"]
             thetas[i] = layer["theta"]
             alpha[i] = layer["alpha"]
             vanGenuchtenBeta[i] = layer["beta"]
@@ -2735,7 +2732,7 @@ cdef class State:
                 # Compute avgwat and the parameters to compute the soil water potential in each soil horizon
                 avgwat = sumwat[j] / psinum[j]  # weighted average soil water content (V/V) in root zone
                 # Soil water potential computed for a soil profile layer:
-                avgpsi = psiq(avgwat, airdr[j], thetas[j], alpha[j], vanGenuchtenBeta[j]) - PsiOsmotic(avgwat, thetas[j], ElCondSatSoilToday)
+                avgpsi = psiq(avgwat, self._sim.soil_hydrology["air_dry"][j], thetas[j], alpha[j], vanGenuchtenBeta[j]) - PsiOsmotic(avgwat, thetas[j], ElCondSatSoilToday)
                 # Use this to compute the average for the whole root zone.
                 sumpsi += avgpsi * psinum[j]
                 sumnum += psinum[j]
@@ -2747,13 +2744,12 @@ cdef class State:
         cdef double sumdl = 0  # depth to the bottom this layer (cm);
         self._sim.max_water_capacity = np.zeros(40, dtype=np.double)
         for l, j in enumerate(self.soil_horizon_number):
-            # bdl, thad, thts are defined for each soil layer, using the respective input variables bulk_density, airdr, thetas.
+            # bdl, thad, thts are defined for each soil layer, using the respective input variables bulk_density, air_dry, thetas.
             # self.field_capacity, max_water_capacity and thetar are computed for each layer, as water content (cm3 cm-3) of each layer corresponding to matric potentials of psisfc (for field capacity), psidra (for free drainage) and -15 bars (for permanent wilting point), respectively, using function qpsi.
             # pore space volume (self.pore_space) is also computed for each layer.
             # make sure that saturated water content is not more than pore space.
             if thetas[j] > self.pore_space[l]:
                 thetas[j] = self.pore_space[l]
-            self._sim.thad[l] = airdr[j]
             thts[l] = thetas[j]
             self._sim.field_capacity[l] = qpsi(self.soil_psi_field_capacity, self.thad[l], thts[l], alpha[j], vanGenuchtenBeta[j])
             self._sim.max_water_capacity[l] = qpsi(psidra, self.thad[l], thts[l], alpha[j], vanGenuchtenBeta[j])
@@ -2793,7 +2789,7 @@ cdef class State:
             # Compute the initial volumetric water content (cell.water_content) of each layer, and check that it will not be less than the air-dry value or more than pore space volume.
             j = min(int((sumdl - 1) / LayerDepth), 13)
             n = self.soil_horizon_number[l]
-            self.soil_water_content[l, 0] = min(max(self.field_capacity[l] * h2oint[j] / 100, airdr[n]), self.pore_space[l])
+            self.soil_water_content[l, 0] = min(max(self.field_capacity[l] * h2oint[j] / 100, self.soil_hydrology["air_dry"][n]), self.pore_space[l])
             # Initial values of ammonium N (rnnh4, VolNh4NContent) and nitrate N (rnno3, VolNo3NContent) are converted from kgs per ha to mg / cm3 for each soil layer, after checking for minimal amounts.
             rnno3[j] = max(rnno3[j], 2.0)
             rnnh4[j] = max(rnnh4[j], 0.2)

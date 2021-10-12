@@ -220,10 +220,17 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
         self.cell_area = self.layer_depth[:, None] * self.column_width[None, :]
         hydrology = kwargs.get("soil", {}).get("hydrology", {})
         self.ratio_implicit = hydrology.get("ratio_implicit", 0)
-        self.soil_psi_field_capacity = hydrology.get("field_capacity_water_potential", 0)
+        self.soil_psi_field_capacity = hydrology.get(
+            "field_capacity_water_potential", 0
+        )
         self.soil_hydrology = np.array(
             [
-                (layer["depth"], layer["bulk_density"], layer["saturated_hydraulic_conductivity"])
+                (
+                    layer["depth"],
+                    layer["bulk_density"],
+                    layer["saturated_hydraulic_conductivity"],
+                    layer["air_dry"],
+                )
                 for layer in hydrology.get("layers", [])
             ],
             dtype=[
@@ -232,7 +239,9 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
                 # bulk density of soil in a horizon, g cm-3.
                 ("bulk_density", np.double),
                 # saturated hydraulic conductivity, cm per day.
-                ("saturated_hydraulic_conductivity", np.double)
+                ("saturated_hydraulic_conductivity", np.double),
+                # volumetric water content of soil at "air-dry" for each soil horizon.
+                ("air_dry", np.double),
             ],
         )
         self.soil_horizon_number = np.searchsorted(
@@ -241,18 +250,9 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
         self.soil_bulk_density = self.soil_hydrology["bulk_density"][
             self.soil_horizon_number
         ]
-        self.pclay = np.array(
-            [
-                l["clay"]
-                for l in hydrology.get("layers", [])
-            ]
-        )
-        self.psand = np.array(
-            [
-                l["sand"]
-                for l in hydrology.get("layers", [])
-            ]
-        )
+        self.thad = self.soil_hydrology["air_dry"][self.soil_horizon_number]
+        self.pclay = np.array([l["clay"] for l in hydrology.get("layers", [])])
+        self.psand = np.array([l["sand"] for l in hydrology.get("layers", [])])
         self.oma = np.array(
             [l["organic_matter"] for l in kwargs.get("soil", {}).get("initial", [])]
         )
@@ -265,7 +265,6 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             if isinstance(start_date, datetime.date)
             else int(start_date[:4])
         )
-        self.thad = np.zeros(40, dtype=np.double)
         self.field_capacity = np.zeros(40, dtype=np.double)
         self.pore_space = (
             1
