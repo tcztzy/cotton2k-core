@@ -758,20 +758,16 @@ class Thermology:  # pylint: disable=E0203,E1101,R0902,R0912,R0914,R0915,W0201
         )
         # The numerical solution of the flow equation is a combination of the implicit
         # method (weighted by beta1) and the explicit method (weighted by 1-beta1).
-        avdif = np.zeros(  # average thermal diffusivity between adjacent cells.
-            nn, dtype=np.double
-        )
-        dy = np.zeros(  # array of distances between centers of adjacent cells (cm).
-            nn, dtype=np.double
-        )
         # Compute average diffusivities avdif between layer i and the previous
         # (i-1), and dy(i), distance (cm) between centers of layer i and the
         # previous (i-1)
-        avdif[1:] = (asoi[1:] + asoi[:-1]) / 2
-        dy[1:] = (self.dz[1:] + self.dz[:-1]) / 2
+        # average thermal diffusivity between adjacent cells.
+        avdif = (asoi[1:] + asoi[:-1]) / 2
+        # array of distances between centers of adjacent cells (cm).
+        dy = (self.dz[1:] + self.dz[:-1]) / 2
         # minimum time step for the explicit solution.
         # Determine the minimum time step required for the explicit solution.
-        dltmin = min(np.nanmin(0.2 * dy * self.dz / avdif / (1 - beta1)), dlt)
+        dltmin = min(np.nanmin(0.2 * dy * self.dz[1:] / avdif / (1 - beta1)), dlt)
         # Use time step of dlt1 seconds, for iterx iterations
         iterx = int(dlt / dltmin)  # computed number of iterations.
         if dltmin < dlt:
@@ -786,7 +782,7 @@ class Thermology:  # pylint: disable=E0203,E1101,R0902,R0912,R0914,R0915,W0201
                 )
                 / self.hcap
             )
-            avdif[1:] = (asoi[1:] + asoi[:-1]) / 2
+            avdif = (asoi[1:] + asoi[:-1]) / 2
             self.soil_heat_flux_numiter += 1
             # The solution of the simultaneous equations in the implicit method
             # alternates between the two directions along the arrays. The reason for
@@ -796,8 +792,8 @@ class Thermology:  # pylint: disable=E0203,E1101,R0902,R0912,R0914,R0915,W0201
             cau = np.zeros(nn, dtype=np.double)
             dau = np.zeros(nn, dtype=np.double)
             # nondimensional diffusivities to next and previous layers.
-            ckx = avdif[2:] * dlt1 / (self.dz[1:-1] * dy[2:])
-            cky = avdif[1:-1] * dlt1 / (self.dz[1:-1] * dy[1:-1])
+            ckx = avdif[1:] * dlt1 / (self.dz[1:-1] * dy[1:])
+            cky = avdif[:-1] * dlt1 / (self.dz[1:-1] * dy[:-1])
             # used for computing the implicit solution.
             vara: float
             varb: float
