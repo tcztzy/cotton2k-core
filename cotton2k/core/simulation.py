@@ -352,6 +352,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             "soil_fresh_organic_matter",
             "soil_nitrate_content",
             "soil_psi",
+            "soil_urea_content",
             "soil_water_content",
             "square_potential_growth",
             "square_weights",
@@ -454,6 +455,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             (3, 30, 5), dtype=np.double
         )
         state0.soil_psi = np.zeros((40, 20), dtype=np.double)
+        state0.soil_urea_content = np.zeros((40, 20), dtype=np.double)
         state0.hourly_soil_temperature = np.zeros((24, 40, 20), dtype=np.double)
         state0.foliage_temperature = np.ones(20, dtype=np.double) * 295
         self._current_state = state0

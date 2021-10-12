@@ -81,7 +81,6 @@ cdef NitrogenFertilizer NFertilizer[150]
 cdef int NumNitApps  # number of applications of nitrogen fertilizer.
 cdef double thts[40]  # saturated volumetric water content of each soil layer, cm3 cm-3.
 cdef double VolNh4NContent[40][20]  # volumetric ammonium nitrogen content of a soil cell, mg N cm-3.
-cdef double VolUreaNContent[40][20]  # volumetric urea nitrogen content of a soil cell, mg N cm-3.
 cdef double ElCondSatSoilToday  # electrical conductivity of saturated extract (mmho/cm) on this day.
 cdef double thetar[40]  # volumetric water content of soil layers at permanent wilting point (-15 bars), cm3 cm-3.
 cdef double HumusOrganicMatter[40][20]  # humus fraction of soil organic matter, mg/cm3.
@@ -266,7 +265,7 @@ cdef void NitrogenFlow(int nn, double q01[], double q1[], double dd[], double ni
     nn
         the number of cells in this layer or column.
     nur
-        one dimensional array of a layer or a column of VolUreaNContent.
+        one dimensional array of a layer or a column of soil_urea_content.
     q01
         one dimensional array of a layer or a column of the previous values of cell.water_content.
     q1
@@ -342,6 +341,7 @@ cdef class State:
     cdef public numpy.ndarray fruiting_nodes_stage
     cdef public numpy.ndarray fruiting_nodes_ginning_percent
     cdef public numpy.ndarray soil_water_content  # volumetric water content of a soil cell, cm3 cm-3.
+    cdef public numpy.ndarray soil_urea_content  # volumetric urea nitrogen content of a soil cell, mg N cm-3.
     cdef public numpy.ndarray soil_fresh_organic_matter  # fresh organic matter in the soil, mg / cm3.
     cdef public numpy.ndarray soil_nitrate_content  # volumetric nitrate nitrogen content of a soil cell, mg N cm-3.
     cdef public numpy.ndarray soil_psi  # matric water potential of a soil cell, bars.
@@ -1713,7 +1713,7 @@ cdef class State:
         # For each soil cell: call method urea_hydrolysis(), mineralize_nitrogen(), Nitrification() and denitrification().
         for l in range(40):
             for k in range(20):
-                if VolUreaNContent[l][k] > 0:
+                if self.soil_urea_content[l, k] > 0:
                     self.urea_hydrolysis((l, k))
                 self.mineralize_nitrogen((l, k), self._sim.start_date, self._sim.row_space)
                 if VolNh4NContent[l][k] > 0.00001:
@@ -1765,12 +1765,12 @@ cdef class State:
         # Compute the effect of soil temperature. The following parameters are used for the temperature function: stf1, stf2.
         cdef double stf  # soil temperature effect on rate of urea hydrolysis.
         stf = min(max((soil_temperature - 273.161) / stf1 + stf2, 0), 1)
-        # Compute the actual amount of urea hydrolized, and update VolUreaNContent and VolNh4NContent.
+        # Compute the actual amount of urea hydrolized, and update soil_urea_content and VolNh4NContent.
         cdef double hydrur  # amount of urea hydrolized, mg N cm-3 day-1.
-        hydrur = ak * swf * stf * VolUreaNContent[l][k]
-        if hydrur > VolUreaNContent[l][k]:
-            hydrur = VolUreaNContent[l][k]
-        VolUreaNContent[l][k] -= hydrur
+        hydrur = ak * swf * stf * self.soil_urea_content[l, k]
+        if hydrur > self.soil_urea_content[l, k]:
+            hydrur = self.soil_urea_content[l, k]
+        self.soil_urea_content[l, k] -= hydrur
         VolNh4NContent[l][k] += hydrur
 
     def mineralize_nitrogen(self, index, start_date, row_space):
@@ -1970,27 +1970,27 @@ cdef class State:
         cdef double q1[40]  # one dimensional array of a layer or a column of cell.water_content.
         cdef double psi1[40]  # one dimensional array of a layer or a column of SoilPsi.
         cdef double nit[40]  # one dimensional array of a layer or a column of VolNo3NContent.
-        cdef double nur[40]  # one dimensional array of a layer or a column of VolUreaNContent.
+        cdef double nur[40]  # one dimensional array of a layer or a column of soil_urea_content.
         # direction indicator: iv = 1 for vertical flow in each column; iv = 0 for horizontal flow in each layer.
         # VERTICAL FLOW in each column. the direction indicator iv is set to 1.
         iv: int = 1
-        # Loop over all columns. Temporary one-dimensional arrays are defined for each column: assign the cell.water_content[] values to temporary one-dimensional arrays q1 and q01. Assign SoilPsi, VolNo3NContent and VolUreaNContent values to arrays psi1, nit and nur, respectively.
+        # Loop over all columns. Temporary one-dimensional arrays are defined for each column: assign the cell.water_content[] values to temporary one-dimensional arrays q1 and q01. Assign SoilPsi, VolNo3NContent and soil_urea_content values to arrays psi1, nit and nur, respectively.
         for k in range(20):
             for l in range(40):
                 q1[l] = self.soil_water_content[l, k]
                 q01[l] = self.soil_water_content[l, k]
                 psi1[l] = self.soil_psi[l, k] + PsiOsmotic(self.soil_water_content[l, k], thts[l], ElCondSatSoilToday)
                 nit[l] = self.soil_nitrate_content[l, k]
-                nur[l] = VolUreaNContent[l][k]
+                nur[l] = self.soil_urea_content[l, k]
                 _dl[l] = self.layer_depth[l]
             # Call the following functions: water_flux() calculates the water flow caused by potential gradients; NitrogenFlow() computes the movement of nitrates caused by the flow of water.
             self.water_flux(q1, psi1, _dl, self.thad, thts, self.pore_space, 40, iv, 0, self.numiter, noitr)
             NitrogenFlow(nl, q01, q1, _dl, nit, nur)
-            # Reassign the updated values of q1, nit, nur and psi1 back to cell.water_content, VolNo3NContent, VolUreaNContent and SoilPsi.
+            # Reassign the updated values of q1, nit, nur and psi1 back to cell.water_content, VolNo3NContent, soil_urea_content and SoilPsi.
             for l in range(40):
                 self.soil_water_content[l, k] = q1[l]
                 self.soil_nitrate_content[l, k] = nit[l]
-                VolUreaNContent[l][k] = nur[l]
+                self.soil_urea_content[l, k] = nur[l]
                 self.soil_psi[l, k] = psi1[l] - PsiOsmotic(self.soil_water_content[l, k], thts[l], ElCondSatSoilToday)
         cdef numpy.ndarray pp1  # one dimensional array of a layer or a column of PP.
         cdef numpy.ndarray qr1  # one dimensional array of a layer or a column of THAD.
@@ -1998,7 +1998,7 @@ cdef class State:
 
         # HORIZONTAL FLUX in each layer. The direction indicator iv is set to 0.
         iv = 0
-        # Loop over all layers. Define the horizon number j for this layer. Temporary one-dimensional arrays are defined for each layer: assign the cell.water_content values to  q1 and q01. Assign SoilPsi, VolNo3NContent, VolUreaNContent, thad and thts values of the soil cells to arrays psi1, nit, nur, qr1 and qs1, respectively.
+        # Loop over all layers. Define the horizon number j for this layer. Temporary one-dimensional arrays are defined for each layer: assign the cell.water_content values to  q1 and q01. Assign SoilPsi, VolNo3NContent, soil_urea_content, thad and thts values of the soil cells to arrays psi1, nit, nur, qr1 and qs1, respectively.
         for l in range(40):
             qr1 = np.repeat(self.thad[l], 20)
             pp1 = np.repeat(self.pore_space[l], 20)
@@ -2008,17 +2008,17 @@ cdef class State:
                 psi1[k] = self.soil_psi[l][k] + PsiOsmotic(self.soil_water_content[l, k], thts[l], ElCondSatSoilToday)
                 qs1[k] = thts[l]
                 nit[k] = self.soil_nitrate_content[l, k]
-                nur[k] = VolUreaNContent[l][k]
+                nur[k] = self.soil_urea_content[l, k]
                 wk1[k] = self._sim.column_width[k]
             # Call subroutines water_flux(), and NitrogenFlow() to compute water nitrate and urea transport in the layer.
             self.water_flux(q1, psi1, wk1, qr1, qs1, pp1, nk, iv, l, self.numiter, noitr)
             NitrogenFlow(nk, q01, q1, wk1, nit, nur)
-            # Reassign the updated values of q1, nit, nur and psi1 back to cell.water_content, VolNo3NContent, VolUreaNContent and SoilPsi.
+            # Reassign the updated values of q1, nit, nur and psi1 back to cell.water_content, VolNo3NContent, soil_urea_content and SoilPsi.
             for k in range(20):
                 self.soil_water_content[l, k] = q1[k]
                 self.soil_psi[l][k] = psi1[k] - PsiOsmotic(self.soil_water_content[l, k], thts[l], ElCondSatSoilToday)
                 self.soil_nitrate_content[l, k] = nit[k]
-                VolUreaNContent[l][k] = nur[k]
+                self.soil_urea_content[l, k] = nur[k]
         # Call drain to move excess water down in the column and compute drainage out of the column. Update cumulative drainage.
         cdef double WaterDrainedOut = 0  # water drained out of the slab, mm.
         WaterDrainedOut += self.drain()
@@ -2060,18 +2060,18 @@ cdef class State:
                         nitconc = self.soil_nitrate_content[l, k] / oldvh2oc[k]
                         if nitconc < 1.e-30:
                             nitconc = 0
-                        nurconc = VolUreaNContent[l][k] / oldvh2oc[k]
+                        nurconc = self.soil_urea_content[l, k] / oldvh2oc[k]
                         if nurconc < 1.e-30:
                             nurconc = 0
                         self.soil_nitrate_content[l, k] = self.soil_water_content[l, k] * nitconc
-                        VolUreaNContent[l][k] = self.soil_water_content[l, k] * nurconc
+                        self.soil_urea_content[l, k] = self.soil_water_content[l, k] * nurconc
                         # Only a part ( NO3FlowFraction ) of N is moved with water draining.
                         vno3mov: float = qvout * nitconc  # amount of nitrate N moving out of a cell.
                         self.soil_nitrate_content[l + 1, k] += NO3FlowFraction[l] * vno3mov * layer_depth_ratio
                         self.soil_nitrate_content[l, k] += (1 - NO3FlowFraction[l]) * vno3mov
                         vnurmov: float = qvout * nurconc  # amount of urea N moving out of a cell.
-                        VolUreaNContent[l + 1][k] += NO3FlowFraction[l] * vnurmov * layer_depth_ratio
-                        VolUreaNContent[l][k] += (1 - NO3FlowFraction[l]) * vnurmov
+                        self.soil_urea_content[l + 1, k] += NO3FlowFraction[l] * vnurmov * layer_depth_ratio
+                        self.soil_urea_content[l, k] += (1 - NO3FlowFraction[l]) * vnurmov
             else:  # If the average water content is not higher than uplimit, start another loop over columns.
                 for k in range(20):
                     # Check each soil cell if water content exceeds uplimit,
@@ -2082,16 +2082,16 @@ cdef class State:
                         nitconc = self.soil_nitrate_content[l, k] / oldvh2oc[k]
                         if nitconc < 1.e-30:
                             nitconc = 0
-                        nurconc = VolUreaNContent[l][k] / oldvh2oc[k]
+                        nurconc = self.soil_urea_content[l, k] / oldvh2oc[k]
                         if nurconc < 1.e-30:
                             nurconc = 0
                         self.soil_nitrate_content[l, k] = self.soil_water_content[l, k] * nitconc
-                        VolUreaNContent[l][k] = self.soil_water_content[l, k] * nurconc
+                        self.soil_urea_content[l, k] = self.soil_water_content[l, k] * nurconc
 
                         self.soil_nitrate_content[l + 1, k] += NO3FlowFraction[l] * wmov * nitconc * layer_depth_ratio
-                        VolUreaNContent[l + 1][k] += NO3FlowFraction[l] * wmov * nurconc * layer_depth_ratio
+                        self.soil_urea_content[l + 1, k] += NO3FlowFraction[l] * wmov * nurconc * layer_depth_ratio
                         self.soil_nitrate_content[l, k] += (1 - NO3FlowFraction[l]) * wmov * nitconc
-                        VolUreaNContent[l][k] += (1 - NO3FlowFraction[l]) * wmov * nurconc
+                        self.soil_urea_content[l, k] += (1 - NO3FlowFraction[l]) * wmov * nurconc
         # For the lowermost soil layer, loop over columns:
         # It is assumed that the maximum amount of water held at the lowest soil layer (nlx-1) of the slab is equal to self.field_capacity. If water content exceeds max_water_capacity, compute the water drained out (Drainage), update water, nitrate and urea, compute nitrogen lost by drainage, and add it to the cumulative N loss SoilNitrogenLoss.
         Drainage: float = 0  # drainage of water out of the slab, cm3 (return value)
@@ -2101,28 +2101,24 @@ cdef class State:
                 nitconc = self.soil_nitrate_content[nlx - 1, k] / oldvh2oc[k]
                 if nitconc < 1.e-30:
                     nitconc = 0
-                nurconc = VolUreaNContent[nlx - 1][k] / oldvh2oc[k]
+                nurconc = self.soil_urea_content[nlx - 1, k] / oldvh2oc[k]
                 if nurconc < 1.e-30:
                     nurconc = 0
                 # intermediate variable for computing N loss.
-                saven: float = (self.soil_nitrate_content[nlx - 1, k] + VolUreaNContent[nlx - 1][k]) * self.layer_depth[nlx - 1] * self._sim.column_width[k]
+                saven: float = (self.soil_nitrate_content[nlx - 1, k] + self.soil_urea_content[nlx - 1, k]) * self.layer_depth[nlx - 1] * self._sim.column_width[k]
                 self.soil_water_content[nlx - 1, k] = self.max_water_capacity[nlx - 1]
                 self.soil_nitrate_content[nlx - 1, k] = nitconc * self.max_water_capacity[nlx - 1]
-                VolUreaNContent[nlx - 1][k] = nurconc * self.max_water_capacity[nlx - 1]
+                self.soil_urea_content[nlx - 1, k] = nurconc * self.max_water_capacity[nlx - 1]
         return Drainage
 
     def drip_flow(self, double Drip, double row_space):
-        """omputes the water redistribution in the soil after irrigation by a drip system. It also computes the resulting redistribution of nitrate and urea N.
-    //  It is called by SoilProcedures() noitr times per day. It calls function CellDistrib().
-    //     The following argument is used:
-    //  Drip - amount of irrigation applied by the drip method, mm.
-    //
-    //     The following global variables are referenced:
-    //       dl, LocationColumnDrip, LocationLayerDrip, max_water_capacity,
-    //       nk, nl, NO3FlowFraction, self.pore_space, wk
-    //
-    //     The following global variables are set:
-    //       CumWaterDrained, SoilNitrogenLoss, VolNo3NContent, VolUreaNContent
+        """Computes the water redistribution in the soil after irrigation by a drip
+        system. It also computes the resulting redistribution of nitrate and urea N.
+
+        Arguments
+        ---------
+        Drip
+            amount of irrigation applied by the drip method, mm.
         """
         cdef double dripw[40]  # amount of water applied, or going from one ring of
         # soil cells to the next one, cm3. (array)
@@ -2165,15 +2161,15 @@ cdef class State:
 
         # The movement of urea N to the next ring is computed similarly.
         cdef double cuw = 0  # concentration of urea N in the outflowing water
-        if VolUreaNContent[l0][k0] > 1.e-30:
-            cuw = VolUreaNContent[l0][k0] / (
+        if self.soil_urea_content[l0][k0] > 1.e-30:
+            cuw = self.soil_urea_content[l0][k0] / (
                         self.soil_water_content[l0, k0] + dripw[0] / (self.layer_depth[l0] * self._sim.column_width[k0]))
-            if (cuw * self.max_water_capacity[l0]) < (NO3FlowFraction[l0] * VolUreaNContent[l0][k0]):
-                dripu[1] = NO3FlowFraction[l0] * VolUreaNContent[l0][k0] * self.layer_depth[l0] * self._sim.column_width[k0]
-                VolUreaNContent[l0][k0] = (1 - NO3FlowFraction[l0]) * VolUreaNContent[l0][k0]
+            if (cuw * self.max_water_capacity[l0]) < (NO3FlowFraction[l0] * self.soil_urea_content[l0][k0]):
+                dripu[1] = NO3FlowFraction[l0] * self.soil_urea_content[l0][k0] * self.layer_depth[l0] * self._sim.column_width[k0]
+                self.soil_urea_content[l0][k0] = (1 - NO3FlowFraction[l0]) * self.soil_urea_content[l0][k0]
             else:
                 dripu[1] = dripw[1] * cuw
-                VolUreaNContent[l0][k0] = self.max_water_capacity[l0] * cuw
+                self.soil_urea_content[l0][k0] = self.max_water_capacity[l0] * cuw
         cdef double defcit[40][20]  # array of the difference between water capacity and actual water content in each cell of the ring
         # Set cell.water_content of the cell in which the drip is located to max_water_capacity.
         self.soil_water_content[l0, k0] = self.max_water_capacity[l0]
@@ -2202,8 +2198,8 @@ cdef class State:
                         sn += self.soil_nitrate_content[l, k] * self.layer_depth[l] * self._sim.column_width[k]
                         sn1 += self.soil_nitrate_content[l, k] * self.layer_depth[l] * self._sim.column_width[k] * \
                                NO3FlowFraction[l]
-                        su += VolUreaNContent[l][k] * self.layer_depth[l] * self._sim.column_width[k]
-                        su1 += VolUreaNContent[l][k] * self.layer_depth[l] * self._sim.column_width[k] * NO3FlowFraction[l]
+                        su += self.soil_urea_content[l, k] * self.layer_depth[l] * self._sim.column_width[k]
+                        su1 += self.soil_urea_content[l, k] * self.layer_depth[l] * self._sim.column_width[k] * NO3FlowFraction[l]
                         defcit[l][k] = uplimit - self.soil_water_content[l, k]
                     else:
                         defcit[l][k] = 0
@@ -2212,14 +2208,14 @@ cdef class State:
             # Test if the amount of incoming flow, dripw(kr), is greater than  h2odef.
             if dripw[kr] <= h2odef:
                 # In this case, this will be the last wetted ring.
-                # Update cell.water_content in this ring, by wetting each cell in proportion to its defcit. Update VolNo3NContent and VolUreaNContent of the cells in this ring by the same proportion. this is executed for all the cells in the ring.
+                # Update cell.water_content in this ring, by wetting each cell in proportion to its defcit. Update VolNo3NContent and soil_urea_content of the cells in this ring by the same proportion. this is executed for all the cells in the ring.
                 for l in range(1, 40):
                     for k in range(20):
                         dist = self.cell_distance(l, k, l0, k0)
                         if radius >= dist > (radius - 6):
                             self.soil_water_content[l, k] += dripw[kr] * defcit[l][k] / h2odef
                             self.soil_nitrate_content[l, k] += dripn[kr] * defcit[l][k] / h2odef
-                            VolUreaNContent[l][k] += dripu[kr] * defcit[l][k] / h2odef
+                            self.soil_urea_content[l, k] += dripu[kr] * defcit[l][k] / h2odef
                 return
             # If dripw(kr) is greater than h2odef, calculate cnw and cuw as the concentration of nitrate and urea N in the total water of this ring after receiving the incoming water and nitrogen.
             cnw = (sn + dripn[kr]) / (sv + dripw[kr])
@@ -2240,7 +2236,7 @@ cdef class State:
                 if xuloss > su1:
                     xuloss = su1
                     druout = dripu[kr] + xuloss
-            # For all the cells in the ring, as in the 1st cell, saturate cell.water_content to uplimit, and update VolNo3NContent and VolUreaNContent.
+            # For all the cells in the ring, as in the 1st cell, saturate cell.water_content to uplimit, and update soil_nitrate_content and soil_urea_content.
             for l in range(1, 40):
                 uplimit = self.max_water_capacity[l]
 
@@ -2253,9 +2249,9 @@ cdef class State:
                         else:
                             self.soil_nitrate_content[l, k] *= (1. - xnloss / sn)
                         if xuloss <= 0:
-                            VolUreaNContent[l][k] = uplimit * cuw
+                            self.soil_urea_content[l, k] = uplimit * cuw
                         else:
-                            VolUreaNContent[l][k] = VolUreaNContent[l][k] * (1. - xuloss / su)
+                            self.soil_urea_content[l, k] *= (1. - xuloss / su)
             # The outflow of water, nitrate and urea from this ring will be the inflow into the next ring.
             if kr < (nl - l0 - 1) and kr < maxl - 1:
                 dripw[kr + 1] = drwout
@@ -2522,7 +2518,7 @@ cdef class State:
                         for k in range(20):
                             VolNh4NContent[l][k] += NFertilizer[i].amtamm * ferc / fertdp
                             self.soil_nitrate_content[l, k] += NFertilizer[i].amtnit * ferc / fertdp
-                            VolUreaNContent[l][k] += NFertilizer[i].amtura * ferc / fertdp
+                            self.soil_urea_content[l, k] += NFertilizer[i].amtura * ferc / fertdp
                 # If this is a FOLIAR fertilizer application:
                 elif NFertilizer[i].mthfrt == 2:
                     # It is assumed that 70% of the amount of ammonium or urea intercepted by the canopy is added to the leaf N content (state.leaf_nitrogen).
@@ -2532,7 +2528,7 @@ cdef class State:
                     for k in range(20):
                         VolNh4NContent[0][k] += NFertilizer[i].amtamm * (1 - 0.70 * self.light_interception) * ferc / self.layer_depth[0]
                         self.soil_nitrate_content[0, k] += NFertilizer[i].amtnit * ferc / self.layer_depth[0]
-                        VolUreaNContent[0][k] += NFertilizer[i].amtura * (1 - 0.70 * self.light_interception) * ferc / self.layer_depth[0]
+                        self.soil_urea_content[0, k] += NFertilizer[i].amtura * (1 - 0.70 * self.light_interception) * ferc / self.layer_depth[0]
                 # If this is a SIDE-DRESSING of N fertilizer:
                 elif NFertilizer[i].mthfrt == 1:
                     # Define the soil column (ksdr) and the soil layer (lsdr) in which the side-dressed fertilizer is applied.
@@ -2556,31 +2552,31 @@ cdef class State:
                     # Update the nitrogen contents of these soil cells.
                     self.soil_nitrate_content[lsdr, ksdr] += addnit / (self.cell_area[lsdr, ksdr])
                     VolNh4NContent[lsdr][ksdr] += addamm / (self.cell_area[lsdr, ksdr])
-                    VolUreaNContent[lsdr][ksdr] += addnur / (self.cell_area[lsdr, ksdr])
+                    self.soil_urea_content[lsdr][ksdr] += addnur / (self.cell_area[lsdr, ksdr])
                     if self.cell_area[lsdr, ksdr] < 100:
                         if ksdr < nk - 1:
                             kp1 = ksdr + 1  # column to the right of ksdr.
                             self.soil_nitrate_content[lsdr, kp1] += addnit / (self.cell_area[lsdr, kp1])
                             VolNh4NContent[lsdr][kp1] += addamm / (self.cell_area[lsdr, kp1])
-                            VolUreaNContent[lsdr][kp1] += addnur / (self.cell_area[lsdr, kp1])
+                            self.soil_urea_content[lsdr][kp1] += addnur / (self.cell_area[lsdr, kp1])
                         if ksdr > 0:
                             km1 = ksdr - 1  # column to the left of ksdr.
                             self.soil_nitrate_content[lsdr, km1] += addnit / (self.cell_area[lsdr, km1])
                             VolNh4NContent[lsdr][km1] += addamm / (self.cell_area[lsdr, km1])
-                            VolUreaNContent[lsdr][km1] += addnur / (self.cell_area[lsdr, km1])
+                            self.soil_urea_content[lsdr][km1] += addnur / (self.cell_area[lsdr, km1])
                         if lsdr < nl - 1:
                             lp1 = lsdr + 1
                             area = self.cell_area[lp1, ksdr]
                             self.soil_nitrate_content[lp1, ksdr] += addnit / area
                             VolNh4NContent[lp1][ksdr] += addamm / area
-                            VolUreaNContent[lp1][ksdr] += addnur / area
+                            self.soil_urea_content[lp1][ksdr] += addnur / area
                 # If this is FERTIGATION (N fertilizer applied in drip irrigation):
                 elif NFertilizer[i].mthfrt == 3:
                     # Convert amounts added to mg cm-3, and update the nitrogen content of the soil cell in which the drip outlet is situated.
                     area = self.cell_area[self.drip_y, self.drip_x]
                     VolNh4NContent[self.drip_y][self.drip_x] += NFertilizer[i].amtamm * ferc * row_space / area
                     self.soil_nitrate_content[self.drip_y, self.drip_x] += NFertilizer[i].amtnit * ferc * row_space / area
-                    VolUreaNContent[self.drip_y][self.drip_x] += NFertilizer[i].amtura * ferc * row_space / area
+                    self.soil_urea_content[self.drip_y, self.drip_x] += NFertilizer[i].amtura * ferc * row_space / area
 
     def water_uptake(self, row_space, per_plant_area):
         """This function computes the uptake of water by plant roots from the soil (i.e., actual transpiration rate)."""
@@ -2819,14 +2815,12 @@ cdef class State:
             HumusOrganicMatter[l][0] = om * (1 - potom)
         # Since the initial value has been set for the first column only in each layer, these values are now assigned to all the other columns.
         for l in range(40):
-            VolUreaNContent[l][0] = 0
             for k in range(1, 20):
                 self.soil_water_content[l, k] = self.soil_water_content[l, 0]
                 self.soil_nitrate_content[l, k] = self.soil_nitrate_content[l, 0]
                 VolNh4NContent[l][k] = VolNh4NContent[l][0]
                 self.soil_fresh_organic_matter[l, k] = self.soil_fresh_organic_matter[l, 0]
                 HumusOrganicMatter[l][k] = HumusOrganicMatter[l][0]
-                VolUreaNContent[l][k] = 0
 
 
 cdef class Simulation:
