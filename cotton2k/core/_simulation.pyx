@@ -73,7 +73,6 @@ cdef double airdr[9]  # volumetric water content of soil at "air-dry" for each s
 cdef double thetas[9]  # volumetric saturated water content of soil horizon, cm3 cm-3.
 cdef double alpha[9]  # parameter of the Van Genuchten equation.
 cdef double vanGenuchtenBeta[9]  # parameter of the Van Genuchten equation.
-cdef double SaturatedHydCond[9]  # saturated hydraulic conductivity, cm per day.
 cdef double PotGroAllSquares  # sum of potential growth rates of all squares, g plant-1 day-1.
 cdef double PotGroAllBolls  # sum of potential growth rates of seedcotton in all bolls, g plant-1 day-1.
 cdef double PotGroAllBurrs  # sum of potential growth rates of burrs in all bolls, g plant-1 day-1.
@@ -152,7 +151,6 @@ cdef class SoilInit:
                     "theta": thetas[i],
                     "alpha": alpha[i],
                     "beta": vanGenuchtenBeta,
-                    "saturated_hydraulic_conductivity": SaturatedHydCond[i],
                     "field_capacity_hydraulic_conductivity": condfc[i],
                 }
                 for i in range(self.number_of_layers)
@@ -170,7 +168,6 @@ cdef class SoilInit:
             thetas[i] = layer["theta"]
             alpha[i] = layer["alpha"]
             vanGenuchtenBeta[i] = layer["beta"]
-            SaturatedHydCond[i] = layer["saturated_hydraulic_conductivity"]
             condfc[i] = layer["field_capacity_hydraulic_conductivity"]
 
 
@@ -843,7 +840,7 @@ cdef class State:
             dumyrs = 1.001
         # Compute hydraulic conductivity (cond), and soil resistance near the root surface  (rsoil).
         cdef double cond  # soil hydraulic conductivity near the root surface.
-        cond = wcond(vh2, self.thad[0], thts[0], vanGenuchtenBeta[0], SaturatedHydCond[0], self.pore_space[0]) / 24
+        cond = wcond(vh2, self.thad[0], thts[0], vanGenuchtenBeta[0], self.soil_hydrology["saturated_hydraulic_conductivity"][0], self.pore_space[0]) / 24
         cond = cond * 2 * sumlv / rootvol / log(dumyrs)
         cond = max(cond, vpsil[6])
         cdef double rsoil = 0.0001 / (2 * pi * cond)  # soil resistance, Mpa hours per cm.
@@ -2297,7 +2294,7 @@ cdef class State:
         for i in range(nn):
             if iv == 1:
                 j = self.soil_horizon_number[i]  # for vertical flow
-            cond[i] = wcond(q1[i], qr1[i], qs1[i], vanGenuchtenBeta[j], SaturatedHydCond[j], pp1[i])
+            cond[i] = wcond(q1[i], qr1[i], qs1[i], vanGenuchtenBeta[j], self.soil_hydrology["saturated_hydraulic_conductivity"][j], pp1[i])
             kx[i] = 0
             ky[i] = 0
 
@@ -2765,9 +2762,9 @@ cdef class State:
             self._sim.field_capacity[l] = qpsi(psisfc, self.thad[l], thts[l], alpha[j], vanGenuchtenBeta[j])
             self._sim.max_water_capacity[l] = qpsi(psidra, self.thad[l], thts[l], alpha[j], vanGenuchtenBeta[j])
             thetar[l] = qpsi(-15., self.thad[l], thts[l], alpha[j], vanGenuchtenBeta[j])
-            # When the saturated hydraulic conductivity (SaturatedHydCond) is not given, it is computed from the hydraulic conductivity at field capacity (condfc), using the wcond function.
-            if SaturatedHydCond[j] <= 0:
-                SaturatedHydCond[j] = condfc[j] / wcond(self.field_capacity[l], self.thad[l], thts[l], vanGenuchtenBeta[j], 1, 1)
+            # When the saturated hydraulic conductivity is not given, it is computed from the hydraulic conductivity at field capacity (condfc), using the wcond function.
+            if self.soil_hydrology["saturated_hydraulic_conductivity"][j] <= 0:
+                self.soil_hydrology["saturated_hydraulic_conductivity"][j] = condfc[j] / wcond(self.field_capacity[l], self.thad[l], thts[l], vanGenuchtenBeta[j], 1, 1)
         self.soil_water_content = np.zeros((40, 20), dtype=np.double)
         self.soil_fresh_organic_matter = np.zeros((40, 20), dtype=np.double)
         self.soil_nitrate_content = np.zeros((40, 20), dtype=np.double)

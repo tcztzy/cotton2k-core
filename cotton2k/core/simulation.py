@@ -223,7 +223,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
         )
         self.soil_hydrology = np.array(
             [
-                (layer["depth"], layer["bulk_density"])
+                (layer["depth"], layer["bulk_density"], layer["saturated_hydraulic_conductivity"])
                 for layer in kwargs.get("soil", {})
                 .get("hydrology", {})
                 .get("layers", [])
@@ -233,6 +233,8 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
                 ("depth", np.double),
                 # bulk density of soil in a horizon, g cm-3.
                 ("bulk_density", np.double),
+                # saturated hydraulic conductivity, cm per day.
+                ("saturated_hydraulic_conductivity", np.double)
             ],
         )
         self.soil_horizon_number = np.searchsorted(

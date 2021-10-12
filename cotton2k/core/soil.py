@@ -223,7 +223,7 @@ def wcond(  # pylint: disable=too-many-arguments
 ) -> float:
     """Computes soil water hydraulic conductivity for a given value of soil water
     content, using the Van-Genuchten equation. The units of the computed conductivity
-    are the same as the given saturated conductivity (`SaturatedHydCond`).
+    are the same as the given saturated conductivity.
 
     Arguments
     ---------
@@ -246,7 +246,7 @@ def wcond(  # pylint: disable=too-many-arguments
     # Water content for saturated conductivity is minimum of self.pore_space and qsat.
 
     # For very high values of water content (exceeding the saturated water content or
-    # pore space) conductivity is SaturatedHydCond.
+    # pore space) conductivity is saturated_hydraulic_conductivity.
     xsat = min(qsat, pore_space)
     if q >= xsat:
         return saturated_hyd_cond
