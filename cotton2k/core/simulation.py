@@ -192,6 +192,10 @@ class State(
             / self._sim.row_space
         )
 
+    @property
+    def rain(self):
+        return self.meteor[self.date]["rain"]
+
     def initialize_soil_data(self):
         """Computes and sets the initial soil data. It is executed once at the
         beginning of the simulation, after the soil hydraulic data file has been read.

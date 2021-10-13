@@ -385,16 +385,6 @@ cdef class State:
         return dayfd / 24.0
 
     @property
-    def rain(self):
-        return self.meteor[self.date]["rain"]
-
-    @property
-    def pollination_switch(self):
-        """pollination switch: false = no pollination, true = yes."""
-        # Set 'pollination switch' for rainy days (as in GOSSYM).
-        return self.rain < 2.5
-
-    @property
     def leaf_area(self):
         # It is assumed that cotyledons fall off at time
         # of first square.
@@ -1587,37 +1577,6 @@ cdef class State:
                 for m in range(self.vegetative_branches[k].fruiting_branches[l].number_of_fruiting_nodes):
                     if self.fruiting_nodes_stage[k, l, m] in [Stage.YoungGreenBoll, Stage.GreenBoll]:
                         self.number_of_green_bolls += self.fruiting_nodes_fraction[k, l, m]
-
-    def new_boll_formation(self, index):
-        """Simulates the formation of a new boll at a fruiting site."""
-        # The following constant parameters are used:
-        cdef double seedratio = 0.64  # ratio of seeds in seedcotton weight.
-        cdef double[2] vnewboll = [0.31, 0.02]
-        # If bPollinSwitch is false accumulate number of blooms to be dropped, and define FruitingCode as 6.
-        if not self.pollination_switch:
-            self.fruiting_nodes_stage[index] = Stage.AbscisedAsFlower
-            self.fruiting_nodes_fraction[index] = 0
-            self.square_weights[index] = 0
-            return
-        # The initial weight of the new boll (BollWeight) and new burr (state.burr_weight) will be a fraction of the square weight, and the rest will be added to BloomWeightLoss. 80% of the initial weight will be in the burr.
-        # The nitrogen in the square is partitioned in the same proportions. The nitrogen that was in the square is transferred to the burrs. Update state.green_bolls_burr_weight. assign zero to SquareWeight at this site.
-        cdef double bolinit  # initial weight of boll after flowering.
-        bolinit = vnewboll[0] * self.square_weights[index]
-        self.fruiting_nodes_boll_weight[index] = 0.2 * bolinit
-        self.burr_weight[index] = bolinit - self.fruiting_nodes_boll_weight[index]
-
-        cdef double sqr1n  # the nitrogen content of one square before flowering.
-        sqr1n = self.square_nitrogen_concentration * self.square_weights[index]
-        self.square_nitrogen -= sqr1n
-        sqr1n = sqr1n * vnewboll[0]
-
-        cdef double seed1n  # the nitrogen content of seeds in a new boll on flowering.
-        seed1n = min(self.fruiting_nodes_boll_weight[index] * seedratio * vnewboll[1], sqr1n)
-        self.seed_nitrogen += seed1n
-        self.burr_nitrogen += sqr1n - seed1n
-
-        self.green_bolls_burr_weight += self.burr_weight[index]
-        self.square_weights[index] = 0
     #end phenology
 
     #begin soil

@@ -1,5 +1,5 @@
 import datetime
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from enum import IntEnum
 from typing import Any, Optional
 
@@ -67,7 +67,6 @@ class Phenology:
     green_bolls_burr_weight: float
     green_bolls_weight: float
     kday: int
-    new_boll_formation: Callable
     nitrogen_stress_fruiting: float
     nitrogen_stress_vegetative: float
     number_of_open_bolls: float
@@ -327,6 +326,50 @@ class Phenology:
                 var42,
             )
         return None
+
+    @property
+    def pollination_switch(self):
+        """pollination switch: false = no pollination, true = yes."""
+        # Set 'pollination switch' for rainy days (as in GOSSYM).
+        return self.rain < 2.5
+
+    def new_boll_formation(self, index):
+        """Simulates the formation of a new boll at a fruiting site."""
+        # The following constant parameters are used:
+        seedratio = 0.64  # ratio of seeds in seedcotton weight.
+        vnewboll = [0.31, 0.02]
+        # If bPollinSwitch is false accumulate number of blooms to be dropped, and
+        # define FruitingCode as 6.
+        if not self.pollination_switch:
+            self.fruiting_nodes_stage[index] = Stage.AbscisedAsFlower
+            self.fruiting_nodes_fraction[index] = 0
+            self.square_weights[index] = 0
+            return
+        # The initial weight of the new boll (BollWeight) and new burr (burr_weight)
+        # will be a fraction of the square weight, and the rest will be added to
+        # BloomWeightLoss. 80% of the initial weight will be in the burr.
+        # The nitrogen in the square is partitioned in the same proportions. The
+        # nitrogen that was in the square is transferred to the burrs. Update
+        # green_bolls_burr_weight. assign zero to SquareWeight at this site.
+        # initial weight of boll after flowering.
+        bolinit = vnewboll[0] * self.square_weights[index]
+        self.fruiting_nodes_boll_weight[index] = 0.2 * bolinit
+        self.burr_weight[index] = bolinit - self.fruiting_nodes_boll_weight[index]
+
+        # the nitrogen content of one square before flowering.
+        sqr1n = self.square_nitrogen_concentration * self.square_weights[index]
+        self.square_nitrogen -= sqr1n
+        sqr1n = sqr1n * vnewboll[0]
+
+        # the nitrogen content of seeds in a new boll on flowering.
+        seed1n = min(
+            self.fruiting_nodes_boll_weight[index] * seedratio * vnewboll[1], sqr1n
+        )
+        self.seed_nitrogen += seed1n
+        self.burr_nitrogen += sqr1n - seed1n
+
+        self.green_bolls_burr_weight += self.burr_weight[index]
+        self.square_weights[index] = 0
 
     def add_vegetative_branch(self, stemNRatio, DaysTo1stSqare, initial_leaf_area):
         """Decides whether a new vegetative branch is to be added, and then forms it."""
