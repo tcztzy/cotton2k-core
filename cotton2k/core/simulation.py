@@ -230,6 +230,7 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
                     layer["bulk_density"],
                     layer["saturated_hydraulic_conductivity"],
                     layer["air_dry"],
+                    layer["theta"]
                 )
                 for layer in hydrology.get("layers", [])
             ],
@@ -242,6 +243,8 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
                 ("saturated_hydraulic_conductivity", np.double),
                 # volumetric water content of soil at "air-dry" for each soil horizon.
                 ("air_dry", np.double),
+                # volumetric saturated water content of soil horizon, cm3 cm-3.
+                ("theta", np.double),
             ],
         )
         self.soil_horizon_number = np.searchsorted(
@@ -251,6 +254,13 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             self.soil_horizon_number
         ]
         self.thad = self.soil_hydrology["air_dry"][self.soil_horizon_number]
+        self.pore_space = (
+            1
+            - self.soil_bulk_density
+            / 2.65  # density of the solid fraction of the soil (g / cm3)
+        )
+        self.soil_hydrology["theta"][self.soil_horizon_number] = np.minimum(self.soil_hydrology["theta"][self.soil_horizon_number], self.pore_space)
+        self.soil_saturated_water_content = self.soil_hydrology["theta"][self.soil_horizon_number]
         self.pclay = np.array([l["clay"] for l in hydrology.get("layers", [])])
         self.psand = np.array([l["sand"] for l in hydrology.get("layers", [])])
         self.oma = np.array(
@@ -266,11 +276,6 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             else int(start_date[:4])
         )
         self.field_capacity = np.zeros(40, dtype=np.double)
-        self.pore_space = (
-            1
-            - self.soil_bulk_density
-            / 2.65  # density of the solid fraction of the soil (g / cm3)
-        )
         self.heat_capacity_soil_solid = np.zeros(40, dtype=np.double)
         self.initialize_state0()
         self.read_input(**kwargs)

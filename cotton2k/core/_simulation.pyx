@@ -69,7 +69,6 @@ cdef int maxk = 20
 cdef int nl
 cdef int nk
 cdef double conmax  # the maximum value for non-dimensional hydraulic conductivity
-cdef double thetas[9]  # volumetric saturated water content of soil horizon, cm3 cm-3.
 cdef double alpha[9]  # parameter of the Van Genuchten equation.
 cdef double vanGenuchtenBeta[9]  # parameter of the Van Genuchten equation.
 cdef double PotGroAllSquares  # sum of potential growth rates of all squares, g plant-1 day-1.
@@ -77,7 +76,6 @@ cdef double PotGroAllBolls  # sum of potential growth rates of seedcotton in all
 cdef double PotGroAllBurrs  # sum of potential growth rates of burrs in all bolls, g plant-1 day-1.
 cdef NitrogenFertilizer NFertilizer[150]
 cdef int NumNitApps  # number of applications of nitrogen fertilizer.
-cdef double thts[40]  # saturated volumetric water content of each soil layer, cm3 cm-3.
 cdef double VolNh4NContent[40][20]  # volumetric ammonium nitrogen content of a soil cell, mg N cm-3.
 cdef double ElCondSatSoilToday  # electrical conductivity of saturated extract (mmho/cm) on this day.
 cdef double thetar[40]  # volumetric water content of soil layers at permanent wilting point (-15 bars), cm3 cm-3.
@@ -143,7 +141,6 @@ cdef class SoilInit:
             "immediate_drainage_water_potential": psidra,
             "layers": [
                 {
-                    "theta": thetas[i],
                     "alpha": alpha[i],
                     "beta": vanGenuchtenBeta,
                     "field_capacity_hydraulic_conductivity": condfc[i],
@@ -158,7 +155,6 @@ cdef class SoilInit:
         conmax = soil_hydrology["max_conductivity"]
         psidra = soil_hydrology["immediate_drainage_water_potential"]
         for i, layer in enumerate(soil_hydrology["layers"]):
-            thetas[i] = layer["theta"]
             alpha[i] = layer["alpha"]
             vanGenuchtenBeta[i] = layer["beta"]
             condfc[i] = layer["field_capacity_hydraulic_conductivity"]
@@ -833,7 +829,7 @@ cdef class State:
             dumyrs = 1.001
         # Compute hydraulic conductivity (cond), and soil resistance near the root surface  (rsoil).
         cdef double cond  # soil hydraulic conductivity near the root surface.
-        cond = wcond(vh2, self.thad[0], thts[0], vanGenuchtenBeta[0], self.soil_hydrology["saturated_hydraulic_conductivity"][0], self.pore_space[0]) / 24
+        cond = wcond(vh2, self.thad[0], self.soil_saturated_water_content[0], vanGenuchtenBeta[0], self.soil_hydrology["saturated_hydraulic_conductivity"][0], self.pore_space[0]) / 24
         cond = cond * 2 * sumlv / rootvol / log(dumyrs)
         cond = max(cond, vpsil[6])
         cdef double rsoil = 0.0001 / (2 * pi * cond)  # soil resistance, Mpa hours per cm.
@@ -1751,7 +1747,7 @@ cdef class State:
         ak = max(cak1 + cak2 * oc, 0.25)
         # Compute the effect of soil moisture using function SoilWaterEffect on the rate of urea hydrolysis. The constant swf1 is added to the soil moisture function for mineralization,
         cdef double swf  # soil moisture effect on rate of urea hydrolysis.
-        swf = min(max(SoilWaterEffect(water_content, self.field_capacity[l], thetar[l], thts[l], 0.5) + swf1, 0), 1)
+        swf = min(max(SoilWaterEffect(water_content, self.field_capacity[l], thetar[l], self.soil_saturated_water_content[l], 0.5) + swf1, 0), 1)
         # Compute the effect of soil temperature. The following parameters are used for the temperature function: stf1, stf2.
         cdef double stf  # soil temperature effect on rate of urea hydrolysis.
         stf = min(max((soil_temperature - 273.161) / stf1 + stf2, 0), 1)
@@ -1813,7 +1809,7 @@ cdef class State:
 
         # **  Mineralization of fresh organic matter **
         # The effects of soil moisture (wf) and of soil temperature (tfac) are computed.
-        cdef double wf = SoilWaterEffect(water_content, self.field_capacity[l], thetar[l], thts[l], 0.5)
+        cdef double wf = SoilWaterEffect(water_content, self.field_capacity[l], thetar[l], self.soil_saturated_water_content[l], 0.5)
         cdef double tfac = SoilTemperatureEffect(soil_temperature - 273.161)
         # The gross release of dry weight and of N from decomposition of fresh organic matter is computed.
         cdef double grossReleaseN  # gross release of N from decomposition, mg/cm3
@@ -1897,7 +1893,7 @@ cdef class State:
         cw: float = cpar01 + cpar02 * soilc
         # The effects of soil moisture (fw) and soil temperature (ft) are computed as 0 to 1 factors.
         # effect of soil moisture on denitrification rate.
-        fw: float = max((self.soil_water_content[l, k] - self.field_capacity[l]) / (thts[l] - self.field_capacity[l]), 0)
+        fw: float = max((self.soil_water_content[l, k] - self.field_capacity[l]) / (self.soil_saturated_water_content[l] - self.field_capacity[l]), 0)
         # effect of soil temperature on denitrification rate.
         ft: float = min(0.1 * exp(cparft * (soil_temperature - 273.161)), 1)
         # The actual rate of denitrification is calculated. The equation is modified from CERES to units of mg/cm3/day.
@@ -1930,7 +1926,7 @@ cdef class State:
         # effect of soil depth on nitrification rate.
         tff: float = max((self.layer_depth_cumsum[l] - 30) / 30, 0)
         # Add the effects of NH4 in soil, soil water content, and depth of soil layer.
-        ratenit *= sanc * SoilWaterEffect(self.soil_water_content[l, k], self.field_capacity[l], thetar[l], thts[l], 1) * pow(cpardepth, tff)
+        ratenit *= sanc * SoilWaterEffect(self.soil_water_content[l, k], self.field_capacity[l], thetar[l], self.soil_saturated_water_content[l], 1) * pow(cpardepth, tff)
         ratenit = min(max(ratenit, 0), 0.10)
         # Compute the actual amount of N nitrified, and update VolNh4NContent and VolNo3NContent.
         # actual nitrification (mg n cm-3 day-1).
@@ -1954,7 +1950,7 @@ cdef class State:
         for l in range(40):
             j = self.soil_horizon_number[l]  # the soil horizon number
             for k in range(20):
-                self.soil_psi[l, k] = psiq(self.soil_water_content[l, k], self.thad[l], thts[l], alpha[j], vanGenuchtenBeta[j]) - PsiOsmotic(self.soil_water_content[l, k], thts[l], ElCondSatSoilToday)
+                self.soil_psi[l, k] = psiq(self.soil_water_content[l, k], self.thad[l], self.soil_saturated_water_content[l], alpha[j], vanGenuchtenBeta[j]) - PsiOsmotic(self.soil_water_content[l, k], self.soil_saturated_water_content[l], ElCondSatSoilToday)
 
         cdef double q01[40]  # one dimensional array of a layer or a column of previous values of cell.water_content.
         cdef double q1[40]  # one dimensional array of a layer or a column of cell.water_content.
@@ -1969,34 +1965,35 @@ cdef class State:
             for l in range(40):
                 q1[l] = self.soil_water_content[l, k]
                 q01[l] = self.soil_water_content[l, k]
-                psi1[l] = self.soil_psi[l, k] + PsiOsmotic(self.soil_water_content[l, k], thts[l], ElCondSatSoilToday)
+                psi1[l] = self.soil_psi[l, k] + PsiOsmotic(self.soil_water_content[l, k], self.soil_saturated_water_content[l], ElCondSatSoilToday)
                 nit[l] = self.soil_nitrate_content[l, k]
                 nur[l] = self.soil_urea_content[l, k]
                 _dl[l] = self.layer_depth[l]
             # Call the following functions: water_flux() calculates the water flow caused by potential gradients; NitrogenFlow() computes the movement of nitrates caused by the flow of water.
-            self.water_flux(q1, psi1, _dl, self.thad, thts, self.pore_space, 40, iv, 0, self.numiter, noitr)
+            self.water_flux(q1, psi1, _dl, self.thad, self.soil_saturated_water_content, self.pore_space, 40, iv, 0, self.numiter, noitr)
             NitrogenFlow(nl, q01, q1, _dl, nit, nur)
             # Reassign the updated values of q1, nit, nur and psi1 back to cell.water_content, VolNo3NContent, soil_urea_content and SoilPsi.
             for l in range(40):
                 self.soil_water_content[l, k] = q1[l]
                 self.soil_nitrate_content[l, k] = nit[l]
                 self.soil_urea_content[l, k] = nur[l]
-                self.soil_psi[l, k] = psi1[l] - PsiOsmotic(self.soil_water_content[l, k], thts[l], ElCondSatSoilToday)
+                self.soil_psi[l, k] = psi1[l] - PsiOsmotic(self.soil_water_content[l, k], self.soil_saturated_water_content[l], ElCondSatSoilToday)
         cdef numpy.ndarray pp1  # one dimensional array of a layer or a column of PP.
         cdef numpy.ndarray qr1  # one dimensional array of a layer or a column of THAD.
-        cdef double qs1[40]  # one dimensional array of a layer or a column of THTS.
+        cdef numpy.ndarray qs1  # one dimensional array of a layer or a column of THTS.
 
         # HORIZONTAL FLUX in each layer. The direction indicator iv is set to 0.
         iv = 0
-        # Loop over all layers. Define the horizon number j for this layer. Temporary one-dimensional arrays are defined for each layer: assign the cell.water_content values to  q1 and q01. Assign SoilPsi, VolNo3NContent, soil_urea_content, thad and thts values of the soil cells to arrays psi1, nit, nur, qr1 and qs1, respectively.
+        # Loop over all layers. Define the horizon number j for this layer. Temporary one-dimensional arrays are defined for each layer: assign the cell.water_content values to  q1 and q01. Assign SoilPsi, VolNo3NContent, soil_urea_content, thad and soil_saturated_water_content values of the soil cells to arrays psi1, nit, nur, qr1 and qs1, respectively.
         for l in range(40):
             qr1 = np.repeat(self.thad[l], 20)
             pp1 = np.repeat(self.pore_space[l], 20)
+            qs1 = np.repeat(self.soil_saturated_water_content[l], 20)
             for k in range(20):
                 q1[k] = self.soil_water_content[l, k]
                 q01[k] = self.soil_water_content[l, k]
-                psi1[k] = self.soil_psi[l][k] + PsiOsmotic(self.soil_water_content[l, k], thts[l], ElCondSatSoilToday)
-                qs1[k] = thts[l]
+                psi1[k] = self.soil_psi[l][k] + PsiOsmotic(self.soil_water_content[l, k], self.soil_saturated_water_content[l], ElCondSatSoilToday)
+                qs1[k] = self.soil_saturated_water_content[l]
                 nit[k] = self.soil_nitrate_content[l, k]
                 nur[k] = self.soil_urea_content[l, k]
                 wk1[k] = self._sim.column_width[k]
@@ -2006,7 +2003,7 @@ cdef class State:
             # Reassign the updated values of q1, nit, nur and psi1 back to cell.water_content, VolNo3NContent, soil_urea_content and SoilPsi.
             for k in range(20):
                 self.soil_water_content[l, k] = q1[k]
-                self.soil_psi[l][k] = psi1[k] - PsiOsmotic(self.soil_water_content[l, k], thts[l], ElCondSatSoilToday)
+                self.soil_psi[l][k] = psi1[k] - PsiOsmotic(self.soil_water_content[l, k], self.soil_saturated_water_content[l], ElCondSatSoilToday)
                 self.soil_nitrate_content[l, k] = nit[k]
                 self.soil_urea_content[l, k] = nur[k]
         # Call drain to move excess water down in the column and compute drainage out of the column. Update cumulative drainage.
@@ -2016,7 +2013,7 @@ cdef class State:
         for l in range(40):
             j = self.soil_horizon_number[l]
             for k in range(20):
-                self.soil_psi[l][k] = psiq(self.soil_water_content[l, k], self.thad[l], thts[l], alpha[j], vanGenuchtenBeta[j]) - PsiOsmotic(self.soil_water_content[l, k], thts[l], ElCondSatSoilToday)
+                self.soil_psi[l][k] = psiq(self.soil_water_content[l, k], self.thad[l], self.soil_saturated_water_content[l], alpha[j], vanGenuchtenBeta[j]) - PsiOsmotic(self.soil_water_content[l, k], self.soil_saturated_water_content[l], ElCondSatSoilToday)
 
     def drain(self) -> float:
         """the gravity flow of water in the slab, and returns the drainage of water out of the slab. It is called from capillary_flow()."""
@@ -2252,7 +2249,7 @@ cdef class State:
                 return
             # Repeat all these procedures for the next ring.
 
-    cdef water_flux(self, double q1[], double psi1[], double dd[], numpy.ndarray qr1, double qs1[], numpy.ndarray pp1, int nn, int iv, int ll, long numiter, int noitr):
+    cdef water_flux(self, double q1[], double psi1[], double dd[], numpy.ndarray qr1, numpy.ndarray qs1, numpy.ndarray pp1, int nn, int iv, int ll, long numiter, int noitr):
         """Computes the movement of water in the soil, caused by potential differences between cells in a soil column or in a soil layer. It is called by function CapillaryFlow(). It calls functions WaterBalance(), psiq(), qpsi() and wcond().
 
         Arguments
@@ -2587,8 +2584,8 @@ cdef class State:
             for l in range(40):
                 j = self.soil_horizon_number[l]
                 # Compute, for each layer, the lower and upper water content limits for the transpiration function. These are set from limiting soil water potentials (-15 to -1 bars).
-                vh2lo = qpsi(-15, self.thad[l], thts[l], alpha[j], vanGenuchtenBeta[j])  # lower limit of water content for the transpiration function
-                vh2hi = qpsi(-1, self.thad[l], thts[l], alpha[j], vanGenuchtenBeta[j])  # upper limit of water content for the transpiration function
+                vh2lo = qpsi(-15, self.thad[l], self.soil_saturated_water_content[l], alpha[j], vanGenuchtenBeta[j])  # lower limit of water content for the transpiration function
+                vh2hi = qpsi(-1, self.thad[l], self.soil_saturated_water_content[l], alpha[j], vanGenuchtenBeta[j])  # upper limit of water content for the transpiration function
                 for k in range(20):
                     # reduction factor for water uptake, caused by low levels of soil water, as a linear function of cell.water_content, between vh2lo and vh2hi.
                     redfac = min(max((self.soil_water_content[l, k] - vh2lo) / (vh2hi - vh2lo), 0), 1)
@@ -2629,8 +2626,8 @@ cdef class State:
             j = self.soil_horizon_number[l]
             for k in range(20):
                 self.soil_psi[l, k] = (
-                    psiq(self.soil_water_content[l, k], self.thad[l], thts[l], alpha[j], vanGenuchtenBeta[j])
-                    - PsiOsmotic(self.soil_water_content[l, k], thts[l], ElCondSatSoilToday)
+                    psiq(self.soil_water_content[l, k], self.thad[l], self.soil_saturated_water_content[l], alpha[j], vanGenuchtenBeta[j])
+                    - PsiOsmotic(self.soil_water_content[l, k], self.soil_saturated_water_content[l], ElCondSatSoilToday)
                 )
 
         # compute ActualTranspiration as actual water transpired, in mm.
@@ -2732,7 +2729,7 @@ cdef class State:
                 # Compute avgwat and the parameters to compute the soil water potential in each soil horizon
                 avgwat = sumwat[j] / psinum[j]  # weighted average soil water content (V/V) in root zone
                 # Soil water potential computed for a soil profile layer:
-                avgpsi = psiq(avgwat, self._sim.soil_hydrology["air_dry"][j], thetas[j], alpha[j], vanGenuchtenBeta[j]) - PsiOsmotic(avgwat, thetas[j], ElCondSatSoilToday)
+                avgpsi = psiq(avgwat, self._sim.soil_hydrology["air_dry"][j], self.soil_hydrology["theta"][j], alpha[j], vanGenuchtenBeta[j]) - PsiOsmotic(avgwat, self.soil_hydrology["theta"][j], ElCondSatSoilToday)
                 # Use this to compute the average for the whole root zone.
                 sumpsi += avgpsi * psinum[j]
                 sumnum += psinum[j]
@@ -2744,19 +2741,16 @@ cdef class State:
         cdef double sumdl = 0  # depth to the bottom this layer (cm);
         self._sim.max_water_capacity = np.zeros(40, dtype=np.double)
         for l, j in enumerate(self.soil_horizon_number):
-            # bdl, thad, thts are defined for each soil layer, using the respective input variables bulk_density, air_dry, thetas.
+            # bdl, thad, soil_saturated_water_content are defined for each soil layer, using the respective input variables bulk_density, air_dry, theta.
             # self.field_capacity, max_water_capacity and thetar are computed for each layer, as water content (cm3 cm-3) of each layer corresponding to matric potentials of psisfc (for field capacity), psidra (for free drainage) and -15 bars (for permanent wilting point), respectively, using function qpsi.
             # pore space volume (self.pore_space) is also computed for each layer.
             # make sure that saturated water content is not more than pore space.
-            if thetas[j] > self.pore_space[l]:
-                thetas[j] = self.pore_space[l]
-            thts[l] = thetas[j]
-            self._sim.field_capacity[l] = qpsi(self.soil_psi_field_capacity, self.thad[l], thts[l], alpha[j], vanGenuchtenBeta[j])
-            self._sim.max_water_capacity[l] = qpsi(psidra, self.thad[l], thts[l], alpha[j], vanGenuchtenBeta[j])
-            thetar[l] = qpsi(-15., self.thad[l], thts[l], alpha[j], vanGenuchtenBeta[j])
+            self._sim.field_capacity[l] = qpsi(self.soil_psi_field_capacity, self.thad[l], self.soil_saturated_water_content[l], alpha[j], vanGenuchtenBeta[j])
+            self._sim.max_water_capacity[l] = qpsi(psidra, self.thad[l], self.soil_saturated_water_content[l], alpha[j], vanGenuchtenBeta[j])
+            thetar[l] = qpsi(-15., self.thad[l], self.soil_saturated_water_content[l], alpha[j], vanGenuchtenBeta[j])
             # When the saturated hydraulic conductivity is not given, it is computed from the hydraulic conductivity at field capacity (condfc), using the wcond function.
             if self.soil_hydrology["saturated_hydraulic_conductivity"][j] <= 0:
-                self.soil_hydrology["saturated_hydraulic_conductivity"][j] = condfc[j] / wcond(self.field_capacity[l], self.thad[l], thts[l], vanGenuchtenBeta[j], 1, 1)
+                self.soil_hydrology["saturated_hydraulic_conductivity"][j] = condfc[j] / wcond(self.field_capacity[l], self.thad[l], self.soil_saturated_water_content[l], vanGenuchtenBeta[j], 1, 1)
         self.soil_water_content = np.zeros((40, 20), dtype=np.double)
         self.soil_fresh_organic_matter = np.zeros((40, 20), dtype=np.double)
         self.soil_nitrate_content = np.zeros((40, 20), dtype=np.double)
@@ -2832,6 +2826,7 @@ cdef class Simulation:
     cdef public numpy.ndarray soil_bulk_density
     cdef public numpy.ndarray soil_clay_volume_fraction
     cdef public numpy.ndarray soil_sand_volume_fraction
+    cdef public numpy.ndarray soil_saturated_water_content  # saturated volumetric water content of each soil layer, cm3 cm-3.
     cdef public numpy.ndarray soil_horizon_number  # the soil horizon number associated with each soil layer in the slab.
     cdef public numpy.ndarray max_water_capacity  # volumetric water content of a soil layer at maximum capacity, before drainage, cm3 cm-3.
     cdef public numpy.ndarray thad  # residual volumetric water content of soil layers (at air-dry condition), cm3 cm-3.
