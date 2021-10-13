@@ -40,6 +40,7 @@ disable = [
     "missing-module-docstring",
     "missing-class-docstring",
     "unsubscriptable-object",
+    "attribute-defined-outside-init",
 ]
 
 [tool.pylint.FORMAT]
