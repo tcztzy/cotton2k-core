@@ -230,7 +230,9 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
                     layer["bulk_density"],
                     layer["saturated_hydraulic_conductivity"],
                     layer["air_dry"],
-                    layer["theta"]
+                    layer["alpha"],
+                    layer["beta"],
+                    layer["theta"],
                 )
                 for layer in hydrology.get("layers", [])
             ],
@@ -243,6 +245,8 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
                 ("saturated_hydraulic_conductivity", np.double),
                 # volumetric water content of soil at "air-dry" for each soil horizon.
                 ("air_dry", np.double),
+                ("alpha", np.double),
+                ("beta", np.double),
                 # volumetric saturated water content of soil horizon, cm3 cm-3.
                 ("theta", np.double),
             ],
@@ -250,6 +254,8 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
         self.soil_horizon_number = np.searchsorted(
             self.soil_hydrology["depth"], self.layer_depth_cumsum
         )
+        self.alpha = self.soil_hydrology["alpha"][self.soil_horizon_number]
+        self.beta = self.soil_hydrology["beta"][self.soil_horizon_number]
         self.soil_bulk_density = self.soil_hydrology["bulk_density"][
             self.soil_horizon_number
         ]
@@ -259,8 +265,12 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             - self.soil_bulk_density
             / 2.65  # density of the solid fraction of the soil (g / cm3)
         )
-        self.soil_hydrology["theta"][self.soil_horizon_number] = np.minimum(self.soil_hydrology["theta"][self.soil_horizon_number], self.pore_space)
-        self.soil_saturated_water_content = self.soil_hydrology["theta"][self.soil_horizon_number]
+        self.soil_hydrology["theta"][self.soil_horizon_number] = np.minimum(
+            self.soil_hydrology["theta"][self.soil_horizon_number], self.pore_space
+        )
+        self.soil_saturated_water_content = self.soil_hydrology["theta"][
+            self.soil_horizon_number
+        ]
         self.pclay = np.array([l["clay"] for l in hydrology.get("layers", [])])
         self.psand = np.array([l["sand"] for l in hydrology.get("layers", [])])
         self.oma = np.array(
