@@ -60,9 +60,6 @@ cdef int maxl = 40
 cdef int maxk = 20
 cdef int nl
 cdef int nk
-cdef double PotGroAllSquares  # sum of potential growth rates of all squares, g plant-1 day-1.
-cdef double PotGroAllBolls  # sum of potential growth rates of seedcotton in all bolls, g plant-1 day-1.
-cdef double PotGroAllBurrs  # sum of potential growth rates of burrs in all bolls, g plant-1 day-1.
 cdef NitrogenFertilizer NFertilizer[150]
 cdef int NumNitApps  # number of applications of nitrogen fertilizer.
 cdef double ElCondSatSoilToday  # electrical conductivity of saturated extract (mmho/cm) on this day.
@@ -521,6 +518,20 @@ cdef class State:
         """the delay caused by nitrogen stress, is assumed to be a function of the vegetative nitrogen stress."""
         return min(max(0.65 * (1 - self.nitrogen_stress_vegetative), 0), 1)
 
+    @property
+    def all_boll_potential_growth(self):
+        """sum of potential growth rates of all bolls, g plant-1 day-1."""
+        return self.fruiting_nodes_boll_potential_growth.sum()
+
+    @property
+    def all_burr_potential_growth(self):
+        """sum of potential growth rates of burrs in all bolls, g plant-1 day-1."""
+        return self.burr_potential_growth.sum()
+
+    @property
+    def all_square_potential_growth(self):
+        return self.square_potential_growth.sum()
+
     def predict_emergence(self, plant_date, hour, plant_row_column):
         """This function predicts date of emergence."""
         cdef double dpl = 5  # depth of planting, cm (assumed 5).
@@ -774,9 +785,9 @@ cdef class State:
         vchbal = [6.0, 2.5, 1.0, 5.0, 0.20, 0.80, 0.48, 0.40, 0.2072, 0.60651, 0.0065, 1.10, 4.0, 0.25, 4.0]
         # Assign values for carbohydrate requirements for growth of stems, roots, leaves, petioles, squares and bolls. Potential growth of all plant parts is modified by nitrogen stresses.
         # carbohydrate requirement for square growth, g per plant per day.
-        cdsqar = PotGroAllSquares * (self.nitrogen_stress_fruiting + vchbal[0]) / (vchbal[0] + 1)
+        cdsqar = self.all_square_potential_growth * (self.nitrogen_stress_fruiting + vchbal[0]) / (vchbal[0] + 1)
         # carbohydrate requirement for boll and burr growth, g per plant per day.
-        cdboll = (PotGroAllBolls + PotGroAllBurrs) * (self.nitrogen_stress_fruiting + vchbal[0]) / (vchbal[0] + 1)
+        cdboll = (self.all_boll_potential_growth + self.all_burr_potential_growth) * (self.nitrogen_stress_fruiting + vchbal[0]) / (vchbal[0] + 1)
         # cdleaf is carbohydrate requirement for leaf growth, g per plant per day.
         cdleaf = self.leaf_potential_growth * (self.nitrogen_stress_vegetative + vchbal[1]) / (vchbal[1] + 1)
         # cdstem is carbohydrate requirement for stem growth, g per plant per day.
@@ -886,8 +897,8 @@ cdef class State:
         # ExtraCarbon is computed as total excessive carbohydrates.
         self.extra_carbon = xtrac1 + xtrac2
         # Compute state.fruit_growth_ratio as the ratio of carbohydrates supplied to square and boll growth to their carbohydrate requirements.
-        if PotGroAllSquares + PotGroAllBolls + PotGroAllBurrs > 0:
-            self.fruit_growth_ratio = (pdsq + pdboll) / (PotGroAllSquares + PotGroAllBolls + PotGroAllBurrs)
+        if self.all_square_potential_growth + self.all_boll_potential_growth + self.all_burr_potential_growth > 0:
+            self.fruit_growth_ratio = (pdsq + pdboll) / (self.all_square_potential_growth + self.all_boll_potential_growth + self.all_burr_potential_growth)
         else:
             self.fruit_growth_ratio = 1
         # Compute vratio as the ratio of carbohydrates supplied to leaf and petiole growth to their carbohydrate requirements.
@@ -2855,24 +2866,16 @@ cdef class Simulation:
         """
         This function simulates the potential growth of fruiting sites of cotton plants. It is called from PlantGrowth(). It calls TemperatureOnFruitGrowthRate()
 
-        The following global variables are set here:
-            PotGroAllBolls, PotGroAllBurrs, PotGroAllSquares.
-
         References:
         Marani, A. 1979. Growth rate of cotton bolls and their components. Field Crops Res. 2:169-175.
         Marani, A., Phene, C.J. and Cardon, G.E. 1992. CALGOS, a version of GOSSYM adapted for irrigated cotton.  III. leaf and boll growth routines. Beltwide Cotton Grow, Res. Conf. 1992:1361-1363.
         """
         state = self._current_state
-        global PotGroAllSquares, PotGroAllBolls, PotGroAllBurrs
         # The constant parameters used:
         cdef double[5] vpotfrt = [0.72, 0.30, 3.875, 0.125, 0.17]
         # Compute tfrt for the effect of temperature on boll and burr growth rates. Function TemperatureOnFruitGrowthRate() is used (with parameters derived from GOSSYM), for day time and night time temperatures, weighted by day and night lengths.
         cdef double tfrt  # the effect of temperature on rate of boll, burr or square growth.
         tfrt = (state.day_length * TemperatureOnFruitGrowthRate(state.daytime_temperature) + (24 - state.day_length) * TemperatureOnFruitGrowthRate(state.nighttime_temperature)) / 24
-        # Assign zero to sums of potential growth of squares, bolls and burrs.
-        PotGroAllSquares = 0
-        PotGroAllBolls = 0
-        PotGroAllBurrs = 0
         # Assign values for the boll growth equation parameters. These are cultivar - specific.
         cdef double agemax = self.cultivar_parameters[9]  # maximum boll growth period (physiological days).
         cdef double rbmax = self.cultivar_parameters[10]  # maximum rate of boll (seed and lint) growth, g per boll per physiological day.
@@ -2880,13 +2883,11 @@ cdef class Simulation:
         # Loop for all vegetative stems.
         for i, stage in np.ndenumerate(state.fruiting_nodes_stage):
             # Calculate potential square growth for node (k,l,m).
-            # Sum potential growth rates of squares as PotGroAllSquares.
             if stage == Stage.Square:
                 # ratesqr is the rate of square growth, g per square per day.
                 # The routine for this is derived from GOSSYM, and so are the parameters used.
                 ratesqr = tfrt * vpotfrt[3] * exp(-vpotfrt[2] + vpotfrt[3] * state.fruiting_nodes_age[i])
                 state.square_potential_growth[i] = ratesqr * state.fruiting_nodes_fraction[i]
-                PotGroAllSquares += state.square_potential_growth[i]
             # Growth of seedcotton is simulated separately from the growth of burrs. The logistic function is used to simulate growth of seedcotton. The constants of this function for cultivar 'Acala-SJ2', are based on the data of Marani (1979); they are derived from calibration for other cultivars
             # agemax is the age of the boll (in physiological days after bloom) at the time when the boll growth rate is maximal.
             # rbmax is the potential maximum rate of boll growth (g seeds plus lint dry weight per physiological day) at this age.
@@ -2914,9 +2915,6 @@ cdef class Simulation:
                 # Potential boll (seeds and lint) growth rate (ratebol) and potential burr growth rate (ratebur) are multiplied by FruitFraction to compute PotGroBolls and PotGroBurrs for node (k,l,m).
                 state.fruiting_nodes_boll_potential_growth[i] = ratebol * state.fruiting_nodes_fraction[i]
                 state.burr_potential_growth[i] = ratebur * state.fruiting_nodes_fraction[i]
-                # Sum potential growth rates of bolls and burrs as PotGroAllBolls and PotGroAllBurrs, respectively.
-                PotGroAllBolls += state.fruiting_nodes_boll_potential_growth[i]
-                PotGroAllBurrs += state.burr_potential_growth[i]
 
             # If these are not green bolls, their potential growth is 0. End loop.
             else:
