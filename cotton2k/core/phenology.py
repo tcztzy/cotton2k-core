@@ -71,7 +71,6 @@ class Phenology:
     nitrogen_stress_vegetative: float
     number_of_open_bolls: float
     open_bolls_burr_weight: float
-    vegetative_branches: Sequence
     water_stress: float
 
     @property
@@ -126,12 +125,16 @@ class Phenology:
                 return
         # The following is executed after the appearance of the first square.
         # If there are only one or two vegetative branches, and if plant population
-        # allows it, call _add_vegetative_branch() to decide if a new vegetative branch
+        # allows it, call add_vegetative_branch() to decide if a new vegetative branch
         # is to be added. Note that dense plant populations (large per_plant_area)
         # prevent new vegetative branch formation.
-        if len(self.vegetative_branches) == 1 and self._sim.per_plant_area >= vpheno[5]:
+        if (
+            self.fruiting_nodes_stage[1] == Stage.NotYetFormed
+        ).all() and self._sim.per_plant_area >= vpheno[5]:
             self.add_vegetative_branch(u, stemNRatio, DaysTo1stSqare)
-        if len(self.vegetative_branches) == 2 and self._sim.per_plant_area >= vpheno[6]:
+        if (
+            self.fruiting_nodes_stage[2] == Stage.NotYetFormed
+        ).all() and self._sim.per_plant_area >= vpheno[6]:
             self.add_vegetative_branch(u, stemNRatio, DaysTo1stSqare)
         # The maximum number of nodes per fruiting branch (nidmax) is affected by plant
         # density. It is computed as a function of density_factor.
@@ -141,8 +144,11 @@ class Phenology:
         # Start loop over all existing vegetative branches.
         # Call AddFruitingBranch() to decide if a new node (and a new fruiting branch)
         # is to be added on this stem.
-        for k, vb in enumerate(self.vegetative_branches):
-            if len(vb.fruiting_branches) < 30:
+        for k in range(3):
+            number_of_branches = (
+                (self.fruiting_nodes_stage[k] != Stage.NotYetFormed).sum(axis=1) > 0
+            ).sum()
+            if number_of_branches < 30:
                 self.add_fruiting_branch(
                     k,
                     self._sim.density_factor,
@@ -153,8 +159,14 @@ class Phenology:
                 )
             # Loop over all existing fruiting branches, and call add_fruiting_node() to
             # decide if a new node on this fruiting branch is to be added.
-            for l, fb in enumerate(vb.fruiting_branches):
-                if fb.number_of_fruiting_nodes < nidmax:
+            number_of_branches = (
+                (self.fruiting_nodes_stage[k] != Stage.NotYetFormed).sum(axis=1) > 0
+            ).sum()
+            for l in range(number_of_branches):
+                number_of_nodes = (
+                    self.fruiting_nodes_stage[k, l] != Stage.NotYetFormed
+                ).sum()
+                if number_of_nodes < nidmax:
                     self.add_fruiting_node(
                         k,
                         l,
@@ -167,7 +179,10 @@ class Phenology:
                 # Loop over all existing fruiting nodes, and call
                 # simulate_fruiting_site() to simulate the condition of each fruiting
                 # node.
-                for m in range(fb.number_of_fruiting_nodes):
+                number_of_nodes = (
+                    self.fruiting_nodes_stage[k, l] != Stage.NotYetFormed
+                ).sum()
+                for m in range(number_of_nodes):
                     first_bloom = self.simulate_fruiting_site(
                         k,
                         l,
@@ -373,29 +388,29 @@ class Phenology:
 
     def add_vegetative_branch(self, stemNRatio, DaysTo1stSqare, initial_leaf_area):
         """Decides whether a new vegetative branch is to be added, and then forms it."""
-        if self.number_of_vegetative_branches == 3:
+        for k in reversed(range(3)):
+            if (self.fruiting_nodes_stage[k] != Stage.NotYetFormed).any():
+                break
+        if k == 2:
             return
         # TimeToNextVegBranch is computed as a function of this average temperature.
         # time, in physiological days, for the next vegetative branch to be formed.
         TimeToNextVegBranch = np.polynomial.Polynomial([13.39, -0.696, 0.012])(
-            self.fruiting_nodes_average_temperature[
-                self.number_of_vegetative_branches - 1, 0, 0
-            ]
+            self.fruiting_nodes_average_temperature[k, 0, 0]
         )
         # Compare the age of the first fruiting site of the last formed vegetative
         # branch with TimeToNextVegBranch plus DaysTo1stSqare and the delays caused by
         # stresses, in order to decide if a new vegetative branch is to be formed.
         if (
-            self.fruiting_nodes_age[self.number_of_vegetative_branches - 1, 0, 0]
+            self.fruiting_nodes_age[k, 0, 0]
             < TimeToNextVegBranch
             + self.phenological_delay_for_vegetative_by_carbon_stress
             + self.phenological_delay_by_nitrogen_stress
             + DaysTo1stSqare
         ):
             return
-        vb = self._new_vegetative_branch
         # Assign 1 to FruitFraction and FruitingCode of the first site of this branch.
-        index = (self.number_of_vegetative_branches, 0, 0)
+        index = (k + 1, 0, 0)
         self.fruiting_nodes_fraction[index] = 1
         self.fruiting_nodes_stage[index] = Stage.Square
         # Add a new leaf to the first site of this branch.
@@ -421,13 +436,7 @@ class Phenology:
         self.stem_nitrogen -= addlfn
         # Assign the initial value of the average temperature of the first site.
         # Define initial NumFruitBranches and NumNodes for the new vegetative branch.
-        self.fruiting_nodes_average_temperature[
-            self.number_of_vegetative_branches, 0, 0
-        ] = self.average_temperature
-        vb.number_of_fruiting_branches = 1
-        vb.fruiting_branches[0].number_of_fruiting_nodes = 1
-        # When a new vegetative branch is formed, increase NumVegBranches by 1.
-        self.number_of_vegetative_branches += 1
+        self.fruiting_nodes_average_temperature[index] = self.average_temperature
 
     def add_fruiting_branch(
         self,
@@ -446,7 +455,6 @@ class Phenology:
         vfrtbr = [0.8, 0.95, 33.0, 4.461, -0.1912, 0.00265, 1.8, -1.32]
         # Compute the cumulative delay for the appearance of the next caused by
         # carbohydrate, nitrogen, and water stresses.
-        vb = self.vegetative_branches[k]
         self.delay_of_new_fruiting_branch[k] += (
             self.phenological_delay_for_vegetative_by_carbon_stress
             + vfrtbr[0] * self.phenological_delay_by_nitrogen_stress
@@ -460,10 +468,13 @@ class Phenology:
         # It is different for the main stem (k = 0) than for the other vegetative
         # branches. TimeToNextFruNode is modified for plant density.
         # modified average daily temperature.
+        for l in reversed(range(30)):
+            if (self.fruiting_nodes_stage[k, l] != Stage.NotYetFormed).any():
+                break
+        else:
+            l = -1
         tav = min(
-            self.fruiting_nodes_average_temperature[
-                k, vb.number_of_fruiting_branches - 1, 0
-            ],
+            self.fruiting_nodes_average_temperature[k, l, 0],
             vfrtbr[2],
         )
         # TimeToNextFruBranch is the time, in physiological days, for the next fruiting
@@ -480,16 +491,12 @@ class Phenology:
         )
         # Check if the the age of the last fruiting branch exceeds TimeToNextFruBranch.
         # If so, form the new fruiting branch:
-        if (
-            self.fruiting_nodes_age[k, vb.number_of_fruiting_branches - 1, 0]
-            < TimeToNextFruBranch
-        ):
+        if self.fruiting_nodes_age[k, l, 0] < TimeToNextFruBranch:
             return
         # Increment NumFruitBranches, define newbr, and assign 1 to NumNodes,
         # FruitFraction and FruitingCode.
-        if vb.number_of_fruiting_branches >= 30:
+        if l >= 29:
             return
-        vb.number_of_fruiting_branches += 1
         if self.version >= 0x500:
             leaf_weight = max(
                 min(
@@ -504,9 +511,7 @@ class Phenology:
             leaf_weight = leaf_area * self.leaf_weight_area_ratio
         # the index number of the new fruiting branch on this vegetative branch, after
         # a new branch has been added.
-        new_branch = vb.fruiting_branches[-1]
-        l = vb.number_of_fruiting_branches - 1
-        new_branch.number_of_fruiting_nodes = 1
+        l += 1
         self.fruiting_nodes_fraction[k, l, 0] = 1
         self.fruiting_nodes_stage[k, l, 0] = Stage.Square
         # Initiate new leaves at the first node of the new fruiting branch, and at the
@@ -540,7 +545,6 @@ class Phenology:
         vfrtnod = [1.32, 0.90, 33.0, 7.6725, -0.3297, 0.004657]
         # Compute the cumulative delay for the appearance of the next node on the
         # fruiting branch, caused by carbohydrate, nitrogen, and water stresses.
-        fb = self.vegetative_branches[k].fruiting_branches[l]
         self.node_delay[k, l] += (
             self.phenological_delay_for_fruiting_by_carbon_stress
             + vfrtnod[0] * self.phenological_delay_by_nitrogen_stress
@@ -548,9 +552,9 @@ class Phenology:
         self.node_delay[k, l] += vfrtnod[1] * (1 - self.water_stress)
         # Define nnid, and compute the average temperature of the last node of this
         # fruiting branch, from the time it was formed.
-        nnid = (
-            fb.number_of_fruiting_nodes - 1
-        )  # the number of the last node on this fruiting branche.
+        for nnid in reversed(range(5)):
+            if self.fruiting_nodes_stage[k, l, nnid] != Stage.NotYetFormed:
+                break
         tav = min(
             self.fruiting_nodes_average_temperature[k, l, nnid],
             vfrtnod[2],
@@ -573,10 +577,7 @@ class Phenology:
         # Check if the the age of the last node on the fruiting branch exceeds
         # TimeToNextFruNode.
         # If so, form the new node:
-        if (
-            self.fruiting_nodes_age[k, l, nnid] < TimeToNextFruNode
-            or fb.number_of_fruiting_nodes >= 5
-        ):
+        if self.fruiting_nodes_age[k, l, nnid] < TimeToNextFruNode or nnid >= 4:
             return
         # Increment NumNodes, define newnod, and assign 1 to FruitFraction and
         # FruitingCode.
@@ -590,7 +591,6 @@ class Phenology:
         else:
             leaf_area = var34
             leaf_weight = leaf_area * self.leaf_weight_area_ratio
-        fb.number_of_fruiting_nodes += 1
         self.fruiting_nodes_fraction[k, l, nnid + 1] = 1
         self.fruiting_nodes_stage[k, l, nnid + 1] = Stage.Square
         # Initiate a new leaf at the new node. The mass and nitrogen in the new leaf is
@@ -611,8 +611,6 @@ class Phenology:
     def create_first_square(self, stemNRatio, first_square_leaf_area):
         """Initiates the first square."""
         # FruitFraction and FruitingCode are assigned 1 for the first fruiting site.
-        self.vegetative_branches[0].number_of_fruiting_branches = 1
-        self.vegetative_branches[0].fruiting_branches[0].number_of_fruiting_nodes = 1
         self.fruiting_nodes_stage[0, 0, 0] = Stage.Square
         self.fruiting_nodes_fraction[0, 0, 0] = 1
         # Initialize a new leaf at this position. define its initial weight and area.
@@ -739,9 +737,9 @@ class Phenology:
         # Loop for all vegetative branches and fruiting branches, and call
         # main_stem_leaf_abscission() for each fruiting branch to simulate the
         # physiological abscission of the other leaves.
-        for k in range(self.number_of_vegetative_branches):
-            for l in range(self.vegetative_branches[k].number_of_fruiting_branches):
-                self.main_stem_leaf_abscission(k, l, droplf)
+        for i, w in np.ndenumerate(self.main_stem_leaf_weight):
+            if w:
+                self.main_stem_leaf_abscission(*i, droplf)
         # Call defoliation_leaf_abscission() to simulate leaf abscission caused by
         # defoliants.
         if defoliate_date is not None and self.date >= defoliate_date:
@@ -792,10 +790,9 @@ class Phenology:
             self.main_stem_leaf_petiole_weight[k, l] = 0
         # Loop over all nodes on this fruiting branch and call
         # fruit_node_leaf_abscission().
-        for m in range(
-            self.vegetative_branches[k].fruiting_branches[l].number_of_fruiting_nodes
-        ):
-            self.fruit_node_leaf_abscission(k, l, m, droplf)
+        for m in range(5):
+            if self.node_leaf_weight[k, l, m]:
+                self.fruit_node_leaf_abscission(k, l, m, droplf)
 
     def fruit_node_leaf_abscission(self, k, l, m, droplf):
         """Simulates the abscission of fruiting node leaves on node m of fruiting

@@ -18,11 +18,7 @@ class StemGrowth:  # pylint: disable=too-few-public-methods,no-member
         # There are two periods for computation of potential stem growth:
         # (1) Before the appearance of a square on the third fruiting branch.
         # Potential stem growth is a function of plant age (days from emergence).
-        main_stem = self.vegetative_branches[0]  # type: ignore[attr-defined]
-        if (
-            len(main_stem.fruiting_branches) < 3
-            or self.fruiting_nodes_stage[0, 2, 0] == Stage.NotYetFormed  # type: ignore
-        ):
+        if self.fruiting_nodes_stage[0, 2, 0] == Stage.NotYetFormed:
             return var12 * (var13 + var14 * self.kday)  # type: ignore
         # (2) After the appearance of a square on the third fruiting branch.
         # It is assumed that all stem tissue that is more than 32 days old is not

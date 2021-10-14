@@ -105,7 +105,6 @@ class State(
             "actual_transpiration",
             "actual_soil_evaporation",
             *("number_of_" + org for org in ("squares", "green_bolls", "open_bolls")),
-            "vegetative_branches",
         ]
 
     @property
@@ -170,7 +169,11 @@ class State(
 
     @property
     def agetop(self):
-        l = len(self.vegetative_branches[0].fruiting_branches) - 1
+        for l in reversed(range(30)):
+            if (self.fruiting_nodes_stage[0, l] != Stage.NotYetFormed).any():
+                break
+        else:
+            l = -1
         # average physiological age of top three nodes.
         if l < 0:
             return 0
@@ -495,7 +498,6 @@ class Simulation(CySimulation):  # pylint: disable=too-many-instance-attributes
             "nitrogen_stress_vegetative",
             "nitrogen_stress_fruiting",
             "nitrogen_stress_root",
-            "number_of_vegetative_branches",
             "numiter",
             "pavail",
             "plant_height",

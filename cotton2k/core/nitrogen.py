@@ -40,7 +40,6 @@ class PlantNitrogen:  # pylint: disable=too-few-public-methods,no-member,attribu
     Attributes
     ----------
         pre_fruiting_nodes_age : list[double]
-        vegetative_branches : list
         burres : float
             reserve N in burrs, in g per plant.
         leafrs : float
@@ -97,7 +96,6 @@ class PlantNitrogen:  # pylint: disable=too-few-public-methods,no-member,attribu
     addnr = 0.0
     addnv = 0.0
     node_leaf_age: npt.NDArray[np.double]
-    vegetative_branches: Sequence
 
     @cached_property
     def actual_square_growth(self):
@@ -122,19 +120,10 @@ class PlantNitrogen:  # pylint: disable=too-few-public-methods,no-member,attribu
 
         # number of petioles computed.
         numl = self.number_of_pre_fruiting_nodes  # type: ignore[attr-defined]
-        for k in range(self.number_of_vegetative_branches):  # type: ignore
-            for l in range(self.vegetative_branches[k].number_of_fruiting_branches):
-                numl += (
-                    self.vegetative_branches[k]
-                    .fruiting_branches[l]
-                    .number_of_fruiting_nodes
-                )
-                for m in range(
-                    self.vegetative_branches[k]
-                    .fruiting_branches[l]
-                    .number_of_fruiting_nodes
-                ):
-                    spetno3 += petno3r(self.node_leaf_age[k, l, m])
+        for i, stage in np.ndenumerate(self.fruiting_nodes_stage):
+            if stage != Stage.NotYetFormed:
+                numl += 1
+                spetno3 += petno3r(self.node_leaf_age[i])
         # The return value of the function is the average ratio of NO3 to total N for
         # all the petioles in the plant.
         return spetno3 / numl
