@@ -6,6 +6,7 @@ import numpy as np
 import numpy.typing as npt
 from scipy import constants
 
+from ._soil_thermology import soil_thermal_conductivity_np
 from .meteorology import VaporPressure, clearskyemiss
 from .soil import form
 
@@ -752,7 +753,7 @@ class Thermology:  # pylint: disable=E0203,E1101,R0902,R0912,R0914,R0915,W0201
         )
         asoi = (
             self.soil_thermal_conductivity_np(
-                q1, self.ts1, np.ones(nn, dtype=np.int_) * l
+                q1, self.ts1, np.ones(nn, dtype=np.uint64) * l
             )
             / self.hcap
         )
@@ -778,7 +779,7 @@ class Thermology:  # pylint: disable=E0203,E1101,R0902,R0912,R0914,R0915,W0201
             self.ts0 = self.ts1.copy()
             asoi = (
                 self.soil_thermal_conductivity_np(
-                    q1, self.ts1, np.arange(nn, dtype=np.int_)
+                    q1, self.ts1, np.arange(nn, dtype=np.uint64)
                 )
                 / self.hcap
             )
@@ -1105,7 +1106,7 @@ class Thermology:  # pylint: disable=E0203,E1101,R0902,R0912,R0914,R0915,W0201
         self,
         q0: npt.NDArray[np.double],
         t0: npt.NDArray[np.double],
-        l0: npt.NDArray[np.int_],
+        l0: npt.NDArray[np.uint64],
     ) -> npt.NDArray[np.double]:
         """Computes and returns the thermal conductivity of the soil
         (cal cm-1 s-1 oC-1). It is based on the work of De Vries(1963).
@@ -1119,61 +1120,20 @@ class Thermology:  # pylint: disable=E0203,E1101,R0902,R0912,R0914,R0915,W0201
         t0
             soil temperature (K).
         """
-        # Convert soil temperature to degrees C.
-        tcel = t0 - 273.161  # soil temperature, in C.
-        # Compute cpn, the apparent heat conductivity of air in soil pore spaces, when
-        # saturated with water vapor, using a function of soil temperature, which
-        # changes linearly between 36 and 40 C.
-        # effect of temperature on heat conductivity of air saturated with water vapor.
-        bb = 0.0977 - 0.000995 * tcel
-        bb[tcel <= 36] = 0.06188
-        bb[tcel > 40] = 0.05790
-        # apparent heat conductivity of air in soil pore spaces, when it is saturated
-        # with water vapor.
-        cpn = self.cka + 0.05 * np.exp(bb * tcel)
-        # Compute xair, air content of soil per volume, from soil porosity and moisture
-        # content.
-        # Compute thermal conductivity
-        # (a) for wet soil (soil moisture higher than field capacity),
-        # (b) for less wet soil.
-        # In each case compute first ga, and then dair.
-        # air content of soil, per volume.
-        xair = np.maximum(self.pore_space[l0] - q0, 0)
-        lt_fc = q0 < self.field_capacity[l0]
-        qq = q0.copy()
-        qq[lt_fc] = np.maximum(q0, self.marginal_water_content[l0])[lt_fc]
-        # shape factor for air in pore spaces.
-        ga = 0.333 - 0.061 * xair / self.pore_space[l0]
-        ga[lt_fc] = (
-            0.041
-            + 0.244
-            * (qq - self.marginal_water_content[l0])
-            / (self.field_capacity[l0] - self.marginal_water_content[l0])
-        )[lt_fc]
-        ckn = cpn.copy()
-        ckn[lt_fc] = (self.cka + (cpn - self.cka) * qq / self.field_capacity[l0])[lt_fc]
-        # aggregation factor for air in soil pore spaces.
-        dair = form(ckn, self.ckw, ga)
-        # computed heat conductivity of soil, mcal cm-1 s-1 oc-1.
-        hcond = (
-            qq * self.ckw
-            + self.dsand * self.bsand * self.soil_sand_volume_fraction[l0]
-            + self.dclay * self.bclay * self.soil_clay_volume_fraction[l0]
-            + dair * ckn * xair
-        ) / (
-            qq
-            + self.dsand * self.soil_sand_volume_fraction[l0]
-            + self.dclay * self.soil_clay_volume_fraction[l0]
-            + dair * xair
+        return soil_thermal_conductivity_np(
+            self.cka,
+            self.ckw,
+            self.dsand,
+            self.bsand,
+            self.dclay,
+            self.bclay,
+            self.soil_sand_volume_fraction,
+            self.soil_clay_volume_fraction,
+            self.pore_space,
+            self.field_capacity,
+            self.marginal_water_content,
+            self.heat_conductivity_dry_soil,
+            q0,
+            t0,
+            l0,
         )
-        # When soil moisture content is less than the limiting value
-        # marginal_water_content, modify the value of hcond.
-        x = np.logical_and(lt_fc, qq <= self.marginal_water_content[l0])
-        hcond[x] = (
-            (hcond - self.heat_conductivity_dry_soil[l0])
-            * q0
-            / self.marginal_water_content[l0]
-            + self.heat_conductivity_dry_soil[l0]
-        )[x]
-        # The result is hcond converted from mcal to cal.
-        return hcond / 1000

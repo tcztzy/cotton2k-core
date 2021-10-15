@@ -1,4 +1,3 @@
-import logging
 import os
 from multiprocessing import cpu_count
 
@@ -7,16 +6,21 @@ from Cython.Build import cythonize
 from pyproject_toml import setup
 from setuptools import Extension
 
-log = logging.getLogger("COTTON2K")
-
 
 def get_extensions():
     extensions = cythonize(
-        Extension(
-            "cotton2k.core._simulation",
-            ["cotton2k/core/_simulation.pyx"],
-            include_dirs=[numpy.get_include()],
-        ),
+        [
+            Extension(
+                "cotton2k.core._simulation",
+                ["cotton2k/core/_simulation.pyx"],
+                include_dirs=[numpy.get_include()],
+            ),
+            Extension(
+                "cotton2k.core._soil_thermology",
+                ["cotton2k/core/_soil_thermology.pyx"],
+                include_dirs=[numpy.get_include()],
+            ),
+        ],
         nthreads=cpu_count() if os.name != "nt" else 0,
     )
     return extensions
