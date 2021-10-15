@@ -1,28 +1,13 @@
 import logging
 import os
-from collections import defaultdict
 from multiprocessing import cpu_count
 
 import numpy
-from Cython.Build import build_ext, cythonize
+from Cython.Build import cythonize
 from pyproject_toml import setup
 from setuptools import Extension
 
 log = logging.getLogger("COTTON2K")
-
-
-extra_compile_args = defaultdict(lambda: ["-std=c++20"])
-extra_compile_args["msvc"] = ["/std:c++latest"]
-libraries = defaultdict(lambda: [])
-libraries["nt"].extend(["ws2_32", "userenv", "advapi32"])
-
-
-class cotton2k_build_ext(build_ext):
-    def build_extensions(self):
-        args = extra_compile_args[self.compiler.compiler_type]
-        for ext in self.extensions:
-            ext.extra_compile_args = args
-        super().build_extensions()
 
 
 def get_extensions():
@@ -31,7 +16,6 @@ def get_extensions():
             "cotton2k.core._simulation",
             ["cotton2k/core/_simulation.pyx"],
             include_dirs=[numpy.get_include()],
-            libraries=libraries[os.name],
         ),
         nthreads=cpu_count() if os.name != "nt" else 0,
     )
@@ -42,5 +26,4 @@ setup(
     packages=["cotton2k.core"],
     package_data={"cotton2k.core": ["*.json", "*.csv"]},
     ext_modules=get_extensions(),
-    cmdclass={"build_ext": cotton2k_build_ext},
 )
