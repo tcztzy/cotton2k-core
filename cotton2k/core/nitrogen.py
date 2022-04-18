@@ -120,7 +120,7 @@ class PlantNitrogen:  # pylint: disable=too-few-public-methods,no-member,attribu
 
         # number of petioles computed.
         numl = self.number_of_pre_fruiting_nodes  # type: ignore[attr-defined]
-        for i, stage in np.ndenumerate(self.fruiting_nodes_stage):
+        for i, stage in np.ndenumerate(self.fruiting_nodes_stage):  # type: ignore
             if stage != Stage.NotYetFormed:
                 numl += 1
                 spetno3 += petno3r(self.node_leaf_age[i])
