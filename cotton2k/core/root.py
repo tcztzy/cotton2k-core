@@ -279,3 +279,35 @@ class RootGrowth:  # pylint: disable=no-member,attribute-defined-outside-init,to
                 self.taproot_length = self.last_layer_with_root_depth + 0.01
                 self.last_layer_with_root_depth += self.layer_depth[lp1]
                 self.taproot_layer_number = lp1
+
+    def root_death(self, l, k):
+        """This function computes the death of root tissue in each soil cell containing roots.
+
+        When root age reaches a threshold thdth(i), a proportion dth(i) of the roots in class i dies. The mass of dead roots is added to DailyRootLoss.
+
+        It has been adapted from GOSSYM, but the threshold age for this process is based on the time from when the roots first grew into each soil cell.
+
+        It is assumed that root death rate is greater in dry soil, for all root classes except class 1. Root death rate is increased to the maximum value in soil saturated with water.
+        """
+        aa = 0.008  # a parameter in the equation for computing dthfac.
+        dth = [0.0001, 0.0002, 0.0001]  # the daily proportion of death of root tissue.
+        dthmax = 0.10  # a parameter in the equation for computing dthfac.
+        psi0 = -14.5  # a parameter in the equation for computing dthfac.
+        thdth = [30.0, 50.0, 100.0]  # the time threshold, from the initial
+        # penetration of roots to a soil cell, after which death of root tissue of class i may occur.
+
+        result = 0
+        for i in range(3):
+            if self.root_age[l][k] > thdth[i]:
+                # the computed proportion of roots dying in each class.
+                dthfac = dth[i]
+                if self.soil_water_content[l, k] >= self.pore_space[l]:
+                    dthfac = dthmax
+                else:
+                    if i <= 1 and self.soil_psi[l, k] <= psi0:
+                        dthfac += aa * (psi0 - self.soil_psi[l, k])
+                    if dthfac > dthmax:
+                        dthfac = dthmax
+                result += self.root_weights[l][k][i] * dthfac
+                self.root_weights[l][k][i] -= self.root_weights[l][k][i] * dthfac
+        return result

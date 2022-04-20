@@ -938,37 +938,6 @@ cdef class State:
             for l in range(40)
         ], dtype=np.double)
 
-    def root_death(self, l, k):
-        """This function computes the death of root tissue in each soil cell containing roots.
-
-        When root age reaches a threshold thdth(i), a proportion dth(i) of the roots in class i dies. The mass of dead roots is added to DailyRootLoss.
-
-        It has been adapted from GOSSYM, but the threshold age for this process is based on the time from when the roots first grew into each soil cell.
-
-        It is assumed that root death rate is greater in dry soil, for all root classes except class 1. Root death rate is increased to the maximum value in soil saturated with water.
-        """
-        cdef double aa = 0.008  # a parameter in the equation for computing dthfac.
-        cdef double[3] dth = [0.0001, 0.0002, 0.0001]  # the daily proportion of death of root tissue.
-        cdef double dthmax = 0.10  # a parameter in the equation for computing dthfac.
-        cdef double psi0 = -14.5  # a parameter in the equation for computing dthfac.
-        cdef double[3] thdth = [30.0, 50.0, 100.0]  # the time threshold, from the initial
-        # penetration of roots to a soil cell, after which death of root tissue of class i may occur.
-
-        result = 0
-        for i in range(3):
-            if self.root_age[l][k] > thdth[i]:
-                # the computed proportion of roots dying in each class.
-                dthfac = dth[i]
-                if self.soil_water_content[l, k] >= self.pore_space[l]:
-                    dthfac = dthmax
-                else:
-                    if i <= 1 and self.soil_psi[l, k] <= psi0:
-                        dthfac += aa * (psi0 - self.soil_psi[l, k])
-                    if dthfac > dthmax:
-                        dthfac = dthmax
-                result += self.root_weights[l][k][i] * dthfac
-                self.root_weights[l][k][i] -= self.root_weights[l][k][i] * dthfac
-        return result
 
     def tap_root_growth(self, int NumRootAgeGroups, unsigned int plant_row_column):
         """This function computes the elongation of the taproot."""
