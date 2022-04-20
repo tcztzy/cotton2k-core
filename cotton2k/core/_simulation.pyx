@@ -1173,66 +1173,6 @@ cdef class State:
                     self._root_potential_growth[l][k] = rtwtcg * rgfac * temprg * self.root_growth_factor[l, k] * per_plant_area / 19.6
         return self._root_potential_growth.sum()
 
-    def redist_root_new_growth(self, int l, int k, double addwt, double column_width, unsigned int plant_row_column):
-        """This function computes the redistribution of new growth of roots into adjacent soil cells. It is called from ActualRootGrowth().
-
-        Redistribution is affected by the factors rgfdn, rgfsd, rgfup.
-        And the values of RootGroFactor(l,k) in this soil cell and in the adjacent cells.
-        The values of ActualRootGrowth(l,k) for this and for the adjacent soil cells are computed.
-        The code of this module is based, with major changes, on the code of GOSSYM."""
-        # The following constant parameters are used. These are relative factors for root growth to adjoining cells, downwards, sideways, and upwards, respectively. These factors are relative to the volume of the soil cell from which growth originates.
-        cdef double rgfdn = 900
-        cdef double rgfsd = 600
-        cdef double rgfup = 10
-        # Set the number of layer above and below this layer, and the number of columns to the right and to the left of this column.
-        cdef int lm1, lp1  # layer above and below layer l.
-        lp1 = min(nl - 1, l + 1)
-        lm1 = max(0, l - 1)
-
-        cdef int km1, kp1  # column to the left and to the right of column k.
-        kp1 = min(nk - 1, k + 1)
-        km1 = max(0, k - 1)
-        # Compute proportionality factors (efac1, efacl, efacr, efacu, efacd) as the product of RootGroFactor and the geotropic factors in the respective soil cells.
-        # Note that the geotropic factors are relative to the volume of the soil cell.
-        # Compute the sum srwp of the proportionality factors.
-        cdef double efac1  # product of RootGroFactor and geotropic factor for this cell.
-        cdef double efacd  # as efac1 for the cell below this cell.
-        cdef double efacl  # as efac1 for the cell to the left of this cell.
-        cdef double efacr  # as efac1 for the cell to the right of this cell.
-        cdef double efacu  # as efac1 for the cell above this cell.
-        cdef double srwp  # sum of all efac values.
-        efac1 = self.layer_depth[l] * column_width * self.root_growth_factor[l, k]
-        efacl = rgfsd * self.root_growth_factor[l, km1]
-        efacr = rgfsd * self.root_growth_factor[l, kp1]
-        efacu = rgfup * self.root_growth_factor[lm1, k]
-        efacd = rgfdn * self.root_growth_factor[lp1, k]
-        srwp = efac1 + efacl + efacr + efacu + efacd
-        # If srwp is very small, all the added weight will be in the same soil soil cell, and execution of this function is ended.
-        if srwp < 1e-10:
-            self.actual_root_growth[l][k] = addwt
-            return
-        # Allocate the added dry matter to this and the adjoining soil cells in proportion to the EFAC factors.
-        self.actual_root_growth[l][k] += addwt * efac1 / srwp
-        self.actual_root_growth[l][km1] += addwt * efacl / srwp
-        self.actual_root_growth[l][kp1] += addwt * efacr / srwp
-        self.actual_root_growth[lm1][k] += addwt * efacu / srwp
-        self.actual_root_growth[lp1][k] += addwt * efacd / srwp
-        # If roots are growing into new soil soil cells, initialize their RootAge to 0.01.
-        if self.root_age[l][km1] == 0:
-            self.root_age[l][km1] = 0.01
-        if self.root_age[l][kp1] == 0:
-            self.root_age[l][kp1] = 0.01
-        if self.root_age[lm1][k] == 0:
-            self.root_age[lm1][k] = 0.01
-        # If this new compartmment is in a new layer with roots, also initialize its RootColNumLeft and RootColNumRight values.
-        if self.root_age[lp1][k] == 0 and efacd > 0:
-            self.root_age[lp1][k] = 0.01
-        # If this is in the location of the taproot, and the roots reach a new soil layer, update the taproot parameters taproot_length, self.last_layer_with_root_depth, and self.taproot_layer_number.
-        if k == plant_row_column or k == plant_row_column + 1:
-            if lp1 > self.taproot_layer_number and efacd > 0:
-                self.taproot_length = self.last_layer_with_root_depth + 0.01
-                self.last_layer_with_root_depth += self.layer_depth[lp1]
-                self.taproot_layer_number = lp1
 
     def initialize_lateral_roots(self):
         """This function initiates lateral root growth."""
