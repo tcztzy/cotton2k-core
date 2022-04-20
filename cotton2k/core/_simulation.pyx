@@ -18,7 +18,7 @@ from .meteorology import tdewest
 from .fruit import TemperatureOnFruitGrowthRate
 from .phenology import Stage
 from .leaf import temperature_on_leaf_growth_rate, leaf_resistance_for_transpiration
-from .soil import root_psi, SoilTemOnRootGrowth, SoilAirOnRootGrowth, SoilNitrateOnRootGrowth, PsiOnTranspiration, SoilTemperatureEffect, SoilWaterEffect, wcond, qpsi, psiq, SoilMechanicResistance, PsiOsmotic, form
+from .soil import root_psi, SoilTemOnRootGrowth, SoilAirOnRootGrowth, SoilNitrateOnRootGrowth, PsiOnTranspiration, SoilTemperatureEffect, SoilWaterEffect, wcond, qpsi, psiq, SoilMechanicResistance, PsiOsmotic
 from .utils import date2doy, doy2date
 from .thermology import canopy_balance
 

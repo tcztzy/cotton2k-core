@@ -28,7 +28,7 @@ def depth_of_layer(l: int) -> float:
     ...
     IndexError: Out of range
     """
-    if l >= 40:
+    if l >= 40 or l < 0:
         raise IndexError("Out of range")
     return (
         {
